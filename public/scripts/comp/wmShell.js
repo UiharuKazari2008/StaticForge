@@ -8176,7 +8176,7 @@
      * is the glyph in the title bar and the tray (an art name, or CSS url() / image-set(); the speech bubble
      * without one); softKeys is { left, right } of { label, action } like an app's, or a function
      * giving them (Hide / Dismiss without). event names its sound class (SND_EVENTS); silent
-     * brings it up without that sound. sortAt (ms) and prio place it in the pager and the tray (orderNotes); badge is
+     * brings it up without that sound (a progress note with no event is silent: a job she started, N7). sortAt (ms) and prio place it in the pager and the tray (orderNotes); badge is
      * the count a stack of notices shows on its tray icon (issue 1098). update() never sounds and never pops the bubble. The note stays until the app closes it: hide() is
      * the Hide soft key (the bubble goes, the glyph stays), show() brings the bubble back.
      */
@@ -8184,7 +8184,10 @@
     function appNote(opts = {}) {
         if (typeof window.showGlassToast !== 'function') return null;
         // holder: the notification's kind for its picture in 6.5's holder / 6.5.1's drawer (#1056, status-order.js holderKinds)
-        const st = { icon: opts.icon || null, holder: opts.holder || null, softKeys: opts.softKeys || null, actions: opts.actions || null, event: opts.event || null, silent: !!opts.silent,
+        // a note with a progress bar and no sound class of its own is a job she started (a copy, a delete, a transfer): its start and
+        // end are no event to beep for (N7, #1299); an app that names an event for it still sounds by that class
+        const bar0 = opts.progress != null && opts.progress !== false;
+        const st = { icon: opts.icon || null, holder: opts.holder || null, softKeys: opts.softKeys || null, actions: opts.actions || null, event: opts.event || null, silent: !!opts.silent || (bar0 && !opts.event),
             // issue 1098: where the notice sorts (the server's sortAt / prio) and the count a stack shows on its tray icon
             sortAt: Number(opts.sortAt) || 0, prio: Number(opts.prio) || 0, badge: Math.max(0, Math.floor(Number(opts.badge) || 0)) };
         const bar = opts.progress != null && opts.progress !== false;

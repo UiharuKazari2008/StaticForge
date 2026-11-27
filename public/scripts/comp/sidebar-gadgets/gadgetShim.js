@@ -413,6 +413,7 @@
         return s;
     }
     function MediaPlayer() {
+        // notice: gadget-media-player
         var audio = new Audio();
         var self = this;
         var handlers = {};

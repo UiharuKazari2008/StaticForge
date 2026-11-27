@@ -450,8 +450,7 @@
         ensureDialog();
         renderCounting();
         openDialog();
-        // desktopSounds.play: public/scripts/comp/desktopSounds.js
-        desktopSounds.play('uac');
+        // (no sound: an update an agent asks for is not the user's action or an item she asked for - N7, #1299; the dialog and its Cancel are the notice)
         const shown = new Promise((resolve) => {
             settle = resolve;
         });

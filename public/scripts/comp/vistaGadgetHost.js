@@ -169,6 +169,7 @@ const vghLocalTime = (zone) => vghTimeZone.localTime(zone);
 const vghPlay = function (win, file) {
     const url = vghResolve(win, file);
     if (!url) return;
+    // notice: gadget-play-sound
     const audio = new Audio(url);
     audio.play().catch(() => {});
 };

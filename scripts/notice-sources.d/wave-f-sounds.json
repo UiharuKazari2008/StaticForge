@@ -1,0 +1,156 @@
+{
+  "sources": {
+    "dovecote-mail-sound": {
+      "area": "desktop-apps/dovecote.js doveImapAnnounce / dovePlayNewMailAlert (new mail in Dovecote / Dreamscape Mail)",
+      "trigger": "server-push",
+      "action": "content: the mail itself; its balloon opens the message",
+      "sound": true,
+      "switch": "Control Panel > Mail > Play sound when new messages arrive (doveMailOptions), and Personalize > Sounds: New Mail Notification",
+      "note": "N7 ok: an item she asked for (mail). Plays once per burst; never on Melaton Mobile (Messaging has its own class)."
+    },
+    "vista-game-sound": {
+      "area": "desktop-apps/vista-games (Chess, Block Drop and the engine's games): effects and music",
+      "trigger": "user-action",
+      "action": "content: the sounds of the game she is playing",
+      "sound": true,
+      "switch": "each game's own Play sounds option, VG.soundEnabled, the desktop sounds switch; Volume Mixer",
+      "note": "N7 ok: her own play - effects answer her moves and the opponent's reply in a game she started; music only while a game runs, faded out on pause / close."
+    },
+    "explorer-archive-error-sound": {
+      "area": "explorerArchive.js finishUi (a compress / extract that failed)",
+      "trigger": "user-action",
+      "action": "content: the progress dialog stays with the error text and Close",
+      "sound": true,
+      "switch": "Personalize > Sounds: Program Error; No Sounds scheme",
+      "note": "N7 ok: an error that stopped an operation she started."
+    },
+    "grimoire-navigate-sound": {
+      "area": "tagWikiSearchModal.js / grimoireRemoteBrowser.js Grimoire browser navigation (address, link, Home, history)",
+      "trigger": "user-action",
+      "action": "content: the page she navigated to",
+      "sound": true,
+      "switch": "Personalize > Sounds: Start Navigation; No Sounds scheme",
+      "note": "N7 ok: Vista's click sound for a navigation she made (a click, key, typed address). A window opened with a page navigates silently of nothing else; the 2-minute auto retry of an unavailable page goes through the remote browser and plays no sound."
+    },
+    "journal-play-clip": {
+      "area": "journal.js playClip (a voice clip in Melaton Journal)",
+      "trigger": "user-action",
+      "action": "content: the recording she pressed Play on",
+      "sound": true,
+      "switch": "her Play / Pause",
+      "note": "N7 ok: the media she started; no autoplay."
+    },
+    "exception-dialog-sound": {
+      "area": "mainframeExceptionDialog.js show (the Unhandled exception window)",
+      "trigger": "server-push",
+      "action": "content: the dialog (Details, Continue, Quit)",
+      "sound": true,
+      "switch": "Personalize > Sounds: Critical Stop; No Sounds scheme",
+      "note": "N7 ok: an error packet for a request that failed while the desktop is up; known-benign packets (metadata miss, unknown packet type, link probes) never raise it. Critical Stop, never a dropped socket."
+    },
+    "messenger-im-sound": {
+      "area": "messengerNotify.js onMessage (Melaton Messenger instant message)",
+      "trigger": "server-push",
+      "action": "content: the message; a click on its balloon opens the chat",
+      "sound": true,
+      "switch": "Messenger notification options (soundOn), Personalize > Sounds: New Instant Message",
+      "note": "N7 ok: a message in a chat she is in; the server's notify flag decides (not her own message, not a chat shown on another client)."
+    },
+    "planet-switcher-sound": {
+      "area": "planetSwitcher.js (Open Planet Switcher, Planet Selected, Planet Switched)",
+      "trigger": "user-action",
+      "action": "content: the switcher she opened from Start / the shortcut",
+      "sound": true,
+      "switch": "Personalize > Sounds: Open Planet Switcher / Planet Selected / Planet Switched; No Sounds scheme",
+      "note": "N7 ok: feedback of her own gesture (open, pick, arrive); the switcher opens only from her Start menu item or key."
+    },
+    "planet-switcher-bgm": {
+      "area": "planetSwitcher.js startBgm (innerlight music while the switcher is open)",
+      "trigger": "user-action",
+      "action": "content: the app's own music",
+      "sound": true,
+      "switch": "the desktop sounds switch (desktopSounds.isEnabled) and the Volume Mixer; closes with the switcher",
+      "note": "N7 ok: music of an app she opened, like a game; no row of its own, it follows the global sounds switch."
+    },
+    "gadget-media-player": {
+      "area": "sidebar-gadgets/gadgetShim.js MediaPlayer (a gadget's Windows Media Player object, e.g. Online Radio)",
+      "trigger": "user-action",
+      "action": "content: the station she picked",
+      "sound": true,
+      "switch": "the gadget's own Play / Stop, the tab volume",
+      "note": "N7 ok: media in a gadget she placed and started; a gadget's code, not the shell's."
+    },
+    "gadget-play-sound": {
+      "area": "vistaGadgetHost.js vghPlay (System.Sound.playSound of a gadget: Pomodoro, Take a Break, Metronome, Piano)",
+      "trigger": "user-action",
+      "action": "content: the sound of a timer / reminder / instrument gadget she placed and set",
+      "sound": true,
+      "switch": "remove the gadget or its own options",
+      "note": "N7 ok: an alarm or timer she set, or an instrument she plays; the shell plays nothing of its own."
+    },
+    "winlogon-power-sound": {
+      "area": "winlogonPower.js (Shut Down / Restart / Log Off / Lock sound)",
+      "trigger": "user-action",
+      "action": "content: the power action she chose (a Cancel dialog first where programs would be closed)",
+      "sound": true,
+      "switch": "Personalize > Sounds: Exit Melaton / Melaton Logoff; No Sounds scheme",
+      "note": "N7 ok: feedback of her own Start menu / key command. Not played for a restart the server or an update starts without her (those go through restartClientNavigate, which plays nothing)."
+    },
+    "wm-notes-play-recording": {
+      "area": "wmNotes.js voice bar vbPlay (Notes recording)",
+      "trigger": "user-action",
+      "action": "content: the recording she pressed Play on",
+      "sound": true,
+      "switch": "her Play / Pause",
+      "note": "N7 ok: media she started; no autoplay."
+    },
+    "wm-chime-preview": {
+      "area": "wmSettingsChime.js play (Settings > Sounds > Chime: the Play buttons)",
+      "trigger": "user-action",
+      "action": "content: her tap on Play",
+      "sound": true,
+      "switch": "her tap",
+      "note": "N7 ok: a preview she asked for. The chime itself (tasks/hour-chime.js) is off as shipped and only runs when she picks Every hour / Every half hour."
+    },
+    "wm-teleport-music": {
+      "area": "wmTeleport.js musicStart (Teleport's music while the app is up)",
+      "trigger": "user-action",
+      "action": "content: the app's own music",
+      "sound": true,
+      "switch": "the Off / Vibrate volume bubble (tabVolume muted) and the Ringer level; stops when she leaves the app",
+      "note": "N7 ok: the music of an app she opened (like a game); starts only inside her Teleport session, never at boot. No row of its own: it follows the media volume."
+    },
+    "vzaccess-sms-sound": {
+      "area": "apps/vzaccess/client/vzaccess.js playSms (TXT Messaging sound)",
+      "trigger": "server-push",
+      "action": "content: the text message and the program's TXT view",
+      "sound": true,
+      "switch": "VZAccess Manager > Preferences > TXT Messaging > Play sound (default on, as the program ships)",
+      "note": "N7 ok: a text message that arrived (an item she asked for); the server's notify rule decides; also her Play preview."
+    },
+    "window-flash-beep": {
+      "area": "modalUtils.js modalDialogs.flash (a click outside a modal dialog's owner)",
+      "trigger": "user-action",
+      "action": "content: the flashing dialog she has to answer",
+      "sound": true,
+      "switch": "Personalize > Sounds: Default Beep (event dialog), No Sounds scheme",
+      "note": "N7 ok: the answer to her own blocked click, as Windows does. No switch fixed (N5): it played the unlisted 'default' event, now the 'dialog' event whose row is Default Beep."
+    },
+    "client-shutdown-sound": {
+      "area": "modalUtils.js runClientShutdownSequence (Shut down sound)",
+      "trigger": "user-action",
+      "action": "content: the shutdown she started",
+      "sound": true,
+      "switch": "Personalize > Sounds: Exit Melaton",
+      "note": "N7 ok where it runs; judged DEAD (no caller in the tree, the Winlogon power paths play their own sound via winlogon-power-sound)."
+    },
+    "explorer-navigate-sound": {
+      "area": "explorerApplet.js navigateTo (Start Navigation in a folder window)",
+      "trigger": "user-action",
+      "action": "content: the folder she opened",
+      "sound": true,
+      "switch": "Personalize > Sounds: Start Navigation; No Sounds scheme",
+      "note": "N7 fixed: plays for a navigation she made (a click, address, Back); a window that goes to Computer or Network because its drive or computer went away passes { silent: true } (a device status change, N7)."
+    }
+  }
+}

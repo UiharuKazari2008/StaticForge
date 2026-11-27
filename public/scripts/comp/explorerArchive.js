@@ -633,6 +633,7 @@
                 cancel.textContent = 'Close';
                 cancel.dataset.action = 'close';
                 cancel.focus();
+                // notice: explorer-archive-error-sound
                 if (root.desktopSounds && d.state === 'error') root.desktopSounds.play('error');
             }
             runningOps.delete(state.opId);

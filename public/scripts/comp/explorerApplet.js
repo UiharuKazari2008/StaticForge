@@ -3898,7 +3898,8 @@ class ExplorerApplet {
         return on;
     }
 
-    async navigateTo(path) {
+    /** opts.silent: a navigation the window made by itself (its drive or computer went away), not the user's click: no Navigation sound (N7). */
+    async navigateTo(path, opts) {
         // a phone drive letter (D:, E:\DCIM ...): explorerPhoneDrive.js
         if (typeof explorerPhoneDrive !== 'undefined' && /^[d-z]:/i.test(String(path || ''))) {
             const phonePath = explorerPhoneDrive.resolveInput(path);
@@ -3923,7 +3924,8 @@ class ExplorerApplet {
         const token = this._beginNavigation();
         this.currentPath = normalized;
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
-        desktopSounds.play('navigate');
+        // notice: explorer-navigate-sound
+        if (!(opts && opts.silent)) desktopSounds.play('navigate');
         if (normalized === '/Workspaces' && prevPath !== '/Workspaces') {
             this.sortField = 'workspaceOrder';
             this.sortDirection = 'asc';

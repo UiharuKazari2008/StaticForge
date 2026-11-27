@@ -361,6 +361,7 @@
                     const def = list[Math.floor(Math.random() * list.length)];
                     let audio = def.pool.find((x) => x.paused || x.ended);
                     if (!audio && def.pool.length < 3) {
+                        // notice: vista-game-sound
                         audio = new Audio(def.url);
                         def.pool.push(audio);
                     }
@@ -373,6 +374,7 @@
                 },
                 warm: () => Object.values(defs).forEach((list) => list.forEach((d) => {
                     if (!d.pool.length) {
+                        // notice: vista-game-sound
                         const a = new Audio(d.url);
                         a.preload = 'auto';
                         d.pool.push(a);

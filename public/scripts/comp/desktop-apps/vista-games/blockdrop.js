@@ -889,6 +889,7 @@
 
         to(gain, ms) {
             if (gain > 0 && !this.audio) {
+                // notice: vista-game-sound
                 this.audio = new Audio(MUSIC.url);
                 this.audio.loop = true;
                 this.audio.preload = 'auto';

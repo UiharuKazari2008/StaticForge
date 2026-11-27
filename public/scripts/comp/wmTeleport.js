@@ -547,6 +547,7 @@
         if (level <= 0) return;
         try {
             if (!audio) {
+                // notice: wm-teleport-music
                 audio = new Audio(BGM.url);
                 audio.loop = true;
                 audio.preload = 'auto';

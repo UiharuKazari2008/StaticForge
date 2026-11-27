@@ -159,7 +159,7 @@
                 try {
                     if (app.computer && typeof app._isComputerPath === 'function' && app._isComputerPath()) app.computer.render();
                     // the drive this window shows was taken out: back to Computer, as Vista does
-                    if (isPath(app.currentPath) && !driveInfo(parse(app.currentPath).root)) app.navigateTo((root.ExplorerComputerView && root.ExplorerComputerView.PATH) || 'Computer');
+                    if (isPath(app.currentPath) && !driveInfo(parse(app.currentPath).root)) app.navigateTo((root.ExplorerComputerView && root.ExplorerComputerView.PATH) || 'Computer', { silent: true });
                     if (typeof app._syncVistaTree === 'function') app._syncVistaTree();
                 } catch (_) { /* a closed window */ }
             });

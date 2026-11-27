@@ -9,7 +9,7 @@
  * explicit caller), dialog only when a confirmation/input pass config.sound,
  * (dead-key Ding is off), notify
  * (new Dovecote mail, unless Control Panel Mail turns that sound off), recycle (image delete / scrap),
- * critical-stop (the exception window; NOT a dropped socket), uac (Client Update).
+ * critical-stop (the exception window; NOT a dropped socket), uac (no caller since #1299: the Client Update dialog is silent; the row stays for a stored scheme).
  * No min/max, no ambient.
  *
  * Notification discipline (N7, N8; Yozora #1299): a sound plays for a direct user action (a click, Lock, delete), for
@@ -17,6 +17,10 @@
  * reconnect, a session coming back after a server restart, or any other status change. The desktop's own startup
  * sound (desktopBootStage 'done') stays: it is the desktop's, and Personalize > Sounds has "Play Windows Startup
  * sound", a per-event (None) and the No Sounds scheme to turn it off. Melaton Mobile never plays it (desktop only).
+ *
+ * Every play() call has its justification in scripts/notice-sources.d/wave-f-sounds.json (the `// notice: <id>` marker on the
+ * call); a call with none is a defect. Events that nobody plays on their own: balloon (no caller), planet-* and navigate (the
+ * user's own click or key), default (not a row of its own: a blocked click flashes the window with 'dialog', the Default Beep row).
  *
  * Each workspace can give an event its own sound or (None), or pick No Sounds, in Personalize >
  * Sounds (desktopPersonalization.js soundFile; the Sound dialog, personalizationDialogs.js).
@@ -484,13 +488,6 @@
         return play('balloon');
     }
 
-    function onDocumentEvent(ev) {
-        if (!ev || !ev.detail) return;
-        const startup = ev.detail.stage === 'done';
-        const id = startup ? 'logon' : ev.detail.event;
-        if (id) play(id, { startup });
-    }
-
     function bind() {
         if (state.bound || !doc || !win) return;
         state.bound = true;
@@ -509,7 +506,8 @@
         doc.addEventListener('desktopWorkstationLocked', () => play('lock'));
         doc.addEventListener('desktopWorkstationUnlocked', () => play('unlock'));
         // (no sound when the desktop comes back after a server restart: desktopSessionResumed is a status change, N7)
-        doc.addEventListener('desktopSound', onDocumentEvent);
+        // (no 'desktopSound' document event either: nothing in the product dispatched it, and a hook that lets any script play a
+        // named sound is a way around N7; every sound is played by the code that owns its user action)
         if (state.enabled) {
             setTimeout(prefetch, 0);
         }

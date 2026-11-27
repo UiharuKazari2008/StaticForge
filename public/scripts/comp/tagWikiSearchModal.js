@@ -3792,6 +3792,7 @@ class GrimoireSplitPane extends WikiDisplayBase {
         const target = String(url || '').trim();
         if (!target) return;
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: grimoire-navigate-sound
         desktopSounds.play('navigate');
         this.blank = false;
         const host = this.grimoireHostWindow();
@@ -4091,6 +4092,7 @@ class WikiWindowInstance extends WikiDisplayBase {
         const target = String(url || '').trim();
         if (!target) return;
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: grimoire-navigate-sound
         desktopSounds.play('navigate');
 
         // Search stays in this window. The DSAP search activator returns true
@@ -4275,6 +4277,7 @@ class WikiWindowInstance extends WikiDisplayBase {
     restoreHistoryEntry(entry) {
         if (!entry) return;
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: grimoire-navigate-sound
         desktopSounds.play('navigate');
 
         if (entry.type === 'web' && entry.url) {
@@ -6218,6 +6221,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const url = grimoireAlchToChrome(String(pseudoUrl || '').trim());
         if (!url) return;
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: grimoire-navigate-sound
         desktopSounds.play('navigate');
 
         // grimoireNormalizeWebUrl / grimoireBareWebUrl: public/scripts/comp/grimoireRemoteBrowser.js
@@ -7801,6 +7805,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
     
     goHome() {
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: grimoire-navigate-sound
         desktopSounds.play('navigate');
         // grimoireCloseRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
         grimoireCloseRemoteBrowser(this);
@@ -7820,6 +7825,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
     restoreHistoryEntry(entry) {
         if (!entry) return;
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: grimoire-navigate-sound
         desktopSounds.play('navigate');
 
         if (entry.type !== 'web') {

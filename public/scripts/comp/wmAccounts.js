@@ -690,6 +690,9 @@
                 title,
                 html: esc(text),
                 event: 'notification',
+                // a balance, usage, renewal or upstream-incident status is no item she asked for (N7, #1299): the note comes up quietly;
+                // only a renewal that failed (she cannot print until she acts) sounds, as Other notifications
+                silent: key !== 'nai:renewal-failed',
                 icon: icon || null,
                 softKeys: () => ({
                     left: { label: 'View', action: () => { if (note) note.close(); openNotes.delete(key); sh.open(APP_ID, { fromStart: true }); } },

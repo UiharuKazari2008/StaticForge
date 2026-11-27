@@ -117,8 +117,8 @@
                     const p = parse(app.currentPath);
                     // a computer that went away (or stopped sharing what is open): back to Network, as Vista does
                     if (isPath(app.currentPath)) {
-                        if (p.device && !computer(p.device)) app.navigateTo(PREFIX);
-                        else if (p.device && p.share && !shareOf(p.device, p.share)) app.navigateTo(pathFor(p.device));
+                        if (p.device && !computer(p.device)) app.navigateTo(PREFIX, { silent: true });
+                        else if (p.device && p.share && !shareOf(p.device, p.share)) app.navigateTo(pathFor(p.device), { silent: true });
                         else if (!p.share) void app.softRefresh();
                     }
                     // the Folders tree's Network node lists the computers anew (one may have come or gone)

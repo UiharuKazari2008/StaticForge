@@ -2726,7 +2726,9 @@ const modalDialogs = (() => {
         if (!modal) return;
         if (modal._flashTimers) modal._flashTimers.forEach(clearTimeout);
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
-        if (typeof desktopSounds !== 'undefined' && desktopSounds && typeof desktopSounds.play === 'function') desktopSounds.play('default');
+        // the Default Beep row of Personalization > Sounds is the 'dialog' event ('default' has no row of its own: no switch, N5)
+        // notice: window-flash-beep
+        if (typeof desktopSounds !== 'undefined' && desktopSounds && typeof desktopSounds.play === 'function') desktopSounds.play('dialog');
         modal.classList.add('window-flash');
         modal._flashTimers = FLASH.map(([ms, on], i) => setTimeout(() => {
             if (on) {
@@ -7901,6 +7903,7 @@ async function runClientShutdownSequence(finalAction) {
         suppressWebSocketReconnectForReload();
         dismissTransientUIForShutdown();
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: client-shutdown-sound
         const soundDone = desktopSounds.play('shutdown');
         await closeAllModalsForShutdown();
         await delayForClientShutdown(150);

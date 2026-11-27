@@ -39,6 +39,7 @@
     function play(name) {
         stop();
         if (!name) return;
+        // notice: wm-chime-preview
         audio = new Audio(`/sounds/wm61/${encodeURIComponent(name)}.${ext(name)}`);
         audio.play().catch(() => { /* a refused play just stays silent */ });
     }

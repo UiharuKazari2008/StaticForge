@@ -573,6 +573,7 @@ const doveImapAnnounce = function (list) {
     // isDesktopTrayBootPending: public/scripts/comp/trayIndicators.js
     if (!doveTray.registered || (typeof isDesktopTrayBootPending === 'function' && isDesktopTrayBootPending())) return;
     // desktopSounds.play: public/scripts/comp/desktopSounds.js
+    // notice: dovecote-mail-sound
     if (doveMailOptions.soundOn() && typeof desktopSounds !== 'undefined') desktopSounds.play('notify');
     if (!doveMailOptions.notifyOn()) return;
     const latest = list[list.length - 1];
@@ -905,6 +906,7 @@ const dovePlayNewMailAlert = function (count) {
     // Mail Options' "Play sound when new messages arrive" / "Show a notification ..." (doveMailOptions)
     if (doveMailOptions.soundOn()) {
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: dovecote-mail-sound
         desktopSounds.play('notify');
     }
     if (doveMailOptions.notifyOn()) doveShowNewMail(count);

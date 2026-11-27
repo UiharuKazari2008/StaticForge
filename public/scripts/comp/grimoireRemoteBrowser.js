@@ -1447,6 +1447,7 @@ function grimoireRemoteMenuAction(found, action, data) {
         const next = grimoireNormalizeWebUrl(action === 'open-link' ? data.href : data.src);
         if (next && found.frame.contentWindow) {
             // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            // notice: grimoire-navigate-sound
             desktopSounds.play('navigate');
             found.frame.contentWindow.postMessage({ type: 'grimoire-browser-navigate', url: next }, '*');
         }

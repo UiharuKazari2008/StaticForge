@@ -1787,6 +1787,7 @@
         /** TXT Messaging's sound (the program's own System\SMS.wav). */
         playSms() {
             try {
+                // notice: vzaccess-sms-sound
                 const a = new Audio(`${A}/sms.wav`);
                 void a.play().catch(() => {});
             } catch (_) { /* no audio */ }

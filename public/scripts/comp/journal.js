@@ -1046,6 +1046,7 @@
                 for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
                 const url = URL.createObjectURL(new Blob([bytes], { type: data.mime || 'audio/webm' }));
                 this.playerUrl = url;
+                // notice: journal-play-clip
                 const player = new Audio(url);
                 this.player = player;
                 player.addEventListener('ended', () => { if (this.playerUrl === url) { URL.revokeObjectURL(url); this.playerUrl = ''; } }, { once: true });

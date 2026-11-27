@@ -812,6 +812,7 @@ async function runWinlogonPower(kind, options) {
         const planning = updater ? Promise.resolve().then(() => updater.planShutdownInstall()).catch(() => null) : null;
         const updatesWaiting = !!(updater && updater.updatesWaitingCount() > 0);
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: winlogon-power-sound
         desktopSounds.play(copy.sound);
         // dismissTransientUIForShutdown: public/scripts/comp/modalUtils.js
         dismissTransientUIForShutdown();

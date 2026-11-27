@@ -1348,6 +1348,7 @@
             vb.src = target;
             let url;
             try { url = await audioUrl(target); } catch (err) { await errorBox('Notes', 'Cannot play the recording.', err); return; }
+            // notice: wm-notes-play-recording
             const a = new Audio(url);
             a.volume = 1;
             vb.audio = a;

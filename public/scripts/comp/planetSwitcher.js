@@ -613,6 +613,7 @@ class PlanetSwitcher {
         this.state = 'browsing';
         this.loadSamples(list);
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: planet-switcher-sound
         desktopSounds.play('planet-enter');
         this.startBgm();
     }
@@ -1666,6 +1667,7 @@ class PlanetSwitcher {
         planet.el.classList.add('is-selected');
         this.nudgeBgm();
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: planet-switcher-sound
         desktopSounds.play('planet-activate');
         planet.status.textContent = 'Preparing...';
         if (this.stars) this.stars.warp(true);
@@ -1884,6 +1886,7 @@ class PlanetSwitcher {
         this.state = 'revealing';
         this.stopLoop();
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: planet-switcher-sound
         desktopSounds.play('planet-switch');
         clearInterval(this.slideTimer);
         this.slideTimer = 0;
@@ -2065,6 +2068,7 @@ class PlanetSwitcher {
         if (!desktopSounds.isEnabled()) return;
         this.bgmHold = false;
         if (!this.bgm) {
+            // notice: planet-switcher-bgm
             this.bgm = new Audio(PLANET_SWITCHER_BGM.url);
             this.bgm.loop = true;
             this.bgm.preload = 'auto';

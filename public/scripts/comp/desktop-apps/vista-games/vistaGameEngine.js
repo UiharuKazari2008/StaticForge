@@ -615,6 +615,7 @@
             if (!def.url) return null;
             let audio = def.pool.find((a) => a.paused || a.ended);
             if (!audio && def.pool.length < def.buffers) {
+                // notice: vista-game-sound
                 audio = new Audio(def.url);
                 audio.preload = 'auto';
                 def.pool.push(audio);
@@ -632,6 +633,7 @@
         warm() {
             Object.values(this.defs).forEach((list) => list.forEach((def) => {
                 if (def.url && !def.pool.length) {
+                    // notice: vista-game-sound
                     const a = new Audio(def.url);
                     a.preload = 'auto';
                     def.pool.push(a);
