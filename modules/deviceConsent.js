@@ -293,12 +293,13 @@ function check(target, action) {
     // a phone this table does not know is closed, never open (Yukimi: no agent takes a phone she was not asked about);
     // its name goes in TARGET_MATCHERS / the consentDevices setting to be requested like the Fold
     if (!dev) return { ok: false, code: 'DEVICE_NOT_GRANTED', error: 'This phone is not in the shared-device list (consentDevices): ask Yukimi to add it before an agent uses it', device: null, holder: null, hint: HINT };
-    // HARD (Yukimi, Nov 26 2026): no agent touches her own phone (the Fold), read-only or not, lease or not; the A53 test phone is open
-    if (dq.isPhysicalPhone(dev)) return { ok: false, code: 'DEVICE_OFF_LIMITS', error: dq.OFF_LIMITS_MSG, device: dev, holder: null, hint: 'Use the A53 test phone (coord_device_request a53) or the emulator lane.' };
+    // HARD (Yukimi, Nov 26 2026): her own phone (the Fold) only on an allowed lease - the final install step, her approval, or a
+    // priority she named (deviceQueue.request); never read-only without one. The A53 test phone is open (no ask).
+    const offLimits = dq.isPhysicalPhone(dev);
     if (!dq.needsConsent(dev)) return { ok: true, lease: null, device: dev };
     const act = action || {};
     const cfg = settings();
-    if (cfg.readOnly === 'allow' && (act.kind === 'packages-read' || (act.kind === 'shell' && isReadOnlyShell(act.command)))) {
+    if (!offLimits && cfg.readOnly === 'allow' && (act.kind === 'packages-read' || (act.kind === 'shell' && isReadOnlyShell(act.command)))) {
         return { ok: true, lease: null, device: dev, readOnly: true };
     }
     const label = dq.KNOWN[dev] ? dq.KNOWN[dev].name : dev;
@@ -322,6 +323,7 @@ function check(target, action) {
     if (h && h.consent === 'pending') {
         return { ok: false, code: 'DEVICE_PENDING', error: `${label} waits for Yukimi to tap Allow on the phone`, device: dev, holder: holderOf(h), hint: HINT };
     }
+    if (offLimits) return { ok: false, code: 'DEVICE_OFF_LIMITS', error: dq.OFF_LIMITS_MSG, device: dev, holder: holderOf(h), hint: 'Use the A53 (your test phone) or the emulator lane; the Fold only with coord_device_request fold purpose final-install, or after Yukimi approved.' };
     if (denied) {
         return { ok: false, code: 'DEVICE_DENIED', error: `Yukimi denied the last request for ${label}`, device: dev, holder: holderOf(denied), hint: HINT };
     }

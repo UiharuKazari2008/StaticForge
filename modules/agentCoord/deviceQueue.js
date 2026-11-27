@@ -43,7 +43,13 @@ const DEFAULT_CONSENT_DEVICES = ['fold'];
 // (no consent prompt), as they use the emulators and the test browsers.
 const OFF_LIMITS = new Set(['fold']);
 const TEST_PHONES = new Set(['a53']);
-const OFF_LIMITS_MSG = 'The Fold is Yukimi\'s own phone and off limits to agents (HARD rule, Nov 26 2026) until she says it is needed. Use the A53 test phone (coord_device_request a53) or the emulator lane; "it needs the Fold" is not accepted.';
+// The Fold is reached only (Yukimi: "you only touch the Fold as the final install step, or if I approve it, or I say this is a
+// priority to get done now"): purpose 'final-install' (granted, no ask), a Fleet approval window (coord setting 'foldApproval'
+// { until, why, by }, set when she approves or says it is a priority now), or purpose 'approval' (she is asked on the phone).
+const OFF_LIMITS_MSG = 'The Fold is Yukimi\'s own phone and off limits to agents (HARD rule, Nov 26 2026): only for the final install step (purpose final-install), when she approved it, or when she said it is a priority now. Use the A53 (your test phone: no asking) or the emulator lane.';
+function foldApproval(now) {
+    try { const a = store.getSetting('foldApproval'); return a && Number(a.until) > (now || Date.now()) ? a : null; } catch (_) { return null; }
+}
 function isPhysicalPhone(dev) {
     const d = String(dev || '').toLowerCase();
     if (!d || NEVER_CONSENT_SET.has(d) || TEST_PHONES.has(d)) return false;
@@ -211,7 +217,12 @@ function holderInfo(h) {
 
 function request(agentId, device, opts = {}) {
     const dev = normalise(device);
-    if (isPhysicalPhone(dev)) throw new Error(OFF_LIMITS_MSG);
+    let noAsk = false;
+    if (isPhysicalPhone(dev)) {
+        const purpose = String(opts.purpose || '').toLowerCase();
+        if (purpose === 'final-install' || foldApproval()) noAsk = true;
+        else if (purpose !== 'approval') throw new Error(OFF_LIMITS_MSG);
+    }
     if (!store.getAgent(agentId)) throw new Error('Unknown agent: call coord_hello first');
     const minutes = Math.max(1, Math.min(MAX_MIN, Math.round(Number(opts.minutes)) || DEFAULT_MIN));
     sweepRaw(dev);
@@ -239,6 +250,12 @@ function request(agentId, device, opts = {}) {
             const first = d.prepare("SELECT id FROM device_queue WHERE device = ? AND state = 'waiting' ORDER BY id LIMIT 1").get(dev);
             if (first && first.id === w.id) {
                 touch(dev);
+                if (noAsk) {
+                    // final install step or an approval she already gave: allowed at once, never asked again
+                    d.prepare("UPDATE device_queue SET state = 'held', consent = 'allowed', consent_at = ?, started_at = ?, ends_at = ? WHERE id = ?").run(t, t, t + minutes * 60000, w.id);
+                    flush();
+                    return { granted: true, device: dev, lease: row(d.prepare('SELECT * FROM device_queue WHERE id = ?').get(w.id)), why: String(opts.purpose || 'approved') };
+                }
                 if (needsConsent(dev)) {
                     d.prepare("UPDATE device_queue SET state = 'held', consent = 'pending', consent_at = ?, started_at = NULL, ends_at = ? WHERE id = ?").run(t, t + PENDING_PLACEHOLDER_MS, w.id);
                     flush();
@@ -411,4 +428,4 @@ function snapshotConsent() {
     };
 }
 
-module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, setConsent, requireConsent, snapshotConsent, KNOWN, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, DEFAULT_MIN, MAX_MIN, IDLE_MS };
+module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, setConsent, requireConsent, snapshotConsent, KNOWN, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, foldApproval, DEFAULT_MIN, MAX_MIN, IDLE_MS };
