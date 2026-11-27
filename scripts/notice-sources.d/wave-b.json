@@ -141,7 +141,7 @@
       "trigger": "user-action",
       "action": "Restart / Later",
       "sound": false,
-      "switch": "none (filed: StaticForge issue)",
+      "switch": "none (filed: StaticForge #1317)",
       "note": "a question after a display change, needs a decision: design-decisions says an update is never a dialog by itself, the update icon and notification carry it; changing it needs serviceWorkerManager.applyPackageChange"
     },
     "wm-user-question": {
