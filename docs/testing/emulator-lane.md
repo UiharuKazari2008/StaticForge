@@ -288,17 +288,20 @@ sound are told apart by the four log sources above.
 - **After `reset`, or after a reboot test, the app's local-ADB port may be 5556.** The reboot test (`tests/reboot-recovery.sh`) moves it
   because the emulator's own adbd always listens on 5555. `reset` puts it back to 5555 (`appPort5555Restored` in its answer); by hand
   `lane.sh <id> app-port`.
-- **Ruiko's CPU is the bottleneck, not its memory.** Two legacy emulators of other sessions (`fold7-test` 5570 and `DSFold7` 5580)
-  take about 22 % of the machine each, a Gradle build 10-30 %, one lane instance about 22 %. With those running `lane.sh up` answers
+- **Ruiko's CPU is the bottleneck, not its memory.** Two legacy emulators of other sessions (`fold7-test` 5570 and `DSFold7` 5580,
+  stopped Nov 27 2026 05:50 UTC, see the next item) took about 22 % of the machine each, a Gradle build 10-30 % (a Kotlin compile can
+  take 6 cores), one lane instance about 22 %. With those running `lane.sh up` answers
   exit 5 for an hour (CPU mean 94-100 %, limit 85 %). Nothing in the lane may raise the guard on its own; the agent that needs the
   instance asks the planner, or waits.
 
-- **Old-harness emulators are not reaped by the lane.** `fold7-test` (console 5570, `scripts/fold7-emu.sh`) and `DSFold7` (5580,
-  `~/.config/aemu/aemu.sh`) are outside the lane pool, so the reaper never stops them. On Nov 26-27 2026 both ran for hours after their
-  sessions ended (about 4 cores each) and pushed Ruiko past the 85 % guard (`lane.sh up` exit 5). Stop them with their own `down`
-  (console kill; AVD and data kept). To check: on Ruiko, `Get-CimInstance Win32_Process | ? Name -match 'qemu-system'` and read each
-  `-avd`; an AVD not starting `aemu-` whose session is gone is an orphan; a 5 s `Get-Process` CPU delta shows what else (a Gradle java)
-  eats the cores.
+
+- **The old-harness emulators are not reaped by the lane.** `fold7-test` (`scripts/fold7-emu.sh`) and `DSFold7`
+  (`~/.config/aemu/aemu.sh`) are outside the pool, so the reaper never stops them; on Nov 26-27 2026 both kept running for hours
+  after their sessions ended, each at about 4 cores, and `lane.sh up` answered exit 5. Stop one with its own `down` (console kill; the
+  AVD and its data stay). Check for orphans (ssh ruiko, powershell, wrap with `-EncodedCommand`):
+  `Get-CimInstance Win32_Process | ? Name -match 'qemu-system' | % { "$($_.ProcessId) " + ($_.CommandLine -replace '.*-avd\s+(\S+).*','$1') }`
+  - an AVD not named `aemu-*` whose session has stopped is an orphan. For what else eats the cores, diff `Get-Process` CPU over 5 s.
+
 - **A first provision needs the app's ~211 MB page pack and fails while Ruiko is saturated.** At 100 % CPU the guest
   pings its host at 300-500 ms and the download crawls (35 KB/s) or ends in "Couldn't download updates"; the server also
   rebuilds the pack on every publish. `provision` presses RETRY by itself and waits up to 25 minutes; when it still fails,
