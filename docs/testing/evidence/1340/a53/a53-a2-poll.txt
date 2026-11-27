@@ -1,0 +1,39 @@
+TAP-BEFORE 03:34:56.170
+TAP-DONE 03:34:56.345
+03:34:56.586 +135ms pid= bound=0 binding=0 crashed=1 acc=1
+03:34:57.603 +1107ms pid= bound=0 binding=0 crashed=1 acc=1
+03:34:58.640 +2151ms pid= bound=0 binding=0 crashed=1 acc=1
+03:34:59.646 +3168ms pid= bound=0 binding=0 crashed=1 acc=1
+03:35:00.658 +4171ms pid= bound=0 binding=0 crashed=1 acc=1
+03:35:01.674 +5197ms pid= bound=0 binding=0 crashed=1 acc=1
+03:35:02.692 +6202ms pid= bound=0 binding=0 crashed=1 acc=1
+03:35:03.712 +7225ms pid= bound=0 binding=0 crashed=1 acc=1
+03:35:04.766 +8278ms pid= bound=0 binding=0 crashed=1 acc=1
+03:35:05.771 +9295ms pid= bound=0 binding=0 crashed=1 acc=1
+03:35:06.783 +10293ms pid=15668 bound=0 binding=0 crashed=1 acc=1
+03:35:07.829 +11340ms pid=15668 bound=0 binding=0 crashed=1 acc=1
+03:35:08.870 +12375ms pid=15668 bound=0 binding=0 crashed=1 acc=1
+03:35:09.884 +13401ms pid=15668 bound=0 binding=0 crashed=1 acc=1
+03:35:10.883 +14401ms pid=15668 bound=0 binding=0 crashed=0 acc=1
+03:35:11.911 +15412ms pid=15668 bound=0 binding=0 crashed=0 acc=1
+03:35:12.926 +16438ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:13.924 +17442ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:14.950 +18457ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:15.960 +19474ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:16.963 +20486ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:17.970 +21491ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:18.996 +22502ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:20.029 +23539ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:21.024 +24545ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:22.061 +25572ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:23.091 +26600ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:24.111 +27623ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:25.125 +28642ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:26.138 +29647ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:27.122 +30666ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:28.182 +31650ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:29.206 +32715ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:30.252 +33744ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:31.260 +34778ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+03:35:32.270 +35784ms pid=15668 bound=1 binding=0 crashed=0 acc=1
+POLL-END 03:35:33.096

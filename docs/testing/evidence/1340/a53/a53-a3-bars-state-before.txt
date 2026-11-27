@@ -1,0 +1,30 @@
+  displayId=0
+    mDisabled1=0x3f30000
+    mDisabled2=0x1
+  DexdisplayId=0
+    mDexDisabled1=0x0
+    mDexDisabled2=0x0
+  mDisableRecords.size=4
+    [0] barType=0 userId=0 what1=0x00000000 what2=0x00000000 pkg=knoxmdm_key_statusbar_disable_expansion : com.samsung.android.ese token=android.os.Binder@1649b6b
+    [1] barType=0 userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@5432dc2
+    [2] barType=0 userId=0 what1=0x00930000 what2=0x00000001 pkg=android token=com.android.server.statusbar.StatusBarShellCommand$StatusBarShellCommandToken@dc6ba7a
+    [3] barType=0 userId=0 what1=0x03600000 what2=0x00000000 pkg=com.android.shell token=android.os.BinderProxy@27bbf06
+  mCurrentUserId=0
+  mIcons=
+    
+nfc -> StatusBarIcon(icon=Icon(typ=RESOURCE pkg=com.samsung.android.nfc id=0x7f0700f0) visible user=0 ) "NFC on"
+  mCurrentRequestAddTilePackages=[
+  ]
+  TileRequestTracker:
+  mSysUiSafeMode=false
+  mDisableHistoryList.size=54
+    [0] 11-26 22:15:22.699 barType=0 displayId=0 pkg=com.android.systemui tag=null userId=0 what=HOME  token=android.os.BinderProxy@b98c1c
+[ ] com.samsung.internal.systemui.navbar.sec_gestural
+[x] com.android.internal.systemui.navbar.threebutton
+[ ] com.samsung.internal.systemui.navbar.sec_gestural_no_hint
+[ ] com.android.internal.systemui.navbar.transparent
+[ ] com.samsung.internal.systemui.navbar.gestural_no_hint
+[ ] com.android.internal.systemui.navbar.gestural
+0
+15668 u0_a339      jp.net.seventhreeseven.dreamscape jp.net.seventhreeseven.dreamscape
+15848 shell        melaton_navblank            melaton_navblank

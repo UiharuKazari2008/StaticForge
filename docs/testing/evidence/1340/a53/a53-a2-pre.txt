@@ -1,0 +1,25 @@
+== a53 a2 pre 2026-11-27T08:34:42Z
+03:34:42.259 pre pid=13887 bound=1 binding=0 crashed=0 acc=1
+uptime=19190.36s sdk=36 release=16 model=SM-A536U1
+    versionCode=3632181 minSdk=31 targetSdk=36
+    versionName=1.0.3632181
+ens=dev.custodian.agent/dev.custodian.agent.InputGuardService:jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+      android.permission.WRITE_SECURE_SETTINGS
+     Bound services:{Service[label=Custodian input guard, id=dev.custodian.agent/.InputGuardService, isDefault=false, requestTouchExplorationMode=false, requestFilterKeyEvents=true, retrieveInteractiveWindows=true, captureFingerprintGestures=false, requestAccessibilityButton=false, receivedAccessibilityButtonCallbackSinceBind=false, lastAccessibilityButtonCallbackState=false, fetchFlags=0, nonInteractiveUiTimeout=0, interactiveUiTimeout=0, feedbackType[FEEDBACK_GENERIC], capabilities=41, eventTy
+     Enabled services:{{dev.custodian.agent/dev.custodian.agent.InputGuardService}, {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Binding services:{}
+     Crashed services:{}
+    topResumedActivity=ActivityRecord{239573270 u0 jp.net.seventhreeseven.dreamscape/.MainActivity t1487}
+home=com.android.settings/.FallbackHome
+mode_ringer=1 (0 silent 1 vibrate 2 normal)
+- mode (internal) = VIBRATE
+stream 0: volume is 1 in range [1..15]
+stream 1: volume is 0 in range [0..15]
+stream 2: volume is 0 in range [0..15]
+stream 3: volume is 0 in range [0..15]
+stream 4: volume is 1 in range [1..15]
+stream 5: volume is 0 in range [0..15]
+  mWakefulness=Awake
+    mShowingDream=false mDreamingLockscreen=false
+    isKeyguardShowing=false
+testMark=yes

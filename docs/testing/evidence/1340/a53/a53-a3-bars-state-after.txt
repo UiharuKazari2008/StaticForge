@@ -1,0 +1,16 @@
+03:38:55
+  mDisableRecords.size=3
+    [0] barType=0 userId=0 what1=0x00000000 what2=0x00000000 pkg=knoxmdm_key_statusbar_disable_expansion : com.samsung.android.ese token=android.os.Binder@1649b6b
+    [1] barType=0 userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@5432dc2
+    [2] barType=0 userId=0 what1=0x00930000 what2=0x00000001 pkg=android token=com.android.server.statusbar.StatusBarShellCommand$StatusBarShellCommandToken@dc6ba7a
+  mCurrentUserId=0
+  mIcons=
+    
+nfc -> StatusBarIcon(icon=Icon(typ=RESOURCE pkg=com.samsung.android.nfc id=0x7f0700f0) visible user=0 ) "NFC on"
+  mCurrentRequestAddTilePackages=[
+    mDisabled1=0x930000
+    mDisabled2=0x1
+[x] com.android.internal.systemui.navbar.threebutton
+navmode=0
+17420 u0_a339      jp.net.seventhreeseven.dreamscape jp.net.seventhreeseven.dreamscape
+  mCurrentFocus=Window{29faa2 u0 com.android.settings/com.android.settings.homepage.SettingsHomepageActivity}

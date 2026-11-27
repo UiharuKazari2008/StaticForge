@@ -1,0 +1,27 @@
+install start host=03:29:14 phone=03:29:13 pid=9070
+Performing Streamed Install
+Success
+install rc=0 host=03:29:20
+03:29:23
+    versionCode=3632181 minSdk=31 targetSdk=36
+    lastUpdateTime=2026-11-27 03:29:19
+      android.permission.WRITE_SECURE_SETTINGS
+      android.permission.WRITE_SECURE_SETTINGS: granted=true
+pid=12598
+     Enabled services:{{dev.custodian.agent/dev.custodian.agent.InputGuardService}, {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Binding services:{}
+     Crashed services:{}
+1
+      topResumedActivity=ActivityRecord{85727151 u0 jp.net.seventhreeseven.dreamscape/.HomeAlias t1486}
+jp.net.seventhreeseven.dreamscape/.HomeAlias
+11-27 03:29:21.686 I/MelatonBars(12598): early hold at process start (#1371)
+11-27 03:29:21.699 I/MelatonBars(12598): show: on=true fits=false status=true bar=true top=false ext=true tray=false give=false
+11-27 03:29:21.937 I/MelatonBars(12598): ime probe live: visible=false bottom=0
+11-27 03:29:21.971 I/MelatonBars(12598): show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+11-27 03:29:21.998 I/MelatonBars(12598): show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+11-27 03:29:22.610 I/MelatonBars(12598): translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+11-27 03:29:22.639 I/MelatonBars(12598): translucent check (soft keys): strip spread 0.0 (picture above 14), against below 28.0 (runs on under 10)
+11-27 03:29:22.639 I/MelatonBars(12598): translucent bar for com.android.settings: true
+11-27 03:29:23.270 I/MelatonBars(12598): holder token linked (#1331)
+11-27 03:29:23.963 I/MelatonBars(12598): show: on=true fits=true status=false bar=false top=true ext=false tray=false give=false
+11-27 03:29:23.975 I/MelatonBars(12598): home strip added

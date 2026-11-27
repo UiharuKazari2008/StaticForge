@@ -1,0 +1,89 @@
+{
+  "id": "fault_fa58499c5f55",
+  "program": {
+    "key": "android:MelatonBarService",
+    "name": "Dreamscape (Android)",
+    "launchId": null,
+    "game": null,
+    "core": false,
+    "windowId": null,
+    "windowTitle": null
+  },
+  "surface": "mobile",
+  "kind": "logged",
+  "errorName": "BarsServiceUnbound",
+  "message": "Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed",
+  "firstSeen": "2026-11-27T08:38:15.764Z",
+  "lastSeen": "2026-11-27T08:38:15.764Z",
+  "count": 1,
+  "repeats": 1,
+  "status": "open",
+  "latest": {
+    "surface": "mobile",
+    "kind": "logged",
+    "occurrenceId": "android-1795768695492-rdhagk",
+    "at": "2026-11-27T08:38:15.492Z",
+    "receivedAt": "2026-11-27T08:38:15.764Z",
+    "program": {
+      "key": "android:MelatonBarService",
+      "name": "Dreamscape (Android)",
+      "launchId": null,
+      "game": null,
+      "core": false,
+      "windowId": null,
+      "windowTitle": null
+    },
+    "errorName": "BarsServiceUnbound",
+    "message": "Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed",
+    "stack": "BarsServiceUnbound: Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed\n    Android 16 (SDK 36)\n    attempts: 3 of 3\n    attempt 1: direct: no permission; shell: command failed or no shell route\n    attempt 2: direct: no permission; shell: command failed or no shell route\n    attempt 3: direct: no permission; shell: command failed or no shell route\n    Shizuku granted: no\n    shell access usable: no\n    WRITE_SECURE_SETTINGS held: no\n    other enabled accessibility services: 1\n    process started 30177 ms before this report",
+    "fileLine": "",
+    "source": "native",
+    "scripts": [],
+    "page": "",
+    "action": null,
+    "request": null,
+    "server": null,
+    "repeats": 1,
+    "extraFaults": [],
+    "client": {
+      "url": "android",
+      "userAgent": "Dreamscape Android 1.0.3632181 (3632181) samsung SM-A536U1; Android 16",
+      "viewport": "",
+      "uptimeMs": 30184,
+      "desktopState": "",
+      "build": null,
+      "clientId": null,
+      "shell": "mobile",
+      "windows": []
+    }
+  },
+  "recent": [
+    {
+      "surface": "mobile",
+      "kind": "logged",
+      "occurrenceId": "android-1795768695492-rdhagk",
+      "at": "2026-11-27T08:38:15.492Z",
+      "receivedAt": "2026-11-27T08:38:15.764Z",
+      "program": {
+        "key": "android:MelatonBarService",
+        "name": "Dreamscape (Android)",
+        "launchId": null,
+        "game": null,
+        "core": false,
+        "windowId": null,
+        "windowTitle": null
+      },
+      "errorName": "BarsServiceUnbound",
+      "message": "Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed",
+      "stack": "BarsServiceUnbound: Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed\n    Android 16 (SDK 36)\n    attempts: 3 of 3\n    attempt 1: direct: no permission; shell: command failed or no shell route\n    attempt 2: direct: no permission; shell: command failed or no shell route\n    attempt 3: direct: no permission; shell: command failed or no shell route\n    Shizuku granted: no\n    shell access usable: no\n    WRITE_SECURE_SETTINGS held: no\n    other enabled accessibility services: 1\n    process started 30177 ms before this report",
+      "fileLine": "",
+      "source": "native",
+      "scripts": [],
+      "page": "",
+      "action": null,
+      "request": null,
+      "server": null,
+      "repeats": 1
+    }
+  ]
+}

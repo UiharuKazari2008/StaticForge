@@ -1,0 +1,6 @@
+== revoke
+before pid=15668 03:36:39
+revoke rc=0 03:36:39
+after pid=15668 03:36:45
+granted lines:
+      android.permission.WRITE_SECURE_SETTINGS

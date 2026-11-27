@@ -1,0 +1,8 @@
+mode_ringer=1 (vibrate)
+stream 0: 1 (its minimum)
+stream 1: 0
+stream 2: 0
+stream 3: 0
+stream 4: 1 (its minimum)
+stream 5: 0
+(confirmed by dumpsys audio, see a53-final-audio.txt: the first quiet pass at 03:27:20 logged oldIndex voice 1, system 0, ring 0, music 0, alarm 1, notification 0; no ringer-mode change since 01:07:40, so it was vibrate before the run. That first pass used `cmd audio`, whose reads print nothing on this phone.)

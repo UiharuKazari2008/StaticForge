@@ -1,0 +1,7 @@
+== a53 a1 crash 2026-11-27T08:32:01Z
+03:32:05.137 before-crash pid=12598 bound=1 binding=0 crashed=0 acc=1
+    topResumedActivity=ActivityRecord{209381424 u0 com.android.settings/.homepage.SettingsHomepageActivity t1435}
+CRASH-AT 03:32:05.326 pid=12598
+03:32:08.726 after-crash pid=12598 bound=1 binding=0 crashed=0 acc=1
+  mCurrentFocus=Window{bd635b9 u0 Application Error: jp.net.seventhreeseven.dreamscape}
+box screenshot: /home/kanmi/staticforge/docs/testing/evidence/1340/a53/a53-a1-box.png

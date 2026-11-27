@@ -1,0 +1,20 @@
+ringer history (no entry during this run: last change 01:07:40) and volume calls since 03:00
+11-27 00:21:10:702 setRingerMode(mode:1 external:false) from android
+11-27 00:52:13:518 setRingerMode(mode:2 external:false) from android
+11-27 01:07:40:248 setRingerMode(mode:1 external:false) from android
+11-27 03:27:20:601 setStreamVolume(stream:STREAM_VOICE_CALL index:0 flags:0x0 oldIndex:1) from android
+11-27 03:27:20:653 setStreamVolume(stream:STREAM_SYSTEM index:0 flags:0x0 oldIndex:0) from android
+11-27 03:27:20:698 setStreamVolume(stream:STREAM_RING index:0 flags:0x0 oldIndex:0) from android
+11-27 03:27:20:749 setStreamVolume(stream:STREAM_MUSIC index:0 flags:0x0 oldIndex:0) from android
+11-27 03:27:20:794 setStreamVolume(stream:STREAM_ALARM index:0 flags:0x0 oldIndex:1) from android
+11-27 03:27:20:837 setStreamVolume(stream:STREAM_NOTIFICATION index:0 flags:0x0 oldIndex:0) from android
+11-27 03:27:38:760 setStreamVolume(stream:STREAM_SYSTEM index:0 flags:0x0 oldIndex:0) from com.android.server.media
+11-27 03:27:38:801 setStreamVolume(stream:STREAM_RING index:0 flags:0x0 oldIndex:0) from com.android.server.media
+11-27 03:27:38:848 setStreamVolume(stream:STREAM_MUSIC index:0 flags:0x0 oldIndex:0) from com.android.server.media
+11-27 03:27:38:933 setStreamVolume(stream:STREAM_NOTIFICATION index:0 flags:0x0 oldIndex:0) from com.android.server.media
+stream 0: volume is 1 in range [1..15]
+stream 1: volume is 0 in range [0..15]
+stream 2: volume is 0 in range [0..15]
+stream 3: volume is 0 in range [0..15]
+stream 4: volume is 1 in range [1..15]
+stream 5: volume is 0 in range [0..15]

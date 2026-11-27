@@ -1,0 +1,11 @@
+== grant + off/on by hand
+before 03:39:39 pid=17420 bound=0
+grant rc=0
+      android.permission.WRITE_SECURE_SETTINGS: granted=true
+after-grant bound=0 03:39:41
+ON=dev.custodian.agent/dev.custodian.agent.InputGuardService:jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+off/on by hand done
+end 03:39:48 pid=17420 bound=1
+     Enabled services:{{dev.custodian.agent/dev.custodian.agent.InputGuardService}, {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Binding services:{}
+     Crashed services:{}

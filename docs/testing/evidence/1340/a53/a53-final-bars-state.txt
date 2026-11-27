@@ -1,0 +1,15 @@
+  mDisableRecords.size=4
+    [0] barType=0 userId=0 what1=0x00000000 what2=0x00000000 pkg=knoxmdm_key_statusbar_disable_expansion : com.samsung.android.ese token=android.os.Binder@1649b6b
+    [1] barType=0 userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@5432dc2
+    [2] barType=0 userId=0 what1=0x00930000 what2=0x00000001 pkg=android token=com.android.server.statusbar.StatusBarShellCommand$StatusBarShellCommandToken@dc6ba7a
+    [3] barType=0 userId=0 what1=0x03600000 what2=0x00000000 pkg=com.android.shell token=android.os.BinderProxy@8f24eb2
+  mCurrentUserId=0
+  mIcons=
+17420 u0_a339      jp.net.seventhreeseven.dreamscape
+19070 shell        melaton_navblank
+11-27 03:39:15.453 W/MelatonBars(17420): shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~FwLpgReEQ6Ad8hBA2u7tRA==/jp.net.seventhreeseve
+11-27 03:39:15.454 W/MelatonBars(17420): shell failed: cmd overlay list
+11-27 03:39:15.455 W/MelatonBars(17420): gesture fallback: no shell route to read the overlay list
+11-27 03:39:29.863 W/MelatonBars(17420): shell failed: cmd overlay list
+11-27 03:39:29.866 W/MelatonBars(17420): gesture fallback: no shell route to read the overlay list
+11-27 03:39:44.899 I/MelatonBars(17420): holder token linked (#1331)

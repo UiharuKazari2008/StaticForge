@@ -1,0 +1,25 @@
+11-27 03:29:19.808 I/ActivityManager( 1297): Killing 9070:jp.net.seventhreeseven.dreamscape/u0a339 (adj 0): stop jp.net.seventhreeseven.dreamscape due to installPackageLI
+11-27 03:29:20.550 I/ActivityManager( 1297): Start proc 12598:jp.net.seventhreeseven.dreamscape/u0a339 for service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}
+11-27 03:29:25.298 I/BarsHeal(12598): check (process start)
+11-27 03:32:12.715 I/ActivityManager( 1297): Killing 12598:jp.net.seventhreeseven.dreamscape/u0a339 (adj 50): crash
+11-27 03:32:22.766 I/ActivityManager( 1297): Start proc 13887:jp.net.seventhreeseven.dreamscape/u0a339 for service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+11-27 03:32:26.951 I/BarsHeal(13887): check (process start)
+11-27 03:32:26.958 I/BarsHeal(13887): attempt 1: off and on
+11-27 03:32:29.400 I/NoteAlerts(13887): reminder: ringer 1, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate true
+11-27 03:32:32.492 I/BarsHeal(13887): bound again: attempt 1, route direct, 5541 ms after the check
+11-27 03:34:56.245 I/ActivityManager( 1297): Killing 13887:jp.net.seventhreeseven.dreamscape/u0a339 (adj 50): crash
+11-27 03:35:06.311 I/ActivityManager( 1297): Start proc 15668:jp.net.seventhreeseven.dreamscape/u0a339 for service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+11-27 03:35:10.480 I/BarsHeal(15668): check (process start)
+11-27 03:35:10.490 I/BarsHeal(15668): attempt 1: off and on
+11-27 03:35:13.134 I/NoteAlerts(15668): reminder: ringer 1, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate true
+11-27 03:35:16.390 I/BarsHeal(15668): bound again: attempt 1, route shell, 5908 ms after the check
+11-27 03:37:35.204 I/ActivityManager( 1297): Killing 15668:jp.net.seventhreeseven.dreamscape/u0a339 (adj 50): crash
+11-27 03:37:45.268 I/ActivityManager( 1297): Start proc 17420:jp.net.seventhreeseven.dreamscape/u0a339 for service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+11-27 03:37:49.441 I/BarsHeal(17420): check (process start)
+11-27 03:37:49.452 I/BarsHeal(17420): attempt 1: off and on
+11-27 03:37:49.468 W/BarsHeal(17420): attempt 1 failed: direct: no permission; shell: command failed or no shell route
+11-27 03:37:55.472 I/BarsHeal(17420): attempt 2: off and on
+11-27 03:37:55.479 W/BarsHeal(17420): attempt 2 failed: direct: no permission; shell: command failed or no shell route
+11-27 03:38:15.481 I/BarsHeal(17420): attempt 3: off and on
+11-27 03:38:15.486 W/BarsHeal(17420): attempt 3 failed: direct: no permission; shell: command failed or no shell route
+11-27 03:38:15.486 W/BarsHeal(17420): Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed

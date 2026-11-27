@@ -1,0 +1,12 @@
+11-27 03:35:08.975 I/MelatonBars(15668): early hold at process start (#1371)
+11-27 03:35:09.527 I/MelatonBars(15668): holder token linked (#1331)
+11-27 03:35:09.634 I/LocalAdb(15668): pass (fresh): listening=true shizukuRunning=false shizukuUsable=false wifi=true wireless=true restore=false last=-
+11-27 03:35:12.387 I/MelatonBars(15668): show: on=true fits=false status=true bar=true top=false ext=true tray=false give=false
+11-27 03:35:12.442 I/MelatonBars(15668): ime probe live: visible=false bottom=0
+11-27 03:35:12.486 I/MelatonBars(15668): show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+11-27 03:35:12.517 I/MelatonBars(15668): show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+11-27 03:35:13.111 I/MelatonBars(15668): note lane:1340-a53-a2: no WM box in the kit for 1080, the page asked for it
+11-27 03:35:13.133 I/MelatonBars(15668): bubble note:lane:1340-a53-a2 drawn here
+11-27 03:35:13.244 I/MelatonBars(15668): translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+11-27 03:35:13.278 I/MelatonBars(15668): translucent check (soft keys): strip spread 0.0 (picture above 14), against below 28.0 (runs on under 10)
+11-27 03:35:13.278 I/MelatonBars(15668): translucent bar for com.android.settings: true

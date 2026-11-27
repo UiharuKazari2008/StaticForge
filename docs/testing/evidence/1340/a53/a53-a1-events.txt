@@ -1,0 +1,5 @@
+HOST bound seen at phone clock 03:32:29.200; pushing the notice
+NOTICE-PUSHED phone=03:32:29.450 answer={"success":true,"mode":"push","deviceId":"ba8e2f6edacbc667c87f18bae8683798","notice":{"id":"lane:1340-a53-a1","app":"test","cls":"reminder","title":"Bars heal 1340","text":"A53 a1: the service is bound again","actions":[],"data":{"kind":"test"},"createdAt":179
+SHOT after1 phone-before-shot=03:32:31.590 file=/home/kanmi/staticforge/docs/testing/evidence/1340/a53/a53-a1-after1.png
+SHOT after2 phone-before-shot=03:32:34.278 file=/home/kanmi/staticforge/docs/testing/evidence/1340/a53/a53-a1-after2.png
+SHOT after3 phone-before-shot=03:32:36.907 file=/home/kanmi/staticforge/docs/testing/evidence/1340/a53/a53-a1-after3.png
