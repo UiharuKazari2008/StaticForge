@@ -3418,6 +3418,14 @@ async function waitCleared(wt, live, ctx) {
         try { const l = live.get(wt.sessionId); repo = l && l.cwd ? store.repoOf(l.cwd).repo : ''; } catch (_) { repo = ''; }
         let open = [];
         try { open = store.builds(repo ? { repo } : {}); } catch (_) { return ''; }
+        // the gate it names, when it names one: ended, or clear to begin, ends the wait (not every other gate in the repo)
+        const m = /\bgates?\s+(\d+)/i.exec(String(wt.what || ''));
+        if (m) {
+            const g = open.find((x) => x.build && x.build.id === Number(m[1]));
+            if (!g) return `build gate ${m[1]} has ended`;
+            if (g.canBegin) return `build gate ${m[1]} is clear to begin`;
+            return '';
+        }
         return open.length ? '' : 'the build gate has ended';
     }
     if (wt.kind === 'restart') return Math.abs(BOOT_AT - wt.boot) > 1000 ? 'the server restarted' : '';
@@ -3429,6 +3437,44 @@ async function waitCleared(wt, live, ctx) {
         return l.status === 'busy' ? '' : `${wt.who} is idle`;
     }
     return '';
+}
+
+/**
+ * Clear gates do not sit (Yukimi, Nov 26 2026: "Waiting on: Nobody - we need to be moving faster"): once a build gate can begin,
+ * its requester is told at once to begin it and build; an idle requester is told again every 3 minutes; a gate whose requester's
+ * session is gone (or ended) for 5 minutes is cancelled so the next gate of its target is not held behind it. Runs every minute.
+ */
+const gateNudges = new Map(); // build id -> { at, n }
+const GATE_NUDGE_MS = 3 * 60000;
+const GATE_ORPHAN_MS = 5 * 60000;
+async function sweepClearGates(now = Date.now()) {
+    const store = coord();
+    let acted = 0;
+    let open = [];
+    try { open = store.builds({}); } catch (_) { return 0; }
+    const live = liveSessionsById();
+    const openIds = new Set();
+    for (const g of open) {
+        const b = g.build || {};
+        openIds.add(b.id);
+        if (b.state !== 'open') continue;
+        const a = (() => { try { return store.getAgent(b.requestedBy); } catch (_) { return null; } })();
+        const l = a && a.sessionId ? live.get(a.sessionId) : null;
+        if (!l) {
+            if (now - (b.createdAt || now) >= GATE_ORPHAN_MS) {
+                try { store.adminEndBuild(b.id, 'supervisor', `its requester ${b.requestedBy} has no live session`); acted += 1; } catch (_) { /* ended meanwhile */ }
+            }
+            continue;
+        }
+        if (!g.canBegin || l.status === 'busy') continue;
+        const k = gateNudges.get(b.id) || { at: 0, n: 0 };
+        if (now - k.at < GATE_NUDGE_MS) continue;
+        gateNudges.set(b.id, { at: now, n: k.n + 1 });
+        const text = `${STEER_PREFIX} Build gate ${b.id} (${b.target}) is clear: nobody is pending. Do not wait: run coord_build_begin ${b.id} now, do the ${b.target}, then coord_build_end ${b.id} and carry on with your work.${k.n ? ` (reminder ${k.n + 1})` : ''}`;
+        try { await require('./claudeSessionLauncher').steer(a.sessionId, text); acted += 1; } catch (e) { console.warn(`[supervisor] gate ${b.id} nudge: ${e.message}`); }
+    }
+    for (const id of gateNudges.keys()) if (!openIds.has(id)) gateNudges.delete(id);
+    return acted;
 }
 
 async function recheckWaits() {
@@ -4394,15 +4440,18 @@ function start(gr) {
     if (boot.unref) boot.unref();
     // fleet issues filed on Yozora come in, closed ones end their item (server side, every 10 min; Fleet's own reads pull too)
     pullIssues(gr, { force: true }).catch(() => {});
+    if (!gateTimer) { gateTimer = setInterval(() => { sweepClearGates().catch((e) => console.warn(`[supervisor] gate sweep: ${e.message}`)); }, 60 * 1000); if (gateTimer.unref) gateTimer.unref(); }
     if (!pullTimer) { pullTimer = setInterval(() => { pullIssues(null, { force: true }).catch(() => {}); try { sweepStalled(); } catch (e) { console.warn(`[supervisor] stall sweep: ${e.message}`); } }, 10 * 60 * 1000); if (pullTimer.unref) pullTimer.unref(); }
 }
 let pullTimer = null;
+let gateTimer = null;
 
 function stop() {
     if (watcher) { try { watcher.close(); } catch (_) { /* closed */ } watcher = null; }
     clearTimeout(debounce);
     if (sockServer) { try { sockServer.close(); } catch (_) { /* closed */ } sockServer = null; }
     if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
+    if (gateTimer) { clearInterval(gateTimer); gateTimer = null; }
     disarmWatch();
 }
 
@@ -4802,7 +4851,7 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, stopWork, killDeps, setKillDeps, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, closeWorkAsDone, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, sweepClearGates, sweepStalled, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, stopWork, killDeps, setKillDeps, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, closeWorkAsDone, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { callClaudeReviewer, cleanReviewer, askModel, issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };

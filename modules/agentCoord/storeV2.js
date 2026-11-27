@@ -425,15 +425,26 @@ module.exports = function storeV2(core) {
     const dirtyCache = new Map();
     const dirtyBusy = new Set();
     /** The answer for one agent from git status's output (null = git failed): its own session edited a changed file. */
+    // the agent's own uncommitted files, per agent: what a build gate checks against its target (null = unknown)
+    const dirtyFiles = new Map(); // agent id -> { at, files: [repo-relative paths] }
     function dirtyFrom(a, out) {
-        if (out == null) return true;
+        if (out == null) { dirtyFiles.delete(a.id); return true; }
         try {
             const changed = out.split('\n').map((l) => l.slice(3).trim().replace(/^"|"$/g, '').split(' -> ').pop()).filter(Boolean);
-            if (!changed.length) return false;
+            if (!changed.length) { dirtyFiles.set(a.id, { at: now(), files: [] }); return false; }
             try { scanSession(a.sessionId); } catch (_) { /* older rows only */ }
             const mine = open().prepare('SELECT path FROM edits WHERE session_id = ?').all(a.sessionId).map((r) => String(r.path));
-            return changed.some((c) => mine.some((m) => m === c || m.endsWith(`/${c}`) || c.endsWith(`/${m}`)));
-        } catch (_) { return true; }
+            const own = changed.filter((c) => mine.some((m) => m === c || m.endsWith(`/${c}`) || c.endsWith(`/${m}`)));
+            dirtyFiles.set(a.id, { at: now(), files: own });
+            return own.length > 0;
+        } catch (_) { dirtyFiles.delete(a.id); return true; }
+    }
+    /** Which uncommitted paths a build of this target would ship or load (a server restart loads server code; a client update ships client files). */
+    function relevantTo(target, file) {
+        const t = String(target || '');
+        if (/restart/.test(t) && !/client|sw/.test(t)) return /^(modules|routes|services|scripts\/tools|config)\/|^(server|web_server)\.js$|\.json$/.test(file) && !/^public\//.test(file);
+        if (/sw-notify|client/.test(t)) return /^(public|apps)\//.test(file);
+        return true;
     }
     /** Async mode: recompute one agent's answer in the background (one at a time per agent) into dirtyCache. */
     function refreshDirty(a) {
@@ -484,9 +495,17 @@ module.exports = function storeV2(core) {
             const held = claims.filter((c) => c.agentId === a.id);
             const busy = isBusy(a);
             let state = 'pending';
+            let note = v ? v.note : '';
             if (v) state = v.ready ? 'ready' : 'not-ready';
             else if (!held.length && (!busy || !ownDirty(a))) state = 'auto';
-            return { agentId: a.id, name: a.name, kind: a.kind, task: a.task, busy, claims: held.map((c) => c.path), state, note: v ? v.note : '', answeredAt: v ? v.at : null };
+            else {
+                // decided from git, not from a reply that may never come (Yukimi, Nov 26 2026: gates sat waiting on busy agents
+                // whose work was committed): nothing of theirs uncommitted that this build ships or loads = ready
+                ownDirty(a);
+                const df = dirtyFiles.get(a.id);
+                if (df && now() - df.at < 120000 && !df.files.some((f) => relevantTo(b.target, f))) { state = 'auto'; note = df.files.length ? `uncommitted, but not shipped by ${b.target}: ${df.files.slice(0, 3).join(', ')}` : 'nothing uncommitted'; }
+            }
+            return { agentId: a.id, name: a.name, kind: a.kind, task: a.task, busy, claims: held.map((c) => c.path), state, note, answeredAt: v ? v.at : null };
         });
         const running = d.prepare("SELECT * FROM builds WHERE state = 'running' AND repo = ? AND target = ? AND id != ?").get(b.repo, b.target, b.id);
         const waitingOn = participants.filter((p) => p.state === 'pending' || p.state === 'not-ready');
