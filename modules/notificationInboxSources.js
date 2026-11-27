@@ -663,7 +663,6 @@ function onWeatherAlert({ alert, place } = {}) {
     });
 }
 
-/** weather_rain_alarm { place, startsInMin, endsInMin, kind, summary } (weatherAlerts onRain wording). */
 /** The alarm push's current weather and next-hour series, kept small (the push's own 16 points at most, each only mm/h and chance), for the notice's card. */
 function rainCardData(d) {
     const c = d.current;
@@ -675,6 +674,9 @@ function rainCardData(d) {
     };
 }
 
+const minutesText = (n) => `${n} ${n === 1 ? 'minute' : 'minutes'}`;
+
+/** weather_rain_alarm { place, startsInMin, endsInMin, kind, summary, series } (the wording of the page's former note, #1267). */
 function onRainAlarm(d) {
     if (!d || !d.place) return null;
     const where = d.place.label || d.place.name || 'your place';
@@ -682,10 +684,15 @@ function onRainAlarm(d) {
     // rain that has already started reads "now", never "in 0 min" (the wording of the page's former note, #1267; the page no longer shows one, #1337)
     const lead = Number(d.startsInMin) > 0 ? Number(d.startsInMin) : 0;
     const title = lead ? `${kind} at ${where} in ${lead} min` : `${kind} at ${where} now`;
-    const lasts = d.endsInMin ? `stopping after about ${Math.max(5, d.endsInMin - lead)} minutes` : '';
+    // with the next hour's graph on the notice the words come from the alarm's own minutes, as the graph does: a provider's
+    // summary said "No precipitation for the next hour" over a graph of rain (#1267), so it is only the text of a push with no series
+    const hasHour = Array.isArray(d.series) && d.series.length > 0;
+    const horizon = hasHour ? d.series.length * (Number(d.seriesStep) > 0 ? Number(d.seriesStep) : 1) : 60;
+    const span = horizon <= 75 ? 'the hour' : horizon <= 135 ? 'the next two hours' : `the next ${Math.round(horizon / 60)} hours`;
+    const lasts = d.endsInMin ? `stopping after about ${minutesText(Math.max(5, d.endsInMin - lead))}` : (hasHour ? `lasting the rest of ${span}` : '');
     const text = lasts
-        ? (lead ? `${kind} from about ${lead} minutes from now, ${lasts}.` : `${kind} now, ${lasts}.`)
-        : (d.summary || (lead ? `${kind} expected in about ${lead} minutes.` : `${kind} is starting now.`));
+        ? (lead ? `${kind} from about ${minutesText(lead)} from now, ${lasts}.` : `${kind} now, ${lasts}.`)
+        : (d.summary || (lead ? `${kind} expected in about ${minutesText(lead)}.` : `${kind} is starting now.`));
     const mins = (Number(d.endsInMin) || (Number(d.startsInMin) || 0) + 60) + 15;
     return publish({
         app: 'weather',

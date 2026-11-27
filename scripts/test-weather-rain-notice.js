@@ -58,6 +58,11 @@ assert.strictEqual(rainRows().length, 1, 'a second publish of the same spell is 
 src.onRainAlarm(push({ place: { id: 'work', label: 'Work' }, startsInMin: 12 }));
 assert.deepStrictEqual(rainRows().map((r) => r.id).sort(), ['rain:home', 'rain:work']);
 assert.strictEqual(inbox.get('admin', 'rain:work').title, 'Rain at Work in 12 min');
+// no end known and a graph on the notice: the words come from the alarm's minutes, never the provider's summary (#1267)
+src.onRainAlarm({ place: { id: 'summ', label: 'Summ' }, kind: 'Light rain', startsInMin: 12, endsInMin: null, summary: 'No precipitation for the next hour', current, series: series.slice(0, 4), seriesStep: 15 });
+assert.strictEqual(inbox.get('admin', 'rain:summ').text, 'Light rain from about 12 minutes from now, lasting the rest of the hour.');
+src.onRainAlarm({ place: { id: 'one', label: 'One' }, kind: 'Rain', startsInMin: 1, current, series, seriesStep: 4 });
+assert.strictEqual(inbox.get('admin', 'rain:one').text, 'Rain from about 1 minute from now, lasting the rest of the hour.');
 // an alarm without the next hour still has the notice (text alone)
 src.onRainAlarm({ place: { id: 'here', label: 'Here' }, startsInMin: 5, kind: 'Rain' });
 assert.deepStrictEqual(inbox.get('admin', 'rain:here').data.detail, { current: null, series: [], seriesStep: 1 });
