@@ -20,7 +20,7 @@ done, whatever else it achieves.
    `cafeready-background`. Never make a phone duty work only while the page runs or has been opened.
 0. **Never a manual install step** (Yukimi, Nov 27 2026): no install prompt left on a phone, no "please install" to her;
    a failed silent route is fixed or replaced by the next one in the same turn - `no-manual-install-step`.
-1. **Safety and the shared tree:** `agent-busy-lock`, `no-dreamscape-restart` / `director-idle-before-restart`,
+1. **Safety and the shared tree:** `fold-off-limits` (the Fold only for the final install step; the A53 is the agents' own phone; everything else on the emulator lane), `agent-busy-lock`, `no-dreamscape-restart` / `director-idle-before-restart`,
    `no-stash-to-pretty-commit`, `android-app-builds` (never loop installs).
 2. **Performance and power on every change** (Yukimi, Nov 17 2026, #890: "prevent the need to keep doing
    massive optimisation passes"): `phone-power-client`, `phone-power-server`, `phone-power-native`,
@@ -47,6 +47,7 @@ done, whatever else it achieves.
    balloon, message box, sound, Android notification - carries a registered source id; counts only go down;
    the pre-commit hook enforces it), and the Supervisor reviews every new or changed notice against N1-N11.
 
+@.cursor/rules/fold-off-limits.mdc
 @.cursor/rules/installed-boot-zero-wait.mdc
 @.cursor/rules/cafeready-background.mdc
 @.cursor/rules/agent-busy-lock.mdc
