@@ -220,6 +220,7 @@ const TOOLS = [
     { name: 'task_add', description: 'Add a task to your own list.', inputSchema: S({ text: str('The task, one line') }, ['text']) },
     { name: 'task_done', description: 'Tick a task or one of the user\'s asks, with the evidence (what you ran or saw).', inputSchema: S({ id: { type: 'number' }, evidence: str('Short proof') }, ['id']) },
     { name: 'task_update', description: 'Change the text of one of your tasks, or tick or untick it.', inputSchema: S({ id: { type: 'number' }, text: str('New text'), done: { type: 'boolean' } }, ['id']) },
+    { name: 'server_reload_module', description: 'Reload changed server modules in the running Dreamscape WITHOUT a restart (docs/server/hot-reload.md): runs scripts/reload-server-module.sh - node --check, the plan (a file that is not marked reloadable answers needs-restart and names it: then use scripts/restart-dreamscape.sh), the light gate (asks only agents with uncommitted edits in these files), the reload with rollback on any error. Use it instead of a restart whenever every changed server file is reloadable.', inputSchema: S({ paths: strs('Repo-relative server files under modules/, e.g. modules/agentSupervisor.js'), why: str('What the reload is for, one line'), dry_run: { type: 'boolean', description: 'Only the plan and the gate verdict' }, notify: { type: 'boolean', description: 'Ask the agents the gate names in their inbox' } }, ['paths', 'why']) },
     { name: 'coord_supervisor_check', description: 'Ask the Supervisor (a separate model) to check your current turn: does what you did cover everything in the request and every steering message? Answers verdict ok / gaps / unclear and the missed items. Call it before you say you are done with a multi-part request.', inputSchema: S({}) },
     { name: 'coord_request_work', description: 'Hand a piece of work to the Supervisor: it becomes a work item that starts as its own supervised Fleet session (startNow: as soon as there is a slot and an account with room; else it waits in the queue for Yukimi or the Supervisor). Give a complete brief: goal, files, acceptance check. Use it for work outside your task, or work that should run beside yours.', inputSchema: S({ title: str('Short title'), prompt: str('The whole brief'), start_now: { type: 'boolean', description: 'Start it now when there is room (default false: queued)' }, cwd: str('Absolute folder (default the Dreamscape repo)'), model: str('Model (default sonnet)'), effort: str('low | medium | high | xhigh | max') }, ['title', 'prompt']) },
     { name: 'coord_pause_agent', description: 'Ask the Supervisor to PAUSE another agent (hold: its turn is stopped and it waits for RESUME) while you need momentary control: a collision on the same files, a merge, a migration it would damage. Say why. coord_resume_agent when you are done. (Freezing a process is Fleet-only.)', inputSchema: S({ agent: str('Agent id / name / session id (coord_agents)'), reason: str('Why, one line') }, ['agent', 'reason']) },
@@ -329,6 +330,8 @@ function run(name, args) {
         return store.buildEnd(ego.id, a.build, a.result);
     case 'coord_supervisor_check':
         return supervisorCheck();
+    case 'server_reload_module':
+        return reloadModules(ego, a);
     case 'task_list': case 'task_add': case 'task_done': case 'task_update': {
         const rec = claudeRecord();
         if (!rec || !rec.sessionId) throw new Error('The task tools are for Claude Code sessions');
@@ -406,6 +409,32 @@ function supervisorAsk(req, timeoutMs) {
             return resolve(out);
         });
         sock.on('error', (e) => reject(new Error(e.code === 'ENOENT' || e.code === 'ECONNREFUSED' ? 'The Supervisor is not running (it runs inside the Dreamscape server)' : e.message)));
+    });
+}
+
+/**
+ * server_reload_module: runs scripts/reload-server-module.sh in the caller's repo (async, 3 min at most) and answers its
+ * JSON result with the exit code (0 reloaded, 10 ask, 20 wait, 30 denied, 50 needs a restart, 51 failed and rolled back,
+ * 52 the server has no reload socket).
+ */
+function reloadModules(ego, a) {
+    const files = (Array.isArray(a.paths) ? a.paths : [a.paths]).map((p) => String(p || '').trim()).filter(Boolean);
+    if (!files.length) return Promise.reject(new Error('paths: the server files to reload'));
+    if (!String(a.why || '').trim()) return Promise.reject(new Error('why: what the reload is for'));
+    const root = ego.root || process.cwd();
+    const script = path.join(root, 'scripts', 'reload-server-module.sh');
+    if (!require('fs').existsSync(script)) return Promise.reject(new Error(`no scripts/reload-server-module.sh in ${root}`));
+    const ag = store.getAgent(ego.id) || {};
+    const argv = [script, ...files, '--why', String(a.why).slice(0, 300), '--json', '--by', `${ag.name || ego.id} (${ego.id})`];
+    if (a.dry_run === true) argv.push('--dry-run');
+    if (a.notify === true) argv.push('--notify');
+    return new Promise((resolve) => {
+        require('child_process').execFile('bash', argv, { cwd: root, timeout: 180000, maxBuffer: 2e6, encoding: 'utf8' }, (err, stdout, stderr) => {
+            const code = err ? (typeof err.code === 'number' ? err.code : -1) : 0;
+            let result = null;
+            try { result = JSON.parse(String(stdout || '').trim()); } catch (_) { result = null; }
+            resolve({ exitCode: code, result, output: result ? undefined : `${stdout || ''}${stderr || ''}`.trim().slice(-4000) });
+        });
     });
 }
 
