@@ -10252,6 +10252,8 @@
         if (!/^(admin|dev_admin)$/.test(user)) return;
         const prefs = soundPrefs();
         const quiet = SND_EVENTS.filter((e) => e.kind === 'note').filter((e) => { const p = eventPrefs(e.id, prefs); return p && !p.display; }).map((e) => e.id);
+        // the server's system messages and API key status have no row of their own: they follow Other notifications (N5, #1299)
+        if (quiet.includes('notification')) quiet.push('system', 'api-key');
         const sig = quiet.join(',');
         if (!force && sig === inboxPrefsSent) return;
         inboxPrefsSent = sig;

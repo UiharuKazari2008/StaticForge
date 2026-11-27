@@ -239,6 +239,30 @@
       "sound": true,
       "switch": "Settings > Sounds & Notifications > Notifications > Warnings (wmSounds)",
       "note": "N10 ok: an error that interrupted her work, told once (the app hands the notice over once and an old one is dropped). Judged kept; the text has no action, so whether it should be a silent inbox entry instead is a decision for Yukimi"
+    },
+    "inbox-stack": {
+      "area": "Melaton Mobile stacked inbox notice (wmNotificationInbox.js showStack: mail stack, Fleet stacks)",
+      "trigger": "server-push",
+      "action": "a row opens that item; the body / View opens the list or the source app; Dismiss clears it everywhere",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Messaging: New e-mail message (Play sound, Display message) for mail; Other notifications for Fleet's stacks",
+      "note": "N9 ok: a flood is ONE box changed in place; N6 ok: a silent update changes it with no pop and no sound, the server's alert flag is the only sound"
+    },
+    "inbox-reminder": {
+      "area": "Melaton Mobile calendar / task reminder (wmNotificationInbox.js showReminder)",
+      "trigger": "timer",
+      "action": "Dismiss, Menu (Snooze, View Item)",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Reminders (wmSounds); the reminder itself is hers (Calendar / Tasks)",
+      "note": "N1/N7 ok: a reminder she set, the one thing that must sound; stays until dismissed"
+    },
+    "inbox-note": {
+      "area": "Melaton Mobile server notice the page missed or no page app shows (wmNotificationInbox.js show)",
+      "trigger": "server-push",
+      "action": "View opens the source app, Dismiss / Menu (Hide, Snooze); the box is the notice",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications, one row per notice class (wmSounds: Play sound, Display message; system and API key status follow Other notifications and never sound); inbox_prefs tells the server which classes are quiet",
+      "note": "N6 ok: one box per id (shownNotes), a notice a page app shows is only marked seen (producerShows / shownBy); N5 fixed: system and api-key notices are now covered by the Other notifications Display switch on the server too; N7: no sound for status classes"
     }
   }
 }

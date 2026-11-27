@@ -191,6 +191,7 @@
             }
             return;
         }
+        // notice: inbox-stack
         const handle = ws.appNote({
             title: parts.title,
             html: parts.html,
@@ -313,6 +314,7 @@
         const subject = d.subject || lines[0] || 'No Subject';
         const rest = [d.when, d.location].filter(Boolean);
         const more = rest.length ? rest : lines.slice(1);
+        // notice: inbox-reminder
         const note = ws.appNote({
             title: notice.title || 'Reminder',
             // the hidden mark keeps two reminders of the same minute and subject two notifications ("1 of 2")
@@ -376,6 +378,7 @@
                 return;
             }
         }
+        // notice: inbox-note
         const note = ws.appNote({
             title: notice.title,
             html: esc(notice.text || '').replace(/\n/g, '<br>'),
