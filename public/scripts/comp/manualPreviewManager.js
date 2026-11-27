@@ -1670,6 +1670,220 @@ function manualPreviewLightboxSource() {
     return Array.isArray(allImages) ? allImages : [];
 }
 
+// The Studio preview's own page-lifetime state: where the print on screen sits in the gallery when
+// the gallery array cannot say (the desktop fetches no gallery blocks while the Workspaces window is
+// closed, #843/#890, so the array stays empty), and the workspace image grid's paging. The file is
+// the preview's shell code, loaded once from app.html, as its other helpers are.
+// app-scope: allow page-lifetime Studio preview module (manualPreviewManager, loaded once from app.html)
+const manualPreviewParts = (() => {
+    // Written for the print on screen: one find_image_index (its place) and one size probe (how many
+    // prints the gallery holds), both kept for that print, so the buttons never ask on a timer.
+    let serverPosition = { key: '', viewType: '', index: -1, total: 0, pending: null };
+    let gallerySize = { viewType: '', total: 0, pending: null };
+
+    function positionKey() {
+        const img = window.currentManualPreviewImage;
+        if (!img) return '';
+        return img.original || img.filename || img.upscaled || '';
+    }
+
+    function asked(key, viewType) {
+        return key && serverPosition.key === key && serverPosition.viewType === viewType;
+    }
+
+    // How many prints the gallery holds, from the boot probe's own call (loadGalleryChunk with limit 0:
+    // galleryView.js). A workspace whose size is already known is not asked again.
+    function galleryTotal(viewType) {
+        if (gallerySize.viewType === viewType && gallerySize.total > 0) return gallerySize.total;
+        if (gallerySize.viewType === viewType && gallerySize.pending) return gallerySize.pending;
+        if (typeof loadGalleryChunk !== 'function') return 0;
+        const pending = loadGalleryChunk(viewType, 0, 0)
+            .then((probe) => {
+                const total = Number(probe && probe.total) || 0;
+                gallerySize = { viewType, total, pending: null };
+                return total;
+            })
+            .catch(() => {
+                gallerySize = { viewType, total: 0, pending: null };
+                return 0;
+            });
+        gallerySize = { viewType, total: 0, pending };
+        return pending;
+    }
+
+    // The cached position, a promise for the one in flight, or null when the server cannot be asked.
+    async function serverPositionFor(viewType) {
+        const key = positionKey();
+        if (!key) return null;
+        if (asked(key, viewType)) {
+            return serverPosition.pending || serverPosition;
+        }
+        if (!window.wsClient || typeof window.wsClient.findImageIndex !== 'function' || !window.wsClient.isConnected()) {
+            return null;
+        }
+        const pending = (async () => {
+            const [data, total] = await Promise.all([
+                // findImageIndex: public/scripts/websocket.js
+                window.wsClient.findImageIndex(key, viewType).catch((error) => {
+                    console.warn('Print position lookup failed:', error && error.message ? error.message : error);
+                    return null;
+                }),
+                galleryTotal(viewType)
+            ]);
+            const index = data ? Number(data.index) : -1;
+            const size = Number(total) || 0;
+            serverPosition = {
+                key,
+                viewType,
+                index: Number.isFinite(index) && index >= 0 ? index : -1,
+                total: size > 0 ? size : 0,
+                pending: null
+            };
+            return serverPosition;
+        })();
+        serverPosition = { key, viewType, index: -1, total: 0, pending };
+        // The answer is what enables or disables the buttons; the caller's paint does not wait on it.
+        void pending.then(() => updateManualPreviewNavigation());
+        return pending;
+    }
+
+    // { index, total } of the print on screen: the gallery array when it holds it, the server otherwise.
+    async function resolvePosition() {
+        const localIndex = resolveManualPreviewGalleryIndex();
+        if (localIndex !== -1) {
+            return { index: localIndex, total: Array.isArray(allImages) ? allImages.length : 0 };
+        }
+        const position = await serverPositionFor(currentGalleryView || 'images');
+        if (!position || position.index < 0) return null;
+        return { index: position.index, total: position.total };
+    }
+
+    // ---- the workspace image grid (the Studio's own gallery grid) ----
+    // One page of prints at a time rather than a node per print in the workspace: the gallery array
+    // when the Workspaces window has loaded one, a page straight from the server otherwise.
+    const PAGE_SIZE = 60;
+    let page = { offset: 0, total: 0, loading: false };
+
+    function gridItem(image, index) {
+        const imageItem = document.createElement('div');
+        imageItem.className = 'workspace-image-item';
+        imageItem.dataset.imageIndex = index;
+
+        const img = document.createElement('img');
+        // Use preview image for thumbnails
+        if (image.preview) {
+            img.src = `/previews/${encodeURIComponent(window.deviceUtils.getGalleryPreviewUrl(image.preview))}`;
+        } else {
+            // Fallback to full image if no preview available
+            img.src = localGalleryImageUrl(image.upscaled || image.original || image.filename);
+        }
+        img.alt = image.prompt || 'Generated image';
+        img.loading = 'lazy';
+
+        // Load by gallery index (the server's index in both sources)
+        imageItem.addEventListener('click', () => {
+            loadImageIntoManualPreview(index);
+            hideWorkspaceImageOverlay();
+        });
+
+        imageItem.appendChild(img);
+        return imageItem;
+    }
+
+    async function loadPage() {
+        const grid = document.getElementById('workspaceImageGrid');
+        if (!grid || page.loading) return;
+        const state = page;
+        const from = state.offset;
+        state.loading = true;
+        try {
+            const gallery = Array.isArray(allImages) ? allImages : [];
+            let rows = [];
+            let total = state.total;
+            if (gallery.length > 0) {
+                rows = gallery.slice(from, from + PAGE_SIZE);
+                total = gallery.length;
+            } else {
+                const result = await window.wsClient.requestGallery('images', false, {
+                    offset: from,
+                    limit: PAGE_SIZE,
+                    light: true,
+                    skipGalleryPagination: true
+                });
+                const payload = (result && result.data) ? result.data : (result || {});
+                rows = Array.isArray(payload.gallery) ? payload.gallery : [];
+                total = Number((payload.pagination && payload.pagination.totalItems) || payload.total) || total;
+            }
+            // The overlay may have been reopened while this page was in flight
+            if (state !== page) return;
+            rows.forEach((image, i) => grid.appendChild(gridItem(image, from + i)));
+            state.offset = from + rows.length;
+            if (total > state.total) state.total = total;
+            const empty = document.getElementById('workspaceImageEmpty');
+            if (empty) empty.classList.toggle('hidden', grid.children.length > 0);
+        } finally {
+            if (state === page) state.loading = false;
+        }
+    }
+
+    // Reaching the bottom of the grid asks for the next page (one rAF per scroll burst, and no read
+    // of the grid unless there is another page to ask for). A scroll that arrives while a page is
+    // loading is remembered and checked once that page has landed, so the bottom of the grid never
+    // goes quiet with more to show.
+    function wireGridScroll() {
+        const grid = document.getElementById('workspaceImageGrid');
+        if (!grid || grid.dataset.overlayPaging === '1') return;
+        grid.dataset.overlayPaging = '1';
+        let queued = false;
+        let missed = false;
+        const pull = () => {
+            if (page.loading) {
+                missed = true;
+                return;
+            }
+            if (page.total > 0 && page.offset >= page.total) return;
+            if (grid.scrollTop + grid.clientHeight < grid.scrollHeight - 240) return;
+            void loadPage()
+                .catch((error) => {
+                    console.warn('Workspace grid page failed:', error && error.message ? error.message : error);
+                })
+                .then(() => {
+                    if (!missed) return;
+                    missed = false;
+                    pull();
+                });
+        };
+        grid.addEventListener('scroll', () => {
+            if (queued) return;
+            queued = true;
+            requestAnimationFrame(() => {
+                queued = false;
+                pull();
+            });
+        });
+    }
+
+    function resetPage() {
+        page = { offset: 0, total: 0, loading: false };
+    }
+
+    // Enable / disable the < > buttons for a position and the gallery's size (0 items: neither)
+    function applyNavState(prevBtn, nextBtn, index, total) {
+        if (!Number.isFinite(index) || index < 0 || !Number.isFinite(total) || total <= 0) {
+            prevBtn.disabled = true;
+            nextBtn.disabled = true;
+            return;
+        }
+        if (window.currentManualPreviewIndex !== index) {
+            window.currentManualPreviewIndex = index;
+        }
+        prevBtn.disabled = index === 0; // Disable if first image
+        nextBtn.disabled = index >= total - 1; // Disable if last image
+    }
+
+    return { serverPositionFor, resolvePosition, loadPage, wireGridScroll, resetPage, applyNavState };
+})();
+
 // Function to update manual preview navigation buttons
 function updateManualPreviewNavigation() {
     const prevBtn = document.getElementById('manualPreviewPrevBtn');
@@ -1677,29 +1891,44 @@ function updateManualPreviewNavigation() {
 
     if (!prevBtn || !nextBtn) return;
 
-    // Disable both buttons if no current image or no gallery
-    if (!window.currentManualPreviewImage || !allImages || allImages.length === 0) {
+    // Disable both buttons if there is no current image
+    if (!window.currentManualPreviewImage) {
         prevBtn.disabled = true;
         nextBtn.disabled = true;
         return;
     }
 
-    const currentIndex = resolveManualPreviewGalleryIndex();
+    const gallery = Array.isArray(allImages) ? allImages : [];
 
-    if (currentIndex === -1) {
-        // Current image not found in gallery, disable both buttons
+    if (gallery.length > 0) {
+        const currentIndex = resolveManualPreviewGalleryIndex();
+
+        if (currentIndex === -1) {
+            // Current image not found in gallery, disable both buttons
+            prevBtn.disabled = true;
+            nextBtn.disabled = true;
+            return;
+        }
+
+        manualPreviewParts.applyNavState(prevBtn, nextBtn, currentIndex, gallery.length);
+        return;
+    }
+
+    // No gallery array at all (the desktop's Workspaces window has never loaded one): the print's
+    // place comes from the server, once per print.
+    const resolved = manualPreviewParts.serverPositionFor(currentGalleryView || 'images');
+    if (!resolved) {
         prevBtn.disabled = true;
         nextBtn.disabled = true;
         return;
     }
-
-    if (window.currentManualPreviewIndex !== currentIndex) {
-        window.currentManualPreviewIndex = currentIndex;
+    if (typeof resolved.then === 'function') {
+        void resolved.then((position) => {
+            if (position) manualPreviewParts.applyNavState(prevBtn, nextBtn, position.index, position.total);
+        });
+        return;
     }
-
-    // Enable/disable buttons based on position
-    prevBtn.disabled = currentIndex === 0; // Disable if first image
-    nextBtn.disabled = currentIndex === allImages.length - 1; // Disable if last image
+    manualPreviewParts.applyNavState(prevBtn, nextBtn, resolved.index, resolved.total);
 }
 // Function to navigate manual preview
 async function navigateManualPreview(event) {
@@ -1772,18 +2001,26 @@ async function navigateManualPreview(event) {
             await updateManualPreviewDirectly(imageToShow, newImageObj.metadata);
 
         } else {
-            // Normal mode - use WebSocket API with global indices
-            const currentIndex = resolveManualPreviewGalleryIndex();
-            if (currentIndex === -1) {
+            // Normal mode - use WebSocket API with global indices (from the gallery array, or from
+            // the server when the desktop has no array: see manualPreviewParts.resolvePosition)
+            const position = await manualPreviewParts.resolvePosition();
+            if (!position) {
                 console.warn('Current image not found in gallery');
                 showManualPreviewNavigationLoading(false);
                 return;
             }
-            newIndex = currentIndex + direction;
+            newIndex = position.index + direction;
 
             // Check for negative index
             if (newIndex < 0) {
                 console.warn('Cannot navigate before first image');
+                showManualPreviewNavigationLoading(false);
+                return;
+            }
+
+            // Past the last image there is nothing to step to (the button is disabled at that end)
+            if (position.total > 0 && newIndex >= position.total) {
+                console.warn('Cannot navigate past the last image');
                 showManualPreviewNavigationLoading(false);
                 return;
             }
@@ -2089,47 +2326,15 @@ async function loadWorkspaceImagesForOverlay() {
     if (!grid || !empty) return;
 
     // Show loading
-    grid.innerHTML = '';
+    grid.replaceChildren();
     empty.classList.add('hidden');
+    // manualPreviewParts: the grid's paging, this file's preview state
+    manualPreviewParts.resetPage();
+    manualPreviewParts.wireGridScroll();
 
     try {
-        // Use the existing allImages array from the gallery instead of making a new request
-        const galleryData = allImages || [];
-
-        if (galleryData && galleryData.length > 0) {
-            // Hide loading and empty states
-            empty.classList.add('hidden');
-
-            // Create image items
-            galleryData.forEach((image, index) => {
-                const imageItem = document.createElement('div');
-                imageItem.className = 'workspace-image-item';
-                imageItem.dataset.imageIndex = index;
-
-                const img = document.createElement('img');
-                // Use preview image for thumbnails
-                if (image.preview) {
-                    img.src = `/previews/${encodeURIComponent(window.deviceUtils.getGalleryPreviewUrl(image.preview))}`;
-                } else {
-                    // Fallback to full image if no preview available
-                    img.src = localGalleryImageUrl(image.upscaled || image.original || image.filename);
-                }
-                img.alt = image.prompt || 'Generated image';
-                img.loading = 'lazy';
-
-                // Add click handler to load by index
-                imageItem.addEventListener('click', () => {
-                    loadImageIntoManualPreview(index);
-                    hideWorkspaceImageOverlay();
-                });
-
-                imageItem.appendChild(img);
-                grid.appendChild(imageItem);
-            });
-        } else {
-            // Show empty state
-            empty.classList.remove('hidden');
-        }
+        await manualPreviewParts.loadPage();
+        if (!grid.children.length) empty.classList.remove('hidden');
     } catch (error) {
         console.error('Error loading workspace images:', error);
         empty.classList.remove('hidden');

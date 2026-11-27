@@ -21,7 +21,9 @@
    same without one (their transform already makes them a stacking context, and the toast's own glass
    its backdrop root); .glass-toast.removing keeps its hint in app.css */
 
-#manualModal.windowed #manualPreviewWorkspaceBtn,
+/* the workspace image grid (manualPreviewWorkspaceBtn) is the Studio's own gallery grid: on the
+   desktop too, not only on the phone (Yukimi, Nov 27 2026: re-enable the in-Studio gallery grid on
+   the desktop) */
 body:not(.desktop-mode) #manualModal #unmaximizeManualBtn,
 #manualModal.windowed #unmaximizeManualBtn,
 #manualModal.windowed:not(.show-preview) #manualPreviewCloseBtn,
