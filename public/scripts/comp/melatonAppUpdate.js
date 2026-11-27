@@ -188,7 +188,10 @@
     function onState(next) {
         if (!next || typeof next !== 'object') return;
         state = next;
-        if (staged()) { hook(); offer(); }
+        if (staged()) { hook(); offer(); return; }
+        // nothing is staged any more (#1332: the app removes the file as soon as its install answers): a note
+        // that still offers it would have nothing to do
+        if (note) { note.hide(); note = null; }
     }
 
     function init() {
