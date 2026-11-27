@@ -547,7 +547,7 @@
 
     // ---- New E-mail Message (outres 33323 / 33324): mail the server announces with notify, until it
     // is read; the shell's envelope and Today count these arrivals (window.wmMessaging.imapNew)
-    const imapFresh = []; // the note's arrivals: [{ accountId, folder, uid, from, subject }]
+    const imapFresh = []; // the note's arrivals: [{ accountId, folder, uid, from, subject, alertAt }]
     // arrivals not read yet (the title bar envelope): Dismiss closes the note, the envelope stays until they are read
     const imapPending = new Set(); // 'account|folder|uid'
     const pendKey = (a, f, u) => `${a}|${f}|${u}`;
@@ -608,12 +608,13 @@
     /** A missed arrival from the inbox (wmNotificationInbox catch-up): into this note, as if it came now. */
     let adoptTimer = null;
     let adoptLive = false; // a live arrival waits for the timer
+    let adoptNews = false; // one of the adopted waiting for the timer is news (not asked for quietly)
     function inboxAdopt(n, o) {
         const d = (n && n.data) || {};
         if (!d.accountId || d.uid == null) return false;
         const f = d.folder || 'INBOX';
         if (!imapFresh.some((x) => x.accountId === d.accountId && x.folder === f && String(x.uid) === String(d.uid))) {
-            imapFresh.push({ accountId: d.accountId, folder: f, uid: d.uid, from: d.from || '', subject: d.subject || '(no subject)' });
+            imapFresh.push({ accountId: d.accountId, folder: f, uid: d.uid, from: d.from || '', subject: d.subject || '(no subject)', alertAt: Number(n.alertAt) || 0 });
             if (imapFresh.length > 50) imapFresh.shift();
             imapPending.add(pendKey(d.accountId, f, d.uid));
         }
@@ -621,17 +622,20 @@
         // live (a snoozed mail back, no page app raised it): it sounds, also when caught-up ones join it before the note
         // comes up; caught up on resume: the app already sounded it
         if (o && o.live) adoptLive = true;
+        if (!(o && o.quiet)) adoptNews = true;
         clearTimeout(adoptTimer);
         adoptTimer = setTimeout(() => {
             const live = adoptLive;
+            const news = adoptNews;
             adoptLive = false;
-            showImapNote({ silent: !live && inAndroidApp() });
+            adoptNews = false;
+            showImapNote({ silent: !news || (!live && inAndroidApp()) });
             shellStatus();
         }, 0);
         // while new mail is the inbox's own notice (#1098) showImapNote draws nothing: a live one is not taken, so the
         // inbox shows it itself, sounding (taken, it would be marked seen with no box and no sound)
         const ni = window.wmNotificationInbox;
-        return !(o && o.live && ni && typeof ni.mailStacked === 'function' && ni.mailStacked());
+        return !(o && (o.arrived || o.live) && ni && typeof ni.mailStacked === 'function' && ni.mailStacked());
     }
     /** Cleared elsewhere (read on another device): out of this note. */
     function inboxDrop(n) {
@@ -661,11 +665,15 @@
         if (imapNote) { try { imapNote.close(); } catch (_) { /* gone */ } imapNote = null; }
         if (!imapFresh.length || !ws || typeof ws.appNote !== 'function') return;
         const parts = imapNoteParts();
+        // the newest arrival's inbox id: with it the app's sound and this note's are one (#1367)
+        const newest = imapFresh[imapFresh.length - 1];
         const note = ws.appNote({
             title: parts.title,
             html: parts.html,
             icon: 'status-mail',
             event: 'mail',
+            notice: inboxMailId(newest),
+            noticeAt: newest.alertAt,
             silent: !!(o && o.silent),
             softKeys: () => ({
                 left: { label: 'Dismiss', action: () => closeImapNote(true) },

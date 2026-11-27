@@ -63,7 +63,7 @@ function makePage(bridge) {
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const ui = {
         esc,
-        comboHtml: (act, label) => `<button type="button" class="wm-combo" data-act="${esc(act)}"><span>${esc(label)}</span></button>`,
+        comboHtml: (act, label, disabled) => `<button type="button" class="wm-combo" data-act="${esc(act)}"${disabled ? ' disabled' : ''}><span>${esc(label)}</span></button>`,
         row: (label, control, o = {}) => `<div class="wm-form-row${o.wide ? ' is-wide' : ''}"><span class="wm-form-label">${esc(label)}</span>${control}</div>`,
         edit: (id, value, attrs = '') => `<input id="${esc(id)}" class="wm-edit" type="text" value="${esc(value)}" ${attrs}>`,
         note: (t) => `<p class="wm-form-note">${esc(t)}</p>`,
@@ -584,6 +584,24 @@ async function main() {
         p.document.hidden = true; p.fire('visibilitychange', {});
         assert.strictEqual(names(b, 'stop').length, b4 + 1, 'the away handler stops');
         ok('previews A then B, A\'s stopped event, then Back: a stop follows the last preview; Back from level 1, Select, shutdown and the away handlers stop once each');
+    }
+    // ---------------------------------------------------------------- the row under the scheme "No Sounds" (#1367)
+    {
+        const { p, d, b } = fresh({}, {});
+        let click = null;
+        const el = { querySelector: () => ({ addEventListener: (t, fn) => { click = fn; } }) };
+        d.scheme = 'none';
+        assert(/data-act="nsound" disabled>/.test(p.ns.rowHtml(d)), 'No Sounds: the row is disabled like its neighbours');
+        p.ns.bindRow(el, d, p.api);
+        click();
+        assert.strictEqual(p.ns.viewDepth(d), 0, 'and does not open the picker');
+        assert.strictEqual(names(b, 'categories').length, 0, 'nothing asked of the app');
+        d.scheme = 'default'; // the scheme combo changed: the tab is drawn and bound again
+        assert(!/disabled/.test(p.ns.rowHtml(d)), 'Melaton Default: enabled again');
+        p.ns.bindRow(el, d, p.api);
+        click();
+        assert.strictEqual(p.ns.viewDepth(d), 1, 'and opens the picker');
+        ok('No Sounds: the Notification sound row is disabled and cannot open the picker; back on Melaton Default it works');
     }
     console.log(`ok: ${step} checks`);
 }

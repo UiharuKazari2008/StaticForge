@@ -25,8 +25,14 @@
  * data.items (each { id, title, text, at, data }) and data.count, and sends it with alert true when a new stack starts and
  * alert false when an item joins a live one. Here that is one box: the title ("10 New E-mail Messages"), a one-line row per
  * item (each opens THAT message), "+ k more", a badge with the count on the tray icon. A silent update changes the open
- * box in place (no pop, no sound); the sound is the server's alert flag, nothing else. Messaging stops drawing a note of
- * its own for new mail while the inbox does (mailStacked), so the two never make two boxes or two sounds.
+ * box in place (no pop, no sound). Messaging stops drawing a note of its own for new mail while the inbox does
+ * (mailStacked), so the two never make two boxes or two sounds.
+ *
+ * Sound (#1367), for every box here: a box sounds only if the server published its notice as news (a live packet:
+ * notice.alert !== false; a listed row: alertAt > 0; a row with no alertAt, from an older server, counts as news), and in
+ * the Android app only once per event: every note carries the notice's id and alertAt (appNote notice / noticeAt) and the
+ * shell asks the app before it sounds one (AndroidInbox.takeSound). The one deliberate exception: a stack missed while
+ * away (the mail stack, and Fleet's two the same way) comes up silently in the Android app (catchStack).
  *
  * Calendar and task reminders (#876) have no page app that raises them: the server's reminder
  * scheduler (modules/reminderScheduler.js) publishes a 'reminder' notice when one comes due, and this
@@ -96,6 +102,15 @@
     }
 
     // ---- stacks (#1098) --------------------------------------------------------------------------
+
+    /**
+     * Did the server publish this notice as news (with its sound)? A live packet says so itself (alert); a listed row by
+     * alertAt, when it was last published as news (0: never). An older server sends neither: news.
+     */
+    function isNews(n) {
+        if (typeof n.alert === 'boolean') return n.alert;
+        return n.alertAt === undefined || n.alertAt === null || Number(n.alertAt) > 0;
+    }
 
     const STACK_ROWS = 5; // rows the box lists; the rest are "+ k more"
     const isStack = (n) => !!n && /^stack:/.test(String(n.id || ''));
@@ -182,12 +197,12 @@
         // its box was taken away by something else: drawn again
         if (held && held.handle && !document.getElementById(held.handle.id)) { shownNotes.delete(id); held = null; }
         // a new loud stack (the server started a new one under the same id): comes up again, sounding
-        if (held && opts.loud) { close(id); held = null; }
+        if (held && opts.loud) { close(id, false, true); held = null; }
         stacks.set(id, notice);
         if (held) {
             if (held.sig !== parts.sig) {
                 held.sig = parts.sig;
-                held.handle.update({ title: parts.title, html: parts.html, badge: parts.badge, sortAt: notice.sortAt, prio: notice.prio });
+                held.handle.update({ title: parts.title, html: parts.html, badge: parts.badge, sortAt: notice.sortAt, prio: notice.prio, notice: id, noticeAt: notice.alertAt });
             }
             pageShown(id);
             return;
@@ -203,6 +218,8 @@
             sortAt: notice.sortAt,
             prio: notice.prio,
             badge: parts.badge,
+            notice: id,
+            noticeAt: notice.alertAt,
             softKeys: () => ({
                 left: { label: 'Dismiss', icon: 'dismiss', action: () => { ack(id, 'cleared'); close(id); } },
                 right: { label: 'Menu', icon: 'menu', menu: () => [
@@ -212,7 +229,7 @@
             })
         });
         if (!handle) return;
-        shownNotes.set(id, { handle, sig: parts.sig, close() { handle.close(); } });
+        shownNotes.set(id, { handle, sig: parts.sig, close(o) { handle.close(o); } });
         const el = document.getElementById(handle.id);
         if (el) {
             el.addEventListener('click', (e) => {
@@ -229,9 +246,10 @@
     /** A stack missed while away, or changed meanwhile: its items join Messaging's count, the box comes up or changes in place. */
     function catchStack(n) {
         const m = window.wmMessaging;
-        if (m && typeof m.inboxAdopt === 'function') for (const it of stackItems(n)) { if (it.data && it.data.kind === 'mail') { try { m.inboxAdopt({ data: it.data }, {}); } catch (_) { /* counted later */ } } }
+        if (m && typeof m.inboxAdopt === 'function') for (const it of stackItems(n)) { if (it.data && it.data.kind === 'mail') { try { m.inboxAdopt({ data: it.data }, { quiet: !isNews(n) }); } catch (_) { /* counted later */ } } }
         if (shownNotes.has(n.id)) { showStack(n); return; }
-        if (n.state === 'new') showStack(n, { loud: !inAndroidApp() });
+        // silent in the Android app on purpose (a missed stack); elsewhere only one published as news sounds
+        if (n.state === 'new') showStack(n, { loud: !inAndroidApp() && isNews(n) });
     }
 
     /** The app that groups this kind of notice in a notification of its own (mail, texts, Messenger). */
@@ -324,7 +342,9 @@
             // a meeting, an appointment or a task: each by its own picture in the holder (#1056)
             holder: holderFor(notice),
             event: 'reminder',
-            silent: !!opts.quiet,
+            silent: !!opts.quiet || !isNews(notice),
+            notice: notice.id,
+            noticeAt: notice.alertAt,
             softKeys: () => ({
                 left: { label: 'Dismiss', icon: 'dismiss', action: () => { ack(notice.id, 'cleared'); close(notice.id); } },
                 right: { label: 'Menu', icon: 'menu', menu: () => reminderMenu(notice) }
@@ -371,7 +391,7 @@
      */
     function alreadyUp(notice, opts) {
         if (!shownNotes.has(notice.id)) return false;
-        if (notice.alert === true && !opts.quiet && !lingering.has(notice.id)) { close(notice.id); return false; }
+        if (notice.alert === true && !opts.quiet && !lingering.has(notice.id)) { close(notice.id, false, true); return false; }
         pageShown(notice.id);
         return true;
     }
@@ -393,8 +413,11 @@
         const app = adopter(notice);
         if (app) {
             let taken = false;
-            // live: no page app raised it (a snoozed text back at its time): its app's note sounds, also in the Android app
-            try { taken = app.inboxAdopt(notice, { live: !!opts.live }) !== false; } catch (_) { taken = false; }
+            // arrived: it came in live and no page app raised it. live: and it may sound (a snoozed text back at its time):
+            // its app's note sounds, also in the Android app. quiet: asked for without a sound, or never published as news:
+            // its app's note stays silent
+            const quiet = !!opts.quiet || !isNews(notice);
+            try { taken = app.inboxAdopt(notice, { arrived: !!opts.live, live: !!opts.live && !quiet, quiet }) !== false; } catch (_) { taken = false; }
             if (taken) {
                 shownNotes.set(notice.id, { close() { try { if (typeof app.inboxDrop === 'function') app.inboxDrop(notice); } catch (_) { /* gone */ } } });
                 pageShown(notice.id);
@@ -410,8 +433,10 @@
             // its kind's own picture in the holder (#1056): a sync error, a missed call, a meeting... not its app's icon
             holder: holderFor(notice),
             event: notice.cls || 'notification',
-            // asked for (the notification icon's tap): shown without its sound - it is no news
-            silent: !!opts.quiet,
+            // asked for (the notification icon's tap), or never published as news: shown without its sound
+            silent: !!opts.quiet || !isNews(notice),
+            notice: notice.id,
+            noticeAt: notice.alertAt,
             // 6.5.1's reminder keys on every notice (Yukimi, Nov 18): Dismiss | Menu, the Menu with View, Hide and the
             // reminder's Snooze times (the server brings the notice back then, sounding); the app's own box has the same
             softKeys: () => answerKeys(notice) || ({
@@ -494,10 +519,11 @@
         }, PRODUCER_MS);
     }
 
-    function close(id, force) {
+    /** replaced: the box is drawn again at once (not put away: the app's repeat of the notice goes on). */
+    function close(id, force, replaced) {
         if (!force && lingering.has(id)) return;
         const note = shownNotes.get(id);
-        if (note) { try { note.close(); } catch (_) { /* gone */ } shownNotes.delete(id); }
+        if (note) { try { note.close(replaced ? { replaced: true } : undefined); } catch (_) { /* gone */ } shownNotes.delete(id); }
         stacks.delete(id);
     }
 
@@ -608,7 +634,7 @@
         shownBy: (id, note) => {
             const key = String(id || '');
             if (!key || !note || shownNotes.has(key)) return;
-            shownNotes.set(key, { close() { try { note.close(); } catch (_) { /* gone */ } } });
+            shownNotes.set(key, { close(o) { try { note.close(o); } catch (_) { /* gone */ } } });
             producerShown.add(key);
             pageShown(key);
             // no ack here: the server's row may not exist yet, and a 'seen' sent now would stop the one that counts (seenAcked);
@@ -646,7 +672,7 @@
         /** One waiting notice (from waitingList) shown as its notification: the holder's tap on it. */
         showOne: (n) => {
             if (!n || !n.id) return;
-            close(n.id);
+            close(n.id, false, true);
             if (isReminder(n)) { reminders.set(n.id, n); showReminder(n, { quiet: true }); return; }
             show(n, { quiet: true });
         },
@@ -659,7 +685,7 @@
             for (const n of waiting) {
                 // asked for: each comes up again, also one shown before and put away (its old handle kept it from showing;
                 // the tap then opened nothing, Nov 18 Fold)
-                close(n.id);
+                close(n.id, false, true);
                 if (isReminder(n)) { reminders.set(n.id, n); showReminder(n, { quiet: true }); continue; }
                 show(n, { quiet: true });
             }

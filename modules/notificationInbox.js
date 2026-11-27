@@ -80,6 +80,7 @@ function database() {
             actedBy TEXT,
             updatedAt INTEGER NOT NULL,
             digest TEXT,
+            alertAt INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (user, id)
         );
         CREATE INDEX IF NOT EXISTS notices_user_created ON notices (user, createdAt);
@@ -106,6 +107,16 @@ function database() {
     try {
         if (!db.prepare('PRAGMA table_info(notices)').all().some((c) => c.name === 'digest')) db.exec('ALTER TABLE notices ADD COLUMN digest TEXT');
     } catch (e) { console.warn(`[notify-inbox] digest column: ${e.message}`); }
+    // a database from before alertAt (one sound per notice, #1367): add the column once. The rows already waiting count as
+    // published as news when they were made, so what they do does not change (one transaction: never a column without that)
+    try {
+        if (!db.prepare('PRAGMA table_info(notices)').all().some((c) => c.name === 'alertAt')) {
+            db.transaction(() => {
+                db.exec('ALTER TABLE notices ADD COLUMN alertAt INTEGER NOT NULL DEFAULT 0');
+                db.exec('UPDATE notices SET alertAt = createdAt');
+            })();
+        }
+    } catch (e) { console.warn(`[notify-inbox] alertAt column: ${e.message}`); }
     return db;
 }
 
@@ -135,6 +146,9 @@ function rowOut(r) {
         actions: v ? v.actions : safeJson(r.actions, []),
         data: v ? v.data : safeJson(r.data, {}),
         createdAt: r.createdAt,
+        // when it was last published AS NEWS (a publish that sounds; 0: never). With the id it names one event: the phone's
+        // app and page use it so that event sounds once (#1367). A silent update, a resend and a catch-up keep it
+        alertAt: Number(r.alertAt) || 0,
         // when its state last moved (#890 round 5 W2): the page's inbox_list since is the newest it holds
         updatedAt: r.updatedAt || r.createdAt,
         expiresAt: (v ? v.expiresAt : r.expiresAt) || null,
@@ -318,14 +332,20 @@ function publish(notice = {}) {
     //   - returning: true (a snooze ending): the user asked for it back, so it sounds and is new again whatever it says.
     //   - the test lane (user 'test', modules/testDevices.js) follows the same rule, so a test device proves it; its
     //     snooze comes back with returning: true like the household's.
+    //   - alertAt (#1367), the stored time of the last publish that was news: a loud one (the alert handed to announce())
+    //     sets it to now; a silent one onto a live row (new / seen) keeps the row's; a silent one that creates a row, or
+    //     brings a done row back as new, sets 0. A done row that stays dealt with is not touched. Resends and catch-ups
+    //     read the row, so they carry the same one.
     const custom = typeof notice.digest === 'string' && notice.digest !== '';
     const dataObj = notice.data && typeof notice.data === 'object' ? notice.data : {};
     row.digest = custom ? sha1(`c|${notice.digest}`) : defaultDigest(row.title, row.text, dataObj.stamp);
     let alert = notice.alert !== false;
+    let liveAlertAt = 0; // the live row's alertAt, which a silent update keeps
     try {
-        const cur = database().prepare('SELECT state, digest, title, text, cls, data, expiresAt FROM notices WHERE user = ? AND id = ?').get(user, id);
+        const cur = database().prepare('SELECT state, digest, title, text, cls, data, expiresAt, alertAt FROM notices WHERE user = ? AND id = ?').get(user, id);
         if (cur) {
             const done = cur.state === 'acted' || cur.state === 'cleared';
+            if (!done) liveAlertAt = Number(cur.alertAt) || 0;
             {
                 const escalated = classRank(row.cls) > classRank(cur.cls);
                 // returning: the user asked for it back (a snooze ending, reminderScheduler.fireSnoozed) - loud by request
@@ -346,6 +366,7 @@ function publish(notice = {}) {
         }
     } catch (_e) { /* a new table: new */ }
     row.fresh = alert ? 1 : 0;
+    row.alertAt = alert ? now : liveAlertAt;
     if (!storeRow(row)) return null;
     prune(user);
     return announce(user, row, alert, quiet, user === 'test' && notice.push === false);
@@ -386,6 +407,8 @@ function announce(user, row, alert, quiet, pushOff) {
 //     that carried a digest leaves a mark of the same id (a cleared single row) so the same event published again stays dealt
 //     with, as a single notice does (#1194); a changed digest, or returning: true, brings it back.
 //   - ack of stack:<key> is the whole stack (its items are marked the same way); the next item starts a new loud one.
+//   - alertAt (#1367): the loud ones (a new stack, an item with news) set it to now; a silent join and every silent rewrite
+//     (an item gone or expired) keep it; the mark of an item dealt with has 0.
 const STACK_ITEMS_MAX = 50;
 const STACK_LINES_MAX = 6;
 const firstLine = (s) => String(s || '').split('\n').find((l) => l.trim()) || '';
@@ -520,6 +543,8 @@ function publishStacked(user, notice, o) {
         updatedAt: now,
         digest: sha1(`stack|${stackKey}|${count}|${id}`),
         fresh: live ? 0 : 1,
+        // a new stack or an item with news is a new event (#1367); a silent join keeps the stack's last one
+        alertAt: loud ? now : Number(cur.alertAt) || 0,
     };
     if (!storeRow(row)) return null;
     prune(user);
@@ -530,11 +555,11 @@ function storeRow(row) {
     try {
         database()
             .prepare(
-                `INSERT INTO notices (user, id, app, cls, title, text, actions, data, createdAt, expiresAt, state, actedBy, updatedAt, digest)
-                 VALUES (@user, @id, @app, @cls, @title, @text, @actions, @data, @createdAt, @expiresAt, @state, @actedBy, @updatedAt, @digest)
+                `INSERT INTO notices (user, id, app, cls, title, text, actions, data, createdAt, expiresAt, state, actedBy, updatedAt, digest, alertAt)
+                 VALUES (@user, @id, @app, @cls, @title, @text, @actions, @data, @createdAt, @expiresAt, @state, @actedBy, @updatedAt, @digest, @alertAt)
                  ON CONFLICT (user, id) DO UPDATE SET app=excluded.app, cls=excluded.cls, title=excluded.title, text=excluded.text,
                      actions=excluded.actions, data=excluded.data, expiresAt=excluded.expiresAt, state=excluded.state, actedBy=NULL, updatedAt=excluded.updatedAt,
-                     digest=excluded.digest,
+                     digest=excluded.digest, alertAt=excluded.alertAt,
                      createdAt=CASE WHEN @fresh = 1 THEN excluded.createdAt ELSE createdAt END`
             )
             .run(row);
@@ -553,7 +578,7 @@ function markItemDealtWith(user, r, it, state, device) {
         user, id: String(it.id), app: r.app, cls: r.cls, title: String(it.title || '').slice(0, 200), text: String(it.text || '').slice(0, 1000),
         actions: JSON.stringify(Array.isArray(it.actions) ? it.actions : []), data: JSON.stringify(it.data && typeof it.data === 'object' ? it.data : {}),
         createdAt: Number(it.at) || now, expiresAt: itemExpiry(it, r.expiresAt), state, actedBy: device ? String(device).slice(0, 60) : null, updatedAt: now,
-        digest: it.digest, fresh: 1,
+        digest: it.digest, fresh: 1, alertAt: 0, // a mark, never published as news
     });
 }
 

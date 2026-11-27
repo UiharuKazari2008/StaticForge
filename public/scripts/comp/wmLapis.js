@@ -1383,6 +1383,8 @@
     function onNotice(pk) {
         const n = (pk && (pk.data || pk)) || {};
         if (!n.title || !canUse()) return;
+        // its inbox copy's id (lapisService notice): the app's sound for it and the note's are one (#1367)
+        const inboxId = n.key ? `lapis:${n.kind}:${n.key}` : `lapis:${n.kind}`;
         if (n.kind === 'run-left') {
             // a stale warning (the run already ended or changed) is not shown
             if (!runInfo() || (num(n.until) && state.command.runsUntil !== n.until)) return;
@@ -1394,6 +1396,7 @@
                     icon: 'status-car-alert',
                     holder: holderKindOf(n),
                     event: 'lapis-run-left',
+                    notice: inboxId,
                     softKeys: () => ({ left: isAdmin() ? { label: 'Stop', action: () => { note.close(); runNote = null; doStop(); } } : { label: 'View', action: () => { note.close(); runNote = null; open('start'); } }, right: { label: 'Dismiss', action: () => { note.close(); runNote = null; } } })
                 });
                 runNote = note;
@@ -1422,6 +1425,7 @@
                 holder: holderKindOf(n),
                 // left unlocked and an issue found sound in classes of their own (#848)
                 event: n.kind === 'unlocked' ? 'lapis-unlocked' : n.kind === 'health' ? 'lapis-issue' : 'notification',
+                notice: inboxId,
                 softKeys: () => ({ left: wantsLock ? { label: 'Lock', action: lock } : { label: 'View', action: view }, right: { label: 'Dismiss', action: () => { if (note) note.close(); } } })
             });
             if (note) return;

@@ -329,6 +329,7 @@
                 html: [where(alert, data.place), windowText(alert, data.place, Date.now())].filter(Boolean).map(esc).join('<br>') || esc('A weather alert was issued.'),
                 icon: 'status-weather-alert',
                 event: severe ? 'weather-severe' : 'weather-alert',
+                notice: inboxId, // the app's sound for it and this note's are one (#1367)
                 softKeys: () => ({
                     left: { label: 'View', action: () => { if (note) note.close(); inboxDone(inboxId, 'acted'); details(issued); } },
                     right: { label: 'Dismiss', action: () => { if (note) note.close(); inboxDone(inboxId, 'cleared'); } }

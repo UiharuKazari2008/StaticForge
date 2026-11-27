@@ -16,6 +16,9 @@
  * categories() once per open, list() per category / search / page on a tap, nothing prefetched, nothing periodic. Where
  * the bridge is missing (a browser, an older app) the row is not drawn at all.
  *
+ * Under the workspace's sound scheme "No Sounds" the row is disabled like its neighbours and does not open the picker
+ * (#1367: nothing sounds then, with the page in front or asleep).
+ *
  * The choice lives in the page draft (d.nsound = { mode, id, title, category }, d.nsoundSaved for "changed") and is
  * written with AndroidSounds.set(...) in the page's commit, like every other Sounds tab value.
  *
@@ -74,6 +77,9 @@
         if (mode !== 'sound') return { mode, id: '', title: '', category: '' };
         return { mode, id: String(g.id || ''), title: String(g.title || ''), category: String(g.category || '') };
     }
+
+    /** The draft's sound scheme is No Sounds: the row is off. */
+    const schemeOff = (d) => d.scheme === 'none';
 
     function choiceLabel(n) {
         if (n.mode === 'none') return 'None';
@@ -395,13 +401,14 @@
         rowHtml(d) {
             const u = ui();
             if (!d.nsound || !d.nsoundUi || !u) return '';
-            return `${u.gap()}${u.row('Notification sound:', u.comboHtml('nsound', choiceLabel(d.nsound)), { wide: true })}${u.note(NOTE)}`;
+            return `${u.gap()}${u.row('Notification sound:', u.comboHtml('nsound', choiceLabel(d.nsound), schemeOff(d)), { wide: true })}${u.note(NOTE)}`;
         },
         bindRow(el, d, api) {
             const b = el.querySelector('[data-act="nsound"]');
             if (!b || !d.nsoundUi) return;
             // the combo's look, a button's job: it opens the picker (it is not a drop-down)
             b.addEventListener('click', () => {
+                if (schemeOff(d)) return;
                 // another preview of this page (the Notifications tab's Play) ends when the picker opens
                 const s = window.wmShell && window.wmShell.sounds;
                 if (s && typeof s.stop === 'function') { try { s.stop(); } catch (_) { /* nothing was sounding */ } }

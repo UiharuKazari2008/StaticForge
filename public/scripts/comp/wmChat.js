@@ -868,14 +868,21 @@
     const freshKey = (id) => { for (const k of fresh.keys()) if (String(k) === String(id)) return k; return null; };
     /** A missed reply from the inbox (wmNotificationInbox catch-up): into the note, as if it came now. */
     let chatAdoptTimer = null;
+    let chatAdoptNews = false; // one of the adopted waiting for the timer is news (not asked for quietly)
     function adoptChat(n, o) {
         const d = (n && n.data) || {};
         if (d.chatId == null || !d.said) return false;
         const k = freshKey(d.chatId);
         if (k != null) fresh.delete(k);
-        fresh.set(k != null ? k : d.chatId, { said: d.said, at: Number(n.createdAt) || Date.now(), who: d.from || '' });
+        fresh.set(k != null ? k : d.chatId, { said: d.said, at: Number(n.createdAt) || Date.now(), who: d.from || '', alertAt: Number(n.alertAt) || 0 });
+        if (!(o && o.quiet)) chatAdoptNews = true;
         clearTimeout(chatAdoptTimer);
-        chatAdoptTimer = setTimeout(() => { showSmsNote({ silent: !(o && o.live) && inAndroidApp() }); if (typeof sh.refreshStatus === 'function') sh.refreshStatus(); }, 0);
+        chatAdoptTimer = setTimeout(() => {
+            const news = chatAdoptNews;
+            chatAdoptNews = false;
+            showSmsNote({ silent: !news || (!(o && o.live) && inAndroidApp()) });
+            if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
+        }, 0);
         return true;
     }
     const whoOf = (id, x) => (sessionById(id) ? personaOf(sessionById(id)) : ((x && x.who) || personaOf(null)));
@@ -906,12 +913,16 @@
         const html = smsNoteHtml();
         const open = () => { const one = fresh.size === 1 ? [...fresh.keys()][0] : null; closeSmsNote(); if (one != null) openFromNotice(one); else if (window.wmChatApp) window.wmChatApp.showList(); };
         const icon = SMS_ICON;
+        // the newest reply's inbox id, so the app's sound and this note's are one (#1367)
+        const [newestId, newest] = [...fresh.entries()].pop();
         // notice: wm-chat-arrival
         const note = sh.appNote({
             title: SMS_TITLE,
             html,
             icon,
             event: 'chat',
+            notice: `chat:${newestId}`,
+            noticeAt: newest.alertAt,
             silent: !!(o && o.silent),
             // 6.5.1's reminder keys on every notification (Nov 18: "text messages also miss the snooze buttons"): Dismiss |
             // Menu, the Menu with View, Hide and the Snooze times - the server brings the replies back then, sounding
@@ -1870,7 +1881,7 @@
     const tmApi = () => window.textMessaging || null;
     const tmUi = () => window.wmTextMessaging || null;
     const tmState = { accounts: [], unread: {}, last: {} };
-    const tmFresh = []; // [{ accountId, chatGuid, from, text }]: arrived, not read yet, oldest first
+    const tmFresh = []; // [{ accountId, chatGuid, from, text, native, alertAt }]: arrived, not read yet, oldest first
     let tmBound = null;
     let tmTimer = 0;
     let tmNote = null;
@@ -1989,7 +2000,7 @@
         // the conversation on screen in front: read as it comes, no notice (wmTextMessaging may say so)
         const ui = tmUi();
         try { if (ui && (typeof ui.isShowing === 'function' ? ui.isShowing(d.accountId, d.chatGuid) : (typeof ui.isOpen === 'function' && ui.isOpen(d.accountId, d.chatGuid))) && !document.hidden) return; } catch (_) { /* notify */ }
-        tmFresh.push({ accountId: d.accountId, chatGuid: d.chatGuid, from: tmFrom(d.isGroup ? { isGroup: true, title: d.chatTitle } : null, d.message, d.chatTitle), text: tmText(d.message) });
+        tmFresh.push({ accountId: d.accountId, chatGuid: d.chatGuid, from: tmFrom(d.isGroup ? { isGroup: true, title: d.chatTitle } : null, d.message, d.chatTitle), text: tmText(d.message), native: !!d.native });
         if (tmFresh.length > 50) tmFresh.shift();
         // inside the Android app with the app in the background, the app posts Android's own
         // notification (its background link): the WM notice waits for the return without a sound of
@@ -2003,17 +2014,23 @@
 
     /** A missed text from the inbox (wmNotificationInbox catch-up): into the note, as if it came now. */
     let tmAdoptTimer = null;
+    let tmAdoptNews = false; // one of the adopted waiting for the timer is news (not asked for quietly)
     function adoptSms(n, o) {
         const d = (n && n.data) || {};
         if (!d.accountId || !d.chatGuid) return false;
         // the conversation's newest line: one entry per conversation from the inbox
         if (!tmFresh.some((f) => f.accountId === d.accountId && f.chatGuid === d.chatGuid && f.text === (d.text || ''))) {
-            tmFresh.push({ accountId: d.accountId, chatGuid: d.chatGuid, from: d.from || 'Unknown', text: d.text || '' });
+            tmFresh.push({ accountId: d.accountId, chatGuid: d.chatGuid, from: d.from || 'Unknown', text: d.text || '', alertAt: Number(n.alertAt) || 0 });
             if (tmFresh.length > 50) tmFresh.shift();
         }
+        if (!(o && o.quiet)) tmAdoptNews = true;
         clearTimeout(tmAdoptTimer);
         // live (a snoozed text back, no page app raised it): it sounds; caught up on resume: the app already sounded it
-        tmAdoptTimer = setTimeout(() => tmShowNote({ silent: !(o && o.live) && inAndroidApp() }), 0);
+        tmAdoptTimer = setTimeout(() => {
+            const news = tmAdoptNews;
+            tmAdoptNews = false;
+            tmShowNote({ silent: !news || (!(o && o.live) && inAndroidApp()) });
+        }, 0);
         return true;
     }
 
@@ -2155,12 +2172,17 @@
         if (!tmFresh.length || !sh || typeof sh.appNote !== 'function') return;
         if (!(o && o.silent)) tmSoundedAt = Date.now();
         const parts = tmNoteParts();
+        // the newest text's inbox id, so the app's sound and this note's are one (#1367). An Android app account's text
+        // (#885) has none, because the server raises nothing for it
+        const newest = tmFresh[tmFresh.length - 1];
         // notice: wm-sms-arrival
         const note = sh.appNote({
             title: parts.title,
             html: parts.html,
             icon: 'status-sms',
             event: 'sms',
+            notice: newest.native ? '' : `sms:${newest.accountId}:${newest.chatGuid}`,
+            noticeAt: newest.alertAt,
             silent: !!(o && o.silent),
             // 6.5.1's reminder keys on every notification (Nov 18: "text messages also miss the snooze buttons"): Dismiss |
             // Menu, the Menu with View, Hide and the Snooze times - the server brings the texts back then, sounding

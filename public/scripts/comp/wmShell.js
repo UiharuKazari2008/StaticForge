@@ -3712,8 +3712,9 @@
         closeBatteryLowNote();
         // N4 (#1299): a tap goes to Settings > Power > Battery. Not a duplicate of the app's own Android notice
         // (DeviceNotices.kt CH_BATTERY): that one posts only while the page is NOT in front, this one only while it is
+        // (bat:low is the id of the app's own battery notice, DeviceNotices NOTE_LOW: the two sound once between them, #1367)
         // notice: wm-battery-low
-        batteryLowNote = appNote({ title, html: escapeHtml(BATTERY_LOW_TEXT), icon: 'status-battery-low', event, softKeys: () => ({
+        batteryLowNote = appNote({ title, html: escapeHtml(BATTERY_LOW_TEXT), icon: 'status-battery-low', event, notice: 'bat:low', softKeys: () => ({
             left: { label: 'Power', action: () => { closeBatteryLowNote(); openPowerSettings(); } },
             right: { label: 'Dismiss', action: () => closeBatteryLowNote() }
         }) });
@@ -3751,7 +3752,7 @@
         batteryFullNote = appNote({
             title: 'Battery Fully Charged',
             html: escapeHtml('The main battery is fully charged. You can disconnect the charger.'),
-            icon: 'status-battery-full', event: 'battery-full',
+            icon: 'status-battery-full', event: 'battery-full', notice: 'bat:full', // DeviceNotices NOTE_FULL (#1367)
             softKeys: () => ({
                 left: { label: 'Power', action: () => { if (batteryFullNote) { try { batteryFullNote.close(); } catch (_) { /* gone */ } batteryFullNote = null; } openPowerSettings(); } },
                 right: { label: 'Dismiss', action: () => { if (batteryFullNote) { try { batteryFullNote.close(); } catch (_) { /* gone */ } batteryFullNote = null; } } }
@@ -7553,6 +7554,7 @@
         }
         const shown = noteShownNote();
         if (shown) shown.ids.forEach((id) => noteSeen.add(seenKey(id, shown)));
+        hushPutAway(shown);
         renderNotes();
         // the keys are worked out from the notice (its actions, an update's state): drawn again when their labels change
         let keysFor = '';
@@ -7601,13 +7603,63 @@
     let noteRepeat = null;
     // inbox classes that are status, not delivery (modules/notificationInboxSources.js onSystemNotice / onApiKeyStatus)
     const STATUS_NOTE_EVENTS = new Set(['system', 'api-key']);
+
+    /*
+     * One sound per notice (#1367). A note that stands for an inbox notice (appNote's notice / noticeAt) may have been
+     * sounded by the Android app already (the page was asleep, or claims after the app's wait), or be the app's to sound
+     * (the page is not on screen). The app is the arbiter: AndroidInbox.takeSound(id, stamp, event, awake) answers 'page'
+     * (the page sounds it) or 'app' (the page neither sounds, buzzes nor repeats it). A synchronous bridge call: asked once
+     * as a note is fresh, never in a render. No bridge, an older app or a failing call: the page sounds it, as before.
+     */
+    // the repeating notices whose sound is the app's: notice id -> { up: its bubble has been on screen }
+    const appRepeats = new Map();
+
+    /** True: this fresh entry's sound is the app's. ids: its toasts not heard yet, oldest first (readToasts merges alike ones). */
+    function appTakesSound(n, ids, event) {
+        const bridge = window.AndroidInbox;
+        if (!bridge || typeof bridge.takeSound !== 'function') return false;
+        let theirs = false;
+        for (let i = ids.length - 1; i >= 0; i--) {
+            const own = appNotes.get(ids[i]);
+            if (own && own.silent) continue;
+            if (!own || !own.notice) return false; // a note of the page's own: the page's to sound
+            let answer = 'page';
+            try { answer = bridge.takeSound(own.notice, String(own.noticeAt || 0), event, awake()); } catch (_) { answer = 'page'; }
+            if (answer !== 'app') return false;
+            theirs = true;
+            const p = eventPrefs(event);
+            if (p && p.repeat && !appRepeats.has(own.notice)) appRepeats.set(own.notice, { up: false });
+        }
+        return theirs;
+    }
+
+    /**
+     * The app repeats the sounds it took. It is told to stop (AndroidInbox.hush, once) when that notice's bubble has been on
+     * screen (the page awake: a bubble popped while nothing of the page is seen is not one she saw) and no longer is:
+     * hidden, dismissed, closed, Home. A notice not popped yet is left alone. Run by refreshNotes (every one of those goes
+     * through it): no timer.
+     */
+    function hushPutAway(shown) {
+        if (!appRepeats.size) return;
+        const has = (entry, notice) => !!entry && entry.ids.some((id) => (appNotes.get(id) || {}).notice === notice);
+        for (const [notice, r] of [...appRepeats]) {
+            if (has(shown, notice)) { if (awake()) r.up = true; continue; }
+            if (r.up) {
+                appRepeats.delete(notice);
+                try { const bridge = window.AndroidInbox; if (bridge && typeof bridge.hush === 'function') bridge.hush(notice); } catch (_) { /* no app */ }
+            } else if (!notes.some((n) => has(n, notice))) appRepeats.delete(notice); // gone without ever popping
+        }
+    }
+
     function soundNewNotes(live) {
         for (const k of [...noteSounded]) if (!live.has(k)) noteSounded.delete(k);
         if (!notesMayPop()) return;
-        let fresh = null;
+        const errors = [];
+        const others = [];
         for (const n of notes) {
             const keys = n.ids.map((id) => seenKey(id, n));
             if (keys.every((k) => noteSounded.has(k))) continue;
+            const unheard = n.ids.filter((id) => !noteSounded.has(seenKey(id, n)));
             keys.forEach((k) => noteSounded.add(k));
             // an app's notice asked to come up without a sound (Android already alerted for it, #779)
             const own = appNotes.get(n.id);
@@ -7615,12 +7667,16 @@
             // N7: a status / system notice (the server's system messages and API key status) never sounds; deliveries do, by
             // their class's own Settings switch (mail, texts, Messenger, reminders, prints, weather, Lapis, Traffic ...)
             if (own && STATUS_NOTE_EVENTS.has(own.event)) continue;
-            if (!fresh || n.type === 'error') fresh = n;
+            (n.type === 'error' ? errors : others).push({ n, unheard });
         }
-        if (!fresh) return;
+        // one sound for what came in together: an error's first (the last of them in the list), else the first in the
+        // list. One the app has (takeSound) is passed over, so it does not swallow the sound of a note of the page's own
+        const next = errors.reverse().concat(others).find((c) => !appTakesSound(c.n, c.unheard, noteEvent(c.n)));
+        if (!next) return;
+        const fresh = next.n;
         const id = noteEvent(fresh);
         // notice: wm-note-sound
-        playSystemSound(id, id === 'error' ? { event: 'error' } : {});
+        playSystemSound(id, id === 'error' ? { event: noteDeskEvent(id) } : {});
         const p = eventPrefs(id);
         if (p && p.repeat && p.sound) {
             clearInterval(noteRepeat);
@@ -8178,8 +8234,9 @@
      * but one the app keeps and changes while its work runs. It is always a notification (a
      * progress toast raised within moments of a tap would otherwise become the wait cursor), with
      * its own soft keys and its own title bar glyph:
-     *   appNote({ title, html, progress, detail, icon, softKeys, event, silent, sortAt, prio, badge })
-     *     -> { id, update({ title, html, progress, detail, icon, softKeys, sortAt, prio, badge }), show(), hide(), shown(), close() } | null
+     *   appNote({ title, html, progress, detail, icon, softKeys, event, silent, sortAt, prio, badge, notice, noticeAt })
+     *     -> { id, update({ title, html, progress, detail, icon, softKeys, sortAt, prio, badge, notice, noticeAt }), show(), hide(),
+     *        shown(), close({ replaced }) } | null
      * html is the body and detail the lines under the bar (markup: escape names); progress 0-100
      * draws the progress bar between them (null: no bar, and the note cannot get one later); icon
      * is the glyph in the title bar and the tray (an art name, or CSS url() / image-set(); the speech bubble
@@ -8188,6 +8245,9 @@
      * brings it up without that sound (a progress note with no event is silent: a job she started, N7). sortAt (ms) and prio place it in the pager and the tray (orderNotes); badge is
      * the count a stack of notices shows on its tray icon (issue 1098). update() never sounds and never pops the bubble. The note stays until the app closes it: hide() is
      * the Hide soft key (the bubble goes, the glyph stays), show() brings the bubble back.
+     * notice: the inbox notice id this note stands for (a program's own note of a thing the server stores too passes the same
+     * id), noticeAt: that notice's alertAt when the program has the row. With them the Android app decides who sounds the
+     * event, so it sounds once (#1367, appTakesSound). A note of the page's own passes neither.
      */
     const appNotes = new Map(); // toast id -> { icon, softKeys }
     function appNote(opts = {}) {
@@ -8198,7 +8258,10 @@
         const bar0 = opts.progress != null && opts.progress !== false;
         const st = { icon: opts.icon || null, holder: opts.holder || null, softKeys: opts.softKeys || null, actions: opts.actions || null, event: opts.event || null, silent: !!opts.silent || (bar0 && !opts.event),
             // issue 1098: where the notice sorts (the server's sortAt / prio) and the count a stack shows on its tray icon
-            sortAt: Number(opts.sortAt) || 0, prio: Number(opts.prio) || 0, badge: Math.max(0, Math.floor(Number(opts.badge) || 0)) };
+            sortAt: Number(opts.sortAt) || 0, prio: Number(opts.prio) || 0, badge: Math.max(0, Math.floor(Number(opts.badge) || 0)),
+            // #1367: the inbox notice this note stands for and when it was last published as news (0: not known): the app
+            // decides who sounds that event (appTakesSound)
+            notice: opts.notice ? String(opts.notice) : '', noticeAt: Number(opts.noticeAt) || 0 };
         const bar = opts.progress != null && opts.progress !== false;
         let id = null;
         try {
@@ -8232,6 +8295,8 @@
                 if (o.sortAt !== undefined) st.sortAt = Number(o.sortAt) || 0;
                 if (o.prio !== undefined) st.prio = Number(o.prio) || 0;
                 if (o.badge !== undefined) st.badge = Math.max(0, Math.floor(Number(o.badge) || 0));
+                if (o.notice !== undefined) st.notice = o.notice ? String(o.notice) : '';
+                if (o.noticeAt !== undefined) st.noticeAt = Number(o.noticeAt) || 0;
                 if (o.softKeys !== undefined) { st.softKeys = o.softKeys || null; if (mine()) renderSoftKeys(); }
                 if (o.actions !== undefined) { st.actions = o.actions || null; if (mine()) renderSoftKeys(); }
                 queueNotes();
@@ -8239,13 +8304,18 @@
             show() { if (live()) showNote(id); },
             hide() { if (mine()) hideNote(); },
             shown: () => live() && mine(),
-            close() {
+            // o.replaced: a new note of the same inbox notice comes right after (the inbox draws it again): the page is
+            // not putting the notice away, so the app's repeat is not hushed (hushPutAway)
+            close(o) {
                 const up = mine();
+                const kept = o && o.replaced && st.notice && appRepeats.has(st.notice) ? st.notice : '';
+                if (kept) appRepeats.delete(kept);
                 appNotes.delete(id);
                 updateNoteIds.delete(id);
                 if (typeof window.removeGlassToast === 'function') window.removeGlassToast(id);
                 if (up) noteShown = null;
                 refreshNotes();
+                if (kept) appRepeats.set(kept, { up: false });
             }
         };
     }
@@ -10221,37 +10291,80 @@
     }
 
     /**
-     * Every notification event's sound choices for the Android app (#907, AndroidBars.noteSounds): the app shows a
-     * notice that arrives with the page asleep as a WM popup over the program in front, with the event's sound and
-     * vibration (rule cafeready-background). { <event id>: { sound: url | '', own, vibrate, display, repeat, label } },
-     * the URL versioned as avPlay's (the app keeps each sound by its URL). Sent at start and when Sounds &
-     * Notifications changes; only when it changed.
+     * The workspace's switches silence this desktop event (No Sounds, its "Enable sounds for" group off, (None)): the same
+     * silence playSystemSound gives, for the table the app plays from with the page asleep (#1367).
+     */
+    function workspaceSilences(event) {
+        try {
+            const pers = window.desktopPersonalization;
+            return !!pers && typeof pers.soundFile === 'function' && pers.soundFile(event) === '';
+        } catch (_) {
+            return false;
+        }
+    }
+    /** A desktop sound picked for this event in the workspace (not the scheme's own), '' when none: playSystemSound's deskPick. */
+    function workspacePick(event) {
+        try {
+            const pers = window.desktopPersonalization;
+            const ds = window.desktopSounds;
+            const own = pers && typeof pers.soundFile === 'function' ? pers.soundFile(event) : undefined;
+            if (typeof own !== 'string' || !ds || !Array.isArray(ds.FILES) || !ds.FILES.includes(own)) return '';
+            return ds.SCHEME && ds.SCHEME[event] === own ? '' : own;
+        } catch (_) {
+            return '';
+        }
+    }
+    /** The desktop event whose settings decide a notification of this class (an error notification follows Program Error). */
+    const noteDeskEvent = (id) => (id === 'error' ? 'error' : (SND_EVENT.get(id) || {}).desktop);
+
+    /**
+     * Every phone sound event's choices for the Android app (#907, AndroidBars.noteSounds): the app shows a notice that
+     * arrives with the page asleep as a WM popup over the program in front, with the event's sound and vibration (rule
+     * cafeready-background). { <event id>: { sound: url | '', own, vibrate, display, repeat, label } }, the URL versioned
+     * as avPlay's (the app keeps each sound by its URL). EVERY SND_EVENTS id is in it (#1367): a class the table lacks
+     * falls back to Other notifications in the app, which sounded classes the page ships silent. sound is '' where the page
+     * is silent: Play sound off (here or as shipped) or the workspace's switches (workspaceSilences); else the file the page
+     * plays: this phone's pick, else a desktop sound picked for the event in the workspace (workspacePick). own marks a
+     * sound the app's Notification sound choice does not replace, as in the page: either of those picks, and every event
+     * class's sound (the page asks the app only for notification classes). An event class has no
+     * Display switch (display true: the app keeps drawing its boxes). Sent at start and when Sounds & Notifications or the
+     * workspace's sound settings change; only when it changed.
      */
     let noteSoundsSent = '';
+    let noteSoundsRun = 0;
     async function sendNoteSounds() {
         const ab = window.AndroidBars;
         if (!ab || typeof ab.noteSounds !== 'function') return;
+        const run = ++noteSoundsRun;
         const prefs = soundPrefs();
         const out = {};
         for (const e of SND_EVENTS) {
-            if (e.kind !== 'note') continue;
             const p = eventPrefs(e.id, prefs);
             if (!p) continue;
+            const desk = noteDeskEvent(e.id);
+            const pick = p.own ? '' : workspacePick(desk);
+            const sound = workspaceSilences(desk) || !p.sound ? '' : (pick || p.sound);
             let url = '';
-            if (p.sound) {
-                const path = WM_SOUNDS.includes(p.sound) ? `${SND_BASE}${encodeURIComponent(p.sound)}` : `/sounds/vista/${encodeURIComponent(p.sound)}`;
+            if (sound) {
+                const path = WM_SOUNDS.includes(sound) ? `${SND_BASE}${encodeURIComponent(sound)}` : `/sounds/vista/${encodeURIComponent(sound)}`;
                 let v = '';
                 try { v = await sndVersion(path); } catch (_) { v = ''; }
                 url = location.origin + path + (v ? `?v=${v}` : '');
             }
-            // own: she picked this sound herself; the app plays a WM Alarm-family file only then (#1321)
-            out[e.id] = { sound: url, own: !!p.own, vibrate: !!p.vibrate, display: !!p.display, repeat: !!p.repeat, label: e.label };
+            // own: she picked this sound herself (here or on the workspace), or it is an event class's: the app keeps it, and
+            // plays a WM Alarm-family file only then (#1321; no default of a class is one)
+            const own = !!sound && (!!p.own || !!pick || e.kind !== 'note');
+            out[e.id] = { sound: url, own, vibrate: !!p.vibrate, display: e.kind === 'note' ? !!p.display : true, repeat: !!p.repeat, label: e.label };
         }
+        // a later run started while this one waited for a file's version: it read the newer settings, so only its table goes
+        if (run !== noteSoundsRun) return;
         const json = JSON.stringify(out);
         if (json === noteSoundsSent) return;
         noteSoundsSent = json;
         try { ab.noteSounds(json); } catch (_) { noteSoundsSent = ''; }
     }
+    // the workspace's sound settings changed (the scheme, a group, an event's sound, another workspace): the app's table too
+    document.addEventListener('desktopPersonalizationChanged', () => { void sendNoteSounds(); }, { signal: appScopeSignal });
 
     /**
      * The server raises the phone's notifications too, for when this page is not running (#876): it is

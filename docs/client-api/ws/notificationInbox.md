@@ -25,7 +25,13 @@ A durable store of the notices producers raise, so a phone that was not connecte
 
 Every notice sent to a phone's background link (`as_event inbox.notice`) is a delivery row until the app confirms it (`as_event inbox.posted { id, how }`: posted, shown by a page in front that said so through `AndroidInbox.shown`, or already showing). Unconfirmed, it is sent again after 15 s, 45 s, 2 min and 5 min, and on every hello of that phone. The rows outlive a server restart. A notice already seen, acted on or cleared anywhere is not sent again, and a phone's hello does not re-send what that phone confirmed. A new text's notice (`sms:`) carries its conversation (`data.title, sender, address, isGroup, date, account, guid`) and is the text's only path to the app, which renders it as a MessagingStyle conversation. Server-raised kinds: `dmail:` (household mailbox), `question:` (Director questions), `emotion:`, `system:` (warning / error notices), `api-key:`.
 
-A notice: `{ id, app, cls, title, text, actions[], data, createdAt, updatedAt, expiresAt, state, actedBy, sortAt, prio }`. `cls` is the wmShell notification class (sound and icon); `data.open` names the app layer / direction to open; `state` is `new` -> `seen` -> `acted`, or `cleared`.
+A notice: `{ id, app, cls, title, text, actions[], data, createdAt, alertAt, updatedAt, expiresAt, state, actedBy, sortAt, prio }`. `cls` is the wmShell notification class (sound and icon); `data.open` names the app layer / direction to open; `state` is `new` -> `seen` -> `acted`, or `cleared`.
+
+## One sound per notice (#1367)
+
+`alertAt` (ms) is when the notice was last published **as news** (a publish that sounds); 0 = never. `id` + `alertAt` names one event. A silent update of a live row, a resend and a catch-up keep it; a publish that sounds moves it; a silent publish that makes a row, or brings a dealt-with one back, has 0. Rows from before the column count their `createdAt`. It is on every copy of a notice (`inbox_updated`, `inbox_list`, the phones' `inbox.notice`).
+
+On a phone the Android app is the one arbiter of who sounds an event. Before the page sounds a note that stands for an inbox notice it asks `window.AndroidInbox.takeSound(id, stamp, event, awake)` (`stamp` = `alertAt` as a string, `'0'` when the program that raised the note never saw the row; `awake` = the page is on screen): `'app'` means the app has sounded that event or will, so the page neither sounds, buzzes nor repeats it; `'page'` means the page does. `AndroidInbox.hush(id)` stops the app's Repeat when the page puts that notice's bubble away. A box the page draws sounds only for news (a live packet's `alert`, a listed row's `alertAt` above 0), and a stack missed while away comes up silently in the app. The app side is in DSApp-Kotlin `docs/ANDROID_BRIDGE.md`; the page side in `wmShell.js` (`appTakesSound`, `hushPutAway`) and `wmNotificationInbox.js`.
 
 ## Broadcast (same user type's phone pages)
 

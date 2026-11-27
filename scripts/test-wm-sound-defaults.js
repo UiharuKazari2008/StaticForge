@@ -24,8 +24,11 @@ for (const [, id, file] of rows) {
 }
 // a later assignment (6.5.1's reminder) may not put one back
 for (const m of shell.matchAll(/SND_EVENTS\.find\([^\n]*?\.sound = '([^']+)'/g)) assert(!ALARM.test(m[1]), `an override gives ${m[1]}`);
-// the phone app is told which sounds are her own picks
-assert(/out\[e\.id\] = \{ sound: url, own: !!p\.own,/.test(shell), 'the table sent to the app carries own');
+// the phone app is told which sounds are her own picks: this phone's pick or a desktop sound picked on the workspace; an
+// event class's sound is marked too (the page never asks the app's Notification sound choice for one), and none of their
+// defaults is an Alarm file (checked above) - scripts/test-wm-note-sounds-table.js runs it
+assert(shell.includes("const own = !!sound && (!!p.own || !!pick || e.kind !== 'note');"), 'own: her picks and event classes only');
+assert(/out\[e\.id\] = \{ sound: url, own,/.test(shell), 'the table sent to the app carries own');
 
 const chime = require('../modules/hourChime');
 for (const k of ['hourSound', 'halfSound']) assert(!ALARM.test(chime.DEFAULTS[k]), `hour chime ${k} defaults to ${chime.DEFAULTS[k]}`);

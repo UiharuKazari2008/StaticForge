@@ -761,6 +761,7 @@
                 html: esc(text),
                 icon: 'status-camera',
                 event: 'traffic-camera',
+                notice: `cam:${camKey(t)}`, // the app's own alert for this camera has this id: one sound (#1367)
                 softKeys: () => ({ left: { label: 'View', action: view }, right: { label: 'Dismiss', action: () => { if (note) note.close(); } } })
             });
             if (note) return;
