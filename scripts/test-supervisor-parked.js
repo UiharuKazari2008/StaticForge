@@ -24,6 +24,11 @@ process.env.AGENT_SUPERVISOR_SOCKET = path.join(tmp, 'state', 'supervisor.sock')
 process.env.AGENT_SUPERVISOR_SETTLE_MS = '0';
 process.env.AGENT_SUPERVISOR_NO_REVIVE = '1'; // only the revive cases turn it on
 process.env.AGENT_SUPERVISOR_BG_PER_MIN = '100000';
+// the limits these cases were written for; the live defaults are shorter (and may change again)
+process.env.AGENT_SUPERVISOR_STALL_MS = String(20 * 60000);
+process.env.AGENT_SUPERVISOR_STALL_KICK_MS = String(30 * 60000);
+process.env.AGENT_SUPERVISOR_SENT_BACK_REVIEW_MS = String(60 * 60000);
+process.env.AGENT_SUPERVISOR_SENT_BACK_PARK_MS = String(120 * 60000);
 process.env.DREAMSCAPE_CLAUDE_CARRY_SOCKET = `test-parked-${process.pid}`; // never Fleet's own tmux server
 fs.mkdirSync(path.join(tmp, '.claude', 'projects', '-repo'), { recursive: true });
 fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });

@@ -970,11 +970,18 @@ const WAIT_RE = /\b(stays? open (for|until) (yukimi|you|your|her)\b|left open fo
 function waitBackstop(result, final) {
     if (!result || result.verdict !== 'ok') return result;
     const text = String(final || '');
-    const tail = text.slice(-1500);
+    // quoted text is the agent citing words, not waiting (#1256: a report quoting such a phrase was put to Yukimi as a question)
+    const tail = text.slice(-1500).replace(/"[^"\n]{0,300}"|\u201c[^\u201d\n]{0,300}\u201d|`[^`\n]{0,300}`/g, '""');
     if (!WAIT_RE.test(tail)) return result;
     const sentences = tail.replace(/\s+/g, ' ').split(/(?<=[.?!])\s+/);
-    let qs = sentences.filter((x) => /\?$/.test(x.trim()) && x.length > 8).slice(-4);
-    if (!qs.length) qs = sentences.filter((x) => WAIT_RE.test(x)).slice(-2);
+    const qs = sentences.filter((x) => /\?$/.test(x.trim()) && x.length > 8).slice(-4);
+    // no question is registered when the agent asked none (Yukimi, Nov 26 2026: "do not register a question if there is no
+    // question"): a statement that sounds like waiting goes back to the agent, never to her
+    if (!qs.length) {
+        const said = sentences.filter((x) => WAIT_RE.test(x)).slice(-1)[0] || '';
+        const item = 'Your final answer reads as if the item waits on Yukimi, but it asks her nothing: finish the item, or ask the one question plainly';
+        return Object.assign({}, result, { verdict: 'gaps', missed: (result.missed || []).concat([{ item, evidence: said.trim().slice(0, 300) }]), summary: `${result.summary || ''} [its final answer sounds like waiting but asks no question]`.trim() });
+    }
     const questions = qs.map((q) => ({ question: q.replace(/^[-*\s\d.)]+/, '').trim().slice(0, 400), answer: '', why: 'its final answer waits on Yukimi (backstop)' }));
     return Object.assign({}, result, { verdict: 'input', questions: (result.questions || []).concat(questions), summary: `${result.summary || ''} [its final answer waits on Yukimi]`.trim() });
 }

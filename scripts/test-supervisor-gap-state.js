@@ -323,8 +323,17 @@ sup._test.setFetch(async (url, opts) => {
         const ok = { verdict: 'ok', summary: 's', missed: [] };
         assert.strictEqual(wb(ok, 'The issue has the Done comment and is left open for the Supervisor to close.').verdict, 'ok');
         assert.strictEqual(wb(ok, 'The item stays open until the client update goes out.').verdict, 'ok');
-        assert.strictEqual(wb(ok, "#1193 stays open for Yukimi's two answers.").verdict, 'input');
-        assert.strictEqual(wb(ok, 'It is left open for you to decide.').verdict, 'input');
+        // no question asked = no question registered (Yukimi): a waiting statement goes back to the agent as a gap
+        const st = wb(ok, "#1193 stays open for Yukimi's two answers.");
+        assert.strictEqual(st.verdict, 'gaps');
+        assert.ok(!st.questions || !st.questions.length);
+        assert.match(st.missed[0].item, /asks her nothing/);
+        // a real question is registered, as the question itself
+        const q = wb(ok, 'Two layouts are possible. Which do you want, A or B? It is left open for you to decide.');
+        assert.strictEqual(q.verdict, 'input');
+        assert.deepStrictEqual(q.questions.map((x) => x.question), ['Which do you want, A or B?']);
+        // a quoted phrase is the agent citing words, not waiting
+        assert.strictEqual(wb(ok, 'The check now counts the phrase only when it names her ("left open for you", "stays open for Yukimi\'s two answers").').verdict, 'ok');
     });
 
     require('../modules/agentCoord/store').close();

@@ -1418,8 +1418,10 @@ sup._test.setFetch(async (url, opts) => {
         const B = sup._test.waitBackstop;
         const ok = { verdict: 'ok', summary: 'fine', missed: [] };
         const a = B(ok, 'Nothing changed this turn, so there is nothing to commit. #1193 stays open for Yukimi\'s two answers (battery source, and what the tap should open).');
-        assert.strictEqual(a.verdict, 'input');
-        assert.ok(/stays open/.test(a.questions[0].question), JSON.stringify(a.questions));
+        // it never ends ok (item 72), but a statement is not a question for Yukimi (#1256): it goes back to the agent to ask plainly or finish
+        assert.strictEqual(a.verdict, 'gaps');
+        assert.ok(!a.questions || !a.questions.length, JSON.stringify(a.questions));
+        assert.ok(/stays open/.test(a.missed[0].evidence), JSON.stringify(a.missed));
         const b = B(ok, 'Built it. Should the card say Plaud or Voice Notes? Which do you prefer?');
         assert.strictEqual(b.verdict, 'input');
         assert.ok(b.questions.some((q) => /Which do you prefer\?/.test(q.question)));
