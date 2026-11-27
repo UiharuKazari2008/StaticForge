@@ -187,6 +187,8 @@
     function closeHosted(id) {
         const p = document.querySelector(`#wmShell .wm-page[data-app="${CSS.escape(id)}"]`);
         if (!p) return;
+        // media the program was playing stops with it (only inside its own page)
+        p.querySelectorAll('video, audio').forEach((m) => { try { m.pause(); } catch (_) { /* gone */ } });
         // top window first, each by its own close control (its code saves or discards)
         const wins = [...p.querySelectorAll('.modal')].filter((w) => w.parentElement && !w.parentElement.closest('.modal')).reverse();
         for (const win of wins) {
@@ -202,6 +204,9 @@
         if (!id || id === 'today' || id === 'nk') return;
         if (typeof ws.endApp === 'function') { try { ws.endApp(id); } catch (_) { /* below */ } }
         if (id.startsWith('host:')) closeHosted(id);
+        // an Android program (android:<package>/<activity>, or Start's a:android:...) stops what it plays
+        const droid = /^(?:a:)?android:([^/]+)\//.exec(id);
+        if (droid && window.wmMediaApps && typeof window.wmMediaApps.stopPackage === 'function') { try { window.wmMediaApps.stopPackage(droid[1]); } catch (_) { /* no bridge */ } }
         running.delete(id);
         cpuShown.delete(id);
     }

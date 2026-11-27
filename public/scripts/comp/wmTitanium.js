@@ -754,6 +754,8 @@
         window.addEventListener('androidnotifications', () => { if (superOpen) refreshNotes(); });
         // what plays changes while the bar is open: only the row draws again (#1128)
         window.addEventListener('dreamscape:media', () => { if (superOpen && superMedia) paintSuperMedia(); });
+        // a task's media stopped from the shell (wmMediaApps.stopPackage): the row drops at once
+        document.addEventListener('wmMediaChange', () => { if (superOpen && superMedia) paintSuperMedia(); }, { signal: appScopeSignal });
         // an app added to or removed from Messaging (#885) leaves or rejoins the list
         const t = window.textMessaging;
         if (t && typeof t.on === 'function') t.on('account', () => { if (superOpen) setTimeout(refreshNotes, 300); });
@@ -777,7 +779,7 @@
         superOutput = (st && st.output && st.output.name) ? st.output : null;
         const A = window.wmMediaApps;
         const hidden = A && typeof A.hidden === 'function' ? A.hidden() : new Set();
-        const list = ((st && st.sessions) || []).filter((x) => !/^jp\.net\.seventhreeseven\.dreamscape/.test(x.package || '') && !hidden.has(x.package) && x.state !== 'none' && (x.title || x.state === 'playing' || x.state === 'paused'));
+        const list = ((st && st.sessions) || []).filter((x) => !/^jp\.net\.seventhreeseven\.dreamscape/.test(x.package || '') && !hidden.has(x.package) && !(A && typeof A.isDismissed === 'function' && A.isDismissed(x.package, x)) && x.state !== 'none' && (x.title || x.state === 'playing' || x.state === 'paused'));
         if (!list.length) return null;
         return list.find((x) => x.id === st.active) || list.find((x) => x.state === 'playing') || list[0];
     }

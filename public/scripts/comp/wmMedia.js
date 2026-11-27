@@ -384,7 +384,7 @@
         // Options > Playback > the programs Now Playing follows (shared with Today's Music item: window.wmMediaApps)
         const A = window.wmMediaApps;
         const hidden = A && typeof A.hidden === 'function' ? A.hidden() : new Set();
-        const list = ((st && st.sessions) || []).filter((s) => !OWN_PACKAGE.test(s.package || '') && !hidden.has(s.package));
+        const list = ((st && st.sessions) || []).filter((s) => !OWN_PACKAGE.test(s.package || '') && !hidden.has(s.package) && !(A && typeof A.isDismissed === 'function' && A.isDismissed(s.package, s)));
         if (!list.length) return null;
         return list.find((s) => s.id === st.active) || list.find((s) => s.state === 'playing') || list[0];
     }
@@ -1969,6 +1969,8 @@
             // the input panel button as on the device: none on the playback screen, Properties and About
             sip: () => !full && layer !== 'skin' && layer !== 'props' && layer !== 'about' && layer !== 'update',
             mount,
+            // End Task / the task's X: Melaton Media's own queue stops with the program (#1287)
+            onEnd() { if (media.el) stop(); },
             show() {
                 // the app's other window (the DeX desktop) plays the Media Player and nothing plays here: it moves here
                 if (pullElsewhere()) { render(); return; }

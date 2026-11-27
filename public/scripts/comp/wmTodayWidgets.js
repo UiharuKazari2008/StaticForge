@@ -2248,7 +2248,42 @@
         document.dispatchEvent(new CustomEvent('wmSettingsChange', { detail: { keys: [key] } }));
         musicRepaint();
     }
-    window.wmMediaApps = { hidden: () => musicHidden(), choices: () => musicShowChoices(), setHidden: (list) => musicSetHidden(list || []), noteSeen: (st) => musicNoteSeen(st) };
+    // A task closed in Melaton / the Task Manager stops what its Android app plays (#1287): the app's sessions get
+    // pause + stop, and the package stays dismissed (hidden from Today's Music, the Super Bar and Now Playing) until one
+    // of its sessions plays again; the entry also lapses after 10 minutes. A play report in the first moments after
+    // the stop is the stale state the stop has not replaced yet, not a new play.
+    const ended = new Map(); // package -> time dismissed
+    const ENDED_LIFE = 10 * 60000;
+    const ENDED_GRACE = 2500;
+    function isDismissed(pkg, session) {
+        const at = ended.get(pkg);
+        if (at === undefined) return false;
+        const age = Date.now() - at;
+        if (age > ENDED_LIFE) { ended.delete(pkg); return false; }
+        if (age > ENDED_GRACE && session && (session.state === 'playing' || session.state === 'buffering')) { ended.delete(pkg); return false; }
+        return true;
+    }
+    function stopPackage(pkg) {
+        if (!pkg || typeof pkg !== 'string' || OWN_PKG.test(pkg)) return false;
+        const b = mediaBridge();
+        if (!b) return false;
+        let st = null;
+        try { st = JSON.parse(b.getState() || 'null'); } catch (_) { st = null; }
+        let found = false;
+        ((st && st.sessions) || []).forEach((x) => {
+            if (!x || x.package !== pkg) return;
+            found = true;
+            try { b.pause(x.id); } catch (_) { /* already gone */ }
+            try { b.stop(x.id); } catch (_) { /* already gone */ }
+        });
+        if (found) {
+            ended.set(pkg, Date.now());
+            musicRepaint();
+            document.dispatchEvent(new CustomEvent('wmMediaChange'));
+        }
+        return found;
+    }
+    window.wmMediaApps = { hidden: () => musicHidden(), choices: () => musicShowChoices(), setHidden: (list) => musicSetHidden(list || []), noteSeen: (st) => musicNoteSeen(st), stopPackage, isDismissed };
 
     const MUSIC_OPTIONS = [
         { key: 'app', label: 'Default app', value: MUSIC_DEFAULT, get choices() { return musicAppChoices(); } },
@@ -2271,7 +2306,7 @@
         const st = music.state;
         if (st && Array.isArray(st.sessions)) {
             const hidden = musicHidden();
-            const live = st.sessions.filter((s) => s && (s.title || s.artist) && ['playing', 'buffering', 'paused'].includes(s.state) && !hidden.has(s.package) && !OWN_PKG.test(s.package || ''));
+            const live = st.sessions.filter((s) => s && (s.title || s.artist) && ['playing', 'buffering', 'paused'].includes(s.state) && !hidden.has(s.package) && !OWN_PKG.test(s.package || '') && !isDismissed(s.package, s));
             const s = live.find((x) => x.id === st.active) || live.find((x) => x.state !== 'paused') || live[0];
             if (s) {
                 const acts = Array.isArray(s.actions) ? s.actions : [];
