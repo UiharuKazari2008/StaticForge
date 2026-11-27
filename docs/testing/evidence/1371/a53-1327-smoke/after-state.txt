@@ -1,0 +1,9 @@
+pid 9070
+shelltoken 1
+navmode 0
+1
+  mCurrentFocus=Window{33b7f96 u0 jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.HomeAlias}
+   streamVolume:1
+Failed to write while dumping service audio: Broken pipe
+0
+[V] volume is 0 in range [0..15]

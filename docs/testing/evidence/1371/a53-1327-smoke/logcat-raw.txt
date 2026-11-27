@@ -1,0 +1,12 @@
+--------- beginning of main
+11-27 02:58:24.396 I/MelatonBars( 9070): edge swipe: Back
+11-27 02:58:33.627 I/MelatonBars( 9070): edge swipe: Back
+11-27 02:58:35.662 I/MelatonBars( 9070): edge swipe: Back
+11-27 02:58:37.816 I/MelatonBars( 9070): edge swipe: Back
+11-27 03:00:03.089 I/OutputPanel( 9070): open: router started
+11-27 03:00:03.098 I/OutputPanel( 9070): media routing not allowed: asking the app's shell once
+11-27 03:00:03.125 I/MelatonBars( 9070): bubble output.0 drawn here
+11-27 03:00:03.231 I/OutputPanel( 9070): rows: Speakers*
+11-27 03:00:03.239 I/MelatonBars( 9070): bubble output.1 drawn here
+11-27 03:00:35.965 I/MelatonBars( 9070): popup tap 600,1500: outside: closed
+11-27 03:00:35.965 I/OutputPanel( 9070): router stopped

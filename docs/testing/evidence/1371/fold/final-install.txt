@@ -1,0 +1,27 @@
+[03:01:32 EST] apk 3632141-a3245cb.apk sha256 7b6f1c77acecb044d7a421db708f9ec2fc521744439d6b3963d404113c400958 = release 36 record
+[03:01:35 EST] pre: mWakefulness=Dozing playingSessions=0 audioPlayersStarted=0 mCallState=0
+[03:01:36 EST] before: vc=versionCode=3631866 holder=1578 shellrec=1 app=550 mode=0
+[03:03:10 EST] adb install -r (ONCE): Performing Streamed Install Success 
+[03:03:14 EST] t+3s vc=versionCode=3632141 holder=22058 shellrec=1 app=21693 out=[OK ]
+[03:03:17 EST] t+6s vc=versionCode=3632141 holder=22058 shellrec=1 app=21693 out=[OK ]
+--- read-only verification 03:03:24 EST
+    versionCode=3632141 minSdk=31 targetSdk=36
+    versionName=1.0.3632141
+    lastUpdateTime=2026-11-27 03:03:10
+  mWakefulness=Dozing
+Failed to write while dumping service power: Broken pipe
+holder=22058 out=[OK ] mode=0 overlay=[x]com.android.internal.systemui.navbar.threebutton shizuku=17510 app=21693
+    [4] barType=0 userId=0 what1=0x03600000 what2=0x00000000 pkg=com.android.shell token=android.os.BinderProxy@70c4997
+    [64] 11-26 22:44:06.424 barType=0 displayId=0 pkg=com.android.shell tag=binderDied userId=0 what=CLEAR token=android.os.BinderProxy@ce9c0a1
+    [65] 11-26 22:44:07.964 barType=0 displayId=0 pkg=com.android.shell tag=null userId=0 what=BACK HOME RECENT SEARCH  token=android.os.BinderProxy@c94de8a
+    [98] 11-27 03:03:10.776 barType=0 displayId=0 pkg=com.android.shell tag=binderDied userId=0 what=CLEAR token=android.os.BinderProxy@c94de8a
+    [99] 11-27 03:03:11.685 barType=0 displayId=0 pkg=com.android.shell tag=null userId=0 what=BACK HOME RECENT SEARCH  token=android.os.BinderProxy@70c4997
+     Crashed services:{}
+3
+installer activities: 0
+installer notifications: 0
+ds-install files: 0
+11-27 03:03:11.176 I/MelatonBars(21693): early hold at process start (#1371)
+11-27 03:03:11.686 I/MelatonBars(21693): holder token linked (#1331)
+11-27 03:03:15.123 I/BarsHeal(21693): check (process start)
+11-27 03:03:15.124 I/BarsHeal(21693): asking the shell for the direct route's permission
