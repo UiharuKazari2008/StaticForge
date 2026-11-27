@@ -12,7 +12,7 @@
  * "-PT15M" -> reminder minutes, or TRIGGER;VALUE=DATE-TIME -> reminderAt), RRULE (DAILY / WEEKLY
  * BYDAY / MONTHLY BYMONTHDAY|nXX / YEARLY, INTERVAL, COUNT, UNTIL), EXDATE, all-day events, TZID and
  * floating times as the server's local time (as the Calendar shows them); VTODO reminderAt for tasks
- * not completed. Left out, as the Calendar's own reminder window leaves them out: the calendars hidden
+ * not completed (and the due notices below). Left out, as the Calendar's own reminder window leaves them out: the calendars hidden
  * in Calendar (registry HKCU\Software\Xyridian\Melaton\Windows Calendar, Hidden), and the phone mirror
  * files (X-MELATON-SOURCE:phone:...; the phone's own calendar app reminds of those natively).
  *
@@ -28,6 +28,12 @@
  *     text  the subject, the time ("10:00 AM-11:00 AM", "Tue 11/17 All Day", "Due: 11/17/2026"), the location
  *     data  { app, kind: 'reminder', uid, start, end, allDay, fileId, calendar, subject, when, location }
  *     until the appointment ends (at least an hour), a task's for a day.
+ * - A task with a DUE and no absolute reminder (a relative VALARM on a task is not fired, so it counts as none)
+ *   gets one due notice (#1290) while it is not completed or cancelled: 8:00 AM on a date-only DUE's day, else at
+ *   the DUE time; the same notice as a task reminder, id rem:task:<uid>:due:<dueMs> (one per due date),
+ *   data.dueNotice true. Not when the task was written (newest of LAST-MODIFIED / DTSTAMP) after that moment,
+ *   except in the agents' calendar (X-MELATON-OWNER:agents). Switch: REG_KEY TaskDueNotice (default on), read at
+ *   fire time. One the server was down for fires later the same day, never on a later day. Nothing is written to a task.
  * - Fired ids are kept in sqlite (reminders.db next to notifications.db) so a restart neither repeats
  *   one nor loses one: those that came due in the last 15 minutes while the server was down fire once.
  * - Snooze (reminder_snooze from the page, the phone app or the desktop Calendar; any notice since Nov 18, not
@@ -46,6 +52,7 @@ const HORIZON_MS = 36 * HOUR; // look this far ahead
 const MAX_WAIT_MS = 12 * HOUR; // the timer never waits longer: the window rolls on
 const FIRED_KEEP_MS = 3 * DAY;
 const DEBOUNCE_MS = 2500;
+const DUE_NOTICE_HOUR = 8; // a date-only DUE's notice: 8:00 AM that day
 const REG_KEY = 'HKCU\\Software\\Xyridian\\Melaton\\Windows Calendar';
 const USER = 'admin'; // the household (the phone's user); dev_admin test tabs have no calendars of their own
 
@@ -111,7 +118,7 @@ function durationMinutes(v) {
 /** An .ics text to { name, color, source, refresh, events, tasks } (apps/calendar parseIcs). */
 function parseIcs(text) {
     const lines = String(text || '').replace(/\r\n|\r/g, '\n').replace(/\n[ \t]/g, '').split('\n');
-    const cal = { name: '', color: '', source: '', refresh: 0, events: [], tasks: [] };
+    const cal = { name: '', color: '', source: '', owner: '', refresh: 0, events: [], tasks: [] };
     let cur = null;
     let alarm = null;
     for (const line of lines) {
@@ -155,6 +162,7 @@ function parseIcs(text) {
             if (name === 'X-WR-CALNAME') cal.name = icsUnescape(value);
             else if (name === 'X-MELATON-COLOR' || name === 'X-APPLE-CALENDAR-COLOR') cal.color = value.slice(0, 7);
             else if (name === 'X-MELATON-SOURCE') cal.source = value;
+            else if (name === 'X-MELATON-OWNER') cal.owner = value.trim();
             else if (name === 'X-MELATON-REFRESH') cal.refresh = parseInt(value, 10) || 0;
             continue;
         }
@@ -167,10 +175,12 @@ function parseIcs(text) {
             case 'DTSTART': { const p = parseIcsDate(value, params); if (p) { cur.start = p.date; cur.allDay = p.allDay; } break; }
             case 'DTEND': { const p = parseIcsDate(value, params); if (p) cur.end = p.date; break; }
             case 'DURATION': cur.duration = durationMinutes(value) * -60000; break;
-            case 'DUE': { const p = parseIcsDate(value, params); if (p) cur.due = p.date; break; }
+            case 'DUE': { const p = parseIcsDate(value, params); if (p) { cur.due = p.date; cur.dueAllDay = p.allDay; } break; }
+            // when the task was last written (the newest of the two): its due notice looks at it
+            case 'DTSTAMP': case 'LAST-MODIFIED': if (cur.kind === 'task') { const p = parseIcsDate(value, params); if (p) cur.modifiedAt = Math.max(cur.modifiedAt || 0, p.date.getTime()); } break;
             case 'RRULE': cur.rrule = parseRrule(value); break;
             case 'EXDATE': value.split(',').forEach((x) => { const p = parseIcsDate(x, params); if (p) cur.exdates.push(p.date.getTime()); }); break;
-            case 'STATUS': if (cur.kind === 'task') cur.completed = value.toUpperCase() === 'COMPLETED'; break;
+            case 'STATUS': if (cur.kind === 'task') { cur.completed = value.toUpperCase() === 'COMPLETED'; cur.cancelled = value.trim().toUpperCase() === 'CANCELLED'; } break;
             case 'COMPLETED': if (cur.kind === 'task') cur.completed = true; break;
             case 'PERCENT-COMPLETE': if (cur.kind === 'task' && parseInt(value, 10) >= 100) cur.completed = true; break;
             default:
@@ -282,11 +292,26 @@ const snoozedRows = () => database().prepare('SELECT * FROM snoozed ORDER BY at'
 
 // ------------------------------------------------------------------ the calendars
 
+/** One value of Calendar's registry key (userGlobalSettings.registry), or undefined. */
+function registryValue(name) {
+    const reg = gr && gr.getConfig ? gr.getConfig({ path: 'userGlobalSettings' }) : null;
+    const key = reg && reg.registry && reg.registry[REG_KEY];
+    return key ? key[name] : undefined;
+}
+
+/** The due notices' own switch (phone Tasks > Menu > Options): on unless TaskDueNotice is '0' / 0 / false. */
+function dueNoticeOn() {
+    try {
+        const v = registryValue('TaskDueNotice');
+        return !(v === '0' || v === 0 || v === false);
+    } catch (_e) {
+        return true;
+    }
+}
+
 function hiddenCalendars() {
     try {
-        const reg = gr && gr.getConfig ? gr.getConfig({ path: 'userGlobalSettings' }) : null;
-        const key = reg && reg.registry && reg.registry[REG_KEY];
-        const v = key && key.Hidden;
+        const v = registryValue('Hidden');
         const list = Array.isArray(v) ? v : JSON.parse(v || '[]');
         return new Set(Array.isArray(list) ? list.map(String) : []);
     } catch (_e) {
@@ -329,10 +354,18 @@ function parsedOf(file) {
     return cal;
 }
 
-/** The reminders due in [from, to): [{ id, at, notice }] sorted by at. */
+const startOfDayMs = (ms) => new Date(ms).setHours(0, 0, 0, 0);
+
+/** A task's due notice moment: 8:00 AM on a date-only DUE's day, else the DUE time. */
+function dueMoment(t) {
+    return t.dueAllDay ? new Date(t.due).setHours(DUE_NOTICE_HOUR, 0, 0, 0) : t.due.getTime();
+}
+
+/** The reminders due in [from, to) (task due notices: from today's start): [{ id, at, dueNotice?, notice }] sorted by at. */
 function computeReminders(files, from, to) {
     const now = new Date(nowFn());
     const hidden = hiddenCalendars();
+    const today = startOfDayMs(+now);
     const out = [];
     for (const file of files) {
         const cal = parsedOf(file);
@@ -370,22 +403,37 @@ function computeReminders(files, from, to) {
             const lead = ev.reminder * MIN;
             occurrences(ev, new Date(from + lead), new Date(to + lead)).forEach((o) => add(o, o.start.getTime() - lead));
         }
+        const agents = /^agents$/i.test(cal.owner || '');
         for (const t of cal.tasks) {
-            if (!t.uid || t.completed || !t.reminderAt) continue;
-            const at = t.reminderAt.getTime();
-            if (!(at >= from && at < to)) continue;
-            const subject = t.summary || 'No Subject';
+            if (!t.uid || t.completed) continue;
+            const dueOnly = !t.reminderAt;
+            let at;
+            if (!dueOnly) {
+                at = t.reminderAt.getTime();
+                if (!(at >= from && at < to)) continue;
+            } else {
+                if (!t.due || t.cancelled) continue;
+                at = dueMoment(t);
+                if (!(at >= today && at < to)) continue; // from today's start, not `from`: the same day's catch-up
+                // written after the moment: whoever wrote it saw it was due (in the agents' calendar that was not her)
+                if (!agents && t.modifiedAt > at) continue;
+            }
+            // trimmed: a blank subject on a task with no DUE would be a notice with no body, which the inbox refuses
+            const subject = String(t.summary || '').trim() || 'No Subject';
             const when = t.due ? `Due: ${dateText(t.due)}` : '';
+            // her reminder, or the due notice (switch: TaskDueNotice, checked when it fires)
+            // notice: task-due
             out.push({
-                id: `rem:task:${t.uid}:${at}`,
+                id: dueOnly ? `rem:task:${t.uid}:due:${t.due.getTime()}` : `rem:task:${t.uid}:${at}`,
                 at,
+                dueNotice: dueOnly,
                 notice: {
                     app: 'tasks',
                     cls: 'reminder',
                     title: `${clock(new Date(at))} | Reminder`,
                     text: [subject, when].filter(Boolean).join('\n'),
                     actions: ['dismiss', 'snooze'],
-                    data: Object.assign({ app: 'tasks', kind: 'reminder', task: true, uid: t.uid, start: at, due: t.due ? t.due.getTime() : null, subject, when, location: '' }, base),
+                    data: Object.assign({ app: 'tasks', kind: 'reminder', task: true, uid: t.uid, start: at, due: t.due ? t.due.getTime() : null, subject, when, location: '' }, dueOnly ? { dueNotice: true } : null, base),
                     expiresAt: at + DAY,
                 },
             });
@@ -429,6 +477,12 @@ function fireSnoozed(row) {
     return out;
 }
 
+/** May an item whose moment has come fire now? A due notice: any time that same day, while it is switched on
+ *  (switched off it is not marked fired). A reminder: within the catch-up window. */
+function mayFire(it, now) {
+    return it.dueNotice ? it.at >= startOfDayMs(now) && dueNoticeOn() : it.at >= now - CATCHUP_MS;
+}
+
 async function scan() {
     const now = nowFn();
     const files = await (source || readCalendarFiles)();
@@ -454,7 +508,7 @@ async function tick() {
         const now = nowFn();
         for (const it of items) {
             if (it.at > now) break;
-            if (it.at >= now - CATCHUP_MS && !isFired(it.id)) fire(it);
+            if (!isFired(it.id) && mayFire(it, now)) fire(it);
         }
         for (const row of snoozedRows()) if (row.at <= now) fireSnoozed(row);
         arm();

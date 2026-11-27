@@ -1,0 +1,12 @@
+{
+  "sources": {
+    "task-due": {
+      "area": "Task reminder and task due notice raised by the server (modules/reminderScheduler.js computeReminders, class reminder, app tasks; ids rem:task:<uid>:<reminderAtMs> and rem:task:<uid>:due:<dueMs>; shown by wmNotificationInbox.js showReminder and by the phone app)",
+      "trigger": "timer",
+      "action": "Dismiss, Menu (Snooze, View Item: opens the task in Tasks)",
+      "sound": true,
+      "switch": "Due notice: phone Tasks > Menu > Options > Notify when a task is due (registry HKCU\\Software\\Xyridian\\Melaton\\Windows Calendar, TaskDueNotice, default on, read when it fires). Both: Settings > Sounds & Notifications > Notifications > Reminders (wmSounds: Play sound, Display message, Vibrate)",
+      "note": "N1/N7 ok: an open task of hers has come due (8:00 AM on a date-only due day, else the due time), data she put there to act on; N2 ok: none when the task was written after that moment (the agents' calendar excepted: she did not write it); N4 ok: View Item opens the task; N5 ok: its own check box, apart from the reminders she sets; N6 ok: one per task and due date (fired ids kept in reminders.db), none for a task with its own reminder; N9 ok: the same day only, never a backlog of earlier days. Completed and cancelled tasks never"
+    }
+  }
+}

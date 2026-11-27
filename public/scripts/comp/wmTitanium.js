@@ -317,10 +317,11 @@
             };
         }
         if (id === 'tasks') {
-            // the Tasks program's count, its second line under it; the panel and its key open Tasks
+            // the Tasks program's count, its second line under it, the overdue ones as the label's
+            // superscript (#1290); the panel and its key open Tasks
             const lines = String(st.tasks || 'No tasks').split('\n');
             const go = () => { if (window.wmTasks && typeof window.wmTasks.open === 'function') window.wmTasks.open(); else sh.open('gallery'); };
-            return { label: 'tasks', icon: 's:tasks', pages: [{ title: lines[0], line2: lines.slice(1).join(', ') }], softKey: { label: 'Tasks', action: go }, onTap: go };
+            return { label: 'tasks', count: st.tasksOverdue ? String(st.tasksOverdue) : '', icon: 's:tasks', pages: [{ title: lines[0], line2: lines.slice(1).join(', ') }], softKey: { label: 'Tasks', action: go }, onTap: go };
         }
         if (id === 'search') {
             // a page each for Search Internet / Grimoire / Files / Pictures, its program's icon at the
@@ -2309,7 +2310,10 @@
             host.classList.remove('is-entering');
             cancelAnimationFrame(settle); settle = 0; tw = null;
             clearTimeout(zoomTimer); zoomTimer = 0; host.classList.remove('is-zoom', 'is-zoom-enter');
-            sel = i; pos = i; skSel = i; place(); drawExpanded(); sh.refreshSoftKeys();
+            sel = i; pos = i; skSel = i; place(); drawExpanded();
+            // a repaint the stopped move had put off draws now: no landing is left to draw it
+            if (missed && !dragging && sh.current === 'today') view.refresh(page);
+            sh.refreshSoftKeys();
             return;
         }
         // a second key while the list still moves: the first move is over at once (device: three

@@ -4,7 +4,10 @@
 // Appointment reminders per occurrence (RRULE daily / weekly BYDAY / monthly, EXDATE, COUNT), all-day
 // events, relative and absolute triggers, task reminders (completed ones never), the phone mirror and
 // hidden calendars left out, the inbox notice's id / wording / data, one timer for the next one, restart
-// catch-up (once, only within 15 minutes), a change re-arming the timer, snooze and dismiss.
+// catch-up (once, only within 15 minutes), a change re-arming the timer, snooze and dismiss; the task due notice
+// (#1290: 8:00 AM or the DUE time, once per due date, same-day catch-up, not after a later write except in the
+// agents' calendar, its own switch). Every reminder shape passes the inbox's guard (#1299: a body and a call to
+// action); nothing here may be refused.
 process.env.TZ = 'America/New_York';
 const assert = require('assert');
 const fs = require('fs');
@@ -19,6 +22,9 @@ process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 const activeSync = require('../modules/activeSync');
 const inbox = require('../modules/notificationInbox');
 const rem = require('../modules/reminderScheduler');
+// the inbox files a refused notice in the server's fault store: caught here, so a test run never writes it
+const refusals = [];
+require('../modules/serverFaultCapture').capture = (err, kind, extra) => { refusals.push((extra && extra.id) || err.message); };
 
 const toPhones = [];
 const clearedOnPhones = [];
@@ -226,6 +232,243 @@ const ids = () => rem._test.items().map((i) => i.id);
     at(local(2026, 11, 16, 12, 50));
     await rem.tick();
     assert.ok(!byId(ddId), 'dismissed: not fired');
+
+    // ==== the task due notice (#1290): a task with a DUE and no absolute reminder
+    const todo = (uid, lines) => `BEGIN:VTODO\r\nUID:${uid}\r\nSUMMARY:Task ${uid}\r\n${lines.join('\r\n')}\r\nEND:VTODO\r\n`;
+    const stampAt = (ms) => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+    const dueDate = (d) => `DUE;VALUE=DATE:202611${d}`;
+    const dueId = (uid, ms) => `rem:task:${uid}:due:${ms}`;
+    const REG = 'HKCU\\Software\\Xyridian\\Melaton\\Windows Calendar';
+    const restart = () => { rem._test.reset(); rem._test.setSource(async () => files); rem._test.startNoTimer(); };
+    const sent = (id) => toPhones.filter((x) => x.id === id).length;
+    registry = {};
+    restart();
+
+    // ---- a date-only DUE fires at 8:00, once; the timer wakes for it
+    at(local(2026, 11, 19, 7, 0));
+    const before8 = `DTSTAMP:${stampAt(local(2026, 11, 18, 12, 0))}`;
+    // a relative VALARM on a task is not fired, so it counts as no reminder
+    files = [file('t1', ics(todo('d1', [dueDate('19'), before8]) + todo('rel', [dueDate('19'), before8, alarm('TRIGGER:-PT15M')]) + todo('nostamp', [dueDate('19')])))];
+    await rem.tick();
+    const d1 = dueId('d1', local(2026, 11, 19));
+    assert.deepStrictEqual(ids().sort(), [d1, dueId('nostamp', local(2026, 11, 19)), dueId('rel', local(2026, 11, 19))].sort());
+    assert.ok(rem._test.items().every((i) => i.at === local(2026, 11, 19, 8, 0) && i.dueNotice === true));
+    assert.strictEqual(rem._test.timerDelay(), 3600000, 'armed for 8:00');
+    assert.ok(!byId(d1), 'not before 8:00');
+    at(local(2026, 11, 19, 8, 0));
+    await rem.tick();
+    n = byId(d1);
+    assert.ok(n, 'fired at 8:00');
+    assert.deepStrictEqual([n.app, n.cls, n.title, n.text], ['tasks', 'reminder', '8:00 | Reminder', 'Task d1\nDue: 11/19/2026']);
+    assert.deepStrictEqual(n.actions, ['dismiss', 'snooze']);
+    assert.deepStrictEqual([n.data.app, n.data.kind, n.data.task, n.data.uid, n.data.start, n.data.due, n.data.dueNotice, n.data.fileId], ['tasks', 'reminder', true, 'd1', local(2026, 11, 19, 8, 0), local(2026, 11, 19), true, 't1']);
+    assert.strictEqual(n.expiresAt, local(2026, 11, 19, 8, 0) + 24 * 3600000);
+    at(local(2026, 11, 19, 8, 0) + 1000);
+    await rem.tick();
+    assert.strictEqual(sent(d1), 1, 'once');
+    // the desktop Calendar's save rewrites every DTSTAMP, and a rescan after it (or after a restart) repeats nothing
+    for (const stamp of [local(2026, 11, 19, 8, 30), local(2026, 11, 18, 12, 0)]) {
+        files = [file('t1', ics(todo('d1', [dueDate('19'), `DTSTAMP:${stampAt(stamp)}`])))];
+        at(local(2026, 11, 19, 9, 0));
+        await rem.tick();
+        restart();
+        at(local(2026, 11, 19, 23, 0));
+        await rem.tick();
+        assert.strictEqual(sent(d1), 1, 'never again for this due date');
+    }
+
+    // ---- a DUE with a time: at that time (UTC and TZID forms)
+    at(local(2026, 11, 19, 12, 0));
+    files = [file('t2', ics(todo('tm', ['DUE:20261119T203000Z', before8]) + todo('tz', ['DUE;TZID=America/New_York:20261119T170000', before8])))];
+    await rem.tick();
+    const tm = dueId('tm', Date.UTC(2026, 10, 19, 20, 30));
+    assert.deepStrictEqual(rem._test.items().map((i) => [i.id, i.at]), [[tm, local(2026, 11, 19, 15, 30)], [dueId('tz', local(2026, 11, 19, 17, 0)), local(2026, 11, 19, 17, 0)]]);
+    assert.strictEqual(rem._test.timerDelay(), 3.5 * 3600000);
+    at(local(2026, 11, 19, 15, 30));
+    await rem.tick();
+    assert.strictEqual(byId(tm).title, '3:30 | Reminder');
+
+    // ---- an absolute reminder (ahead or long past): that one only; completed / cancelled / no DUE / no UID: none
+    at(local(2026, 11, 19, 7, 0));
+    files = [
+        file('t3', ics(
+            todo('has', [dueDate('19'), before8, alarm('TRIGGER;VALUE=DATE-TIME:20261119T150000Z')])
+            + todo('had', [dueDate('19'), before8, alarm('TRIGGER;VALUE=DATE-TIME:20261110T150000Z')])
+            + todo('done', [dueDate('19'), before8, 'STATUS:COMPLETED', 'PERCENT-COMPLETE:100'])
+            + todo('pct', [dueDate('19'), before8, 'PERCENT-COMPLETE:100'])
+            + todo('comp', [dueDate('19'), before8, 'COMPLETED:20261118T150000Z'])
+            + todo('canc', [dueDate('19'), before8, 'STATUS:CANCELLED'])
+            + todo('undated', [before8])
+            + `BEGIN:VTODO\r\nSUMMARY:No uid\r\n${dueDate('19')}\r\nEND:VTODO\r\n`
+        )),
+        file('t3p', ics(todo('mirror', [dueDate('19'), before8]), 'X-MELATON-SOURCE:phone:Xperia\r\n')),
+        file('t3h', ics(todo('hidden', [dueDate('19'), before8])).replace('X-WR-CALNAME:Mine', 'X-WR-CALNAME:Work')),
+    ];
+    registry = { [REG]: { Hidden: '["Work"]' } };
+    await rem.tick();
+    assert.deepStrictEqual(ids(), [`rem:task:has:${Date.UTC(2026, 10, 19, 15, 0)}`]);
+    assert.ok(!('dueNotice' in rem._test.items()[0].notice.data), 'her own reminder is not a due notice');
+    registry = {};
+
+    // ---- an earlier day's DUE: never (no flood on deploy), not even minutes after midnight; tomorrow's waits
+    at(local(2026, 11, 20, 0, 5));
+    files = [file('t4', ics(todo('y', [dueDate('19'), before8]) + todo('old', ['DUE;VALUE=DATE:20250101', 'DTSTAMP:20241201T000000Z']) + todo('late', ['DUE;TZID=America/New_York:20261119T235500', before8]) + todo('tom', [dueDate('21'), before8])))];
+    toPhones.length = 0;
+    await rem.tick();
+    assert.deepStrictEqual(ids(), [dueId('tom', local(2026, 11, 21))]);
+    assert.strictEqual(toPhones.length, 0);
+    at(local(2026, 11, 20, 23, 59));
+    await rem.tick();
+    assert.strictEqual(toPhones.length, 0);
+
+    // ---- the server was down at 8:00: it fires later the same day, once; a day later it does not
+    restart();
+    files = [file('t5', ics(todo('down', [dueDate('20'), before8]) + todo('gone', [dueDate('19'), before8])))];
+    at(local(2026, 11, 20, 17, 45));
+    toPhones.length = 0;
+    await rem.tick();
+    assert.deepStrictEqual(toPhones.map((x) => x.id), [dueId('down', local(2026, 11, 20))]);
+    assert.strictEqual(byId(dueId('down', local(2026, 11, 20))).title, '8:00 | Reminder');
+    restart();
+    await rem.tick();
+    assert.strictEqual(toPhones.length, 1, 'not again after a restart');
+
+    // ---- written after the moment (the newest of LAST-MODIFIED / DTSTAMP): none; the agents' calendar still does
+    restart();
+    at(local(2026, 11, 22, 10, 0));
+    const early = stampAt(local(2026, 11, 22, 7, 59));
+    const after = stampAt(local(2026, 11, 22, 9, 0));
+    const body = (p) => todo(`${p}s`, [dueDate('22'), `DTSTAMP:${after}`])
+        + todo(`${p}m`, [dueDate('22'), `DTSTAMP:${early}`, `LAST-MODIFIED:${after}`])
+        + todo(`${p}r`, [dueDate('22'), `LAST-MODIFIED:${early}`, `DTSTAMP:${after}`])
+        + todo(`${p}ok`, [dueDate('22'), `DTSTAMP:${early}`, `LAST-MODIFIED:${early}`]);
+    files = [file('t6', ics(body('mine-'))), file('t6a', ics(body('ag-'), 'X-MELATON-OWNER:agents\r\n'))];
+    toPhones.length = 0;
+    await rem.tick();
+    assert.deepStrictEqual(toPhones.map((x) => x.data.uid).sort(), ['ag-m', 'ag-ok', 'ag-r', 'ag-s', 'mine-ok']);
+    // a timed DUE already past when it was written: none
+    files = [file('t6t', ics(todo('past', ['DUE;TZID=America/New_York:20261122T083000', `DTSTAMP:${after}`])))];
+    await rem.tick();
+    assert.deepStrictEqual(ids(), []);
+
+    // ---- the switch (TaskDueNotice), read at fire time: off fires none and marks none; her own reminders still fire
+    restart();
+    at(local(2026, 11, 23, 7, 0));
+    const early23 = `DTSTAMP:${stampAt(local(2026, 11, 22, 12, 0))}`;
+    files = [file('t7', ics(todo('sw', [dueDate('23'), early23]) + todo('own', [dueDate('23'), early23, alarm('TRIGGER;VALUE=DATE-TIME:20261123T130000Z')])))];
+    const sw = dueId('sw', local(2026, 11, 23));
+    toPhones.length = 0;
+    registry = { [REG]: { TaskDueNotice: 0 } };
+    await rem.tick();
+    assert.strictEqual(rem._test.timerDelay(), 3600000, 'still armed: the switch is read when it fires');
+    for (const [off, mins] of [[0, 0], ['0', 5], [false, 10]]) {
+        registry = { [REG]: { TaskDueNotice: off } };
+        at(local(2026, 11, 23, 8, mins));
+        await rem.tick();
+        assert.ok(!byId(sw), `off (${JSON.stringify(off)}): none`);
+    }
+    assert.deepStrictEqual(toPhones.map((x) => x.id), [`rem:task:own:${Date.UTC(2026, 10, 23, 13, 0)}`], 'her own reminder is not switched off');
+    registry = { [REG]: { TaskDueNotice: 1 } };
+    at(local(2026, 11, 23, 14, 0));
+    await rem.tick(); // no calendar change
+    assert.strictEqual(sent(sw), 1, 'back on the same day: it fires (so it was not marked fired)');
+    for (const on of ['1', true, undefined]) {
+        registry = { [REG]: on === undefined ? {} : { TaskDueNotice: on } };
+        const uid = `on-${String(on)}`;
+        files = [file(`t7-${uid}`, ics(todo(uid, [dueDate('23'), early23])))];
+        await rem.tick();
+        assert.strictEqual(sent(dueId(uid, local(2026, 11, 23))), 1, `on (${String(on)})`);
+    }
+    registry = {};
+
+    // ---- a repeating task: the server's own reset (modules/taskRecurrence.js, just after midnight) gives the new date its own id
+    restart();
+    at(local(2026, 11, 24, 8, 0));
+    let text = ics(todo('rep', [dueDate('24'), 'RRULE:FREQ=DAILY', `DTSTAMP:${stampAt(local(2026, 11, 23, 12, 0))}`]));
+    files = [file('t8', text)];
+    await rem.tick();
+    assert.strictEqual(sent(dueId('rep', local(2026, 11, 24))), 1);
+    const reset = require('../modules/taskRecurrence').resetText(text, local(2026, 11, 25) + 1000);
+    assert.strictEqual(reset.resets.length, 1);
+    text = reset.text;
+    files = [file('t8', text)];
+    at(local(2026, 11, 25) + 2000);
+    await rem.tick();
+    assert.deepStrictEqual(ids(), [dueId('rep', local(2026, 11, 25))]);
+    assert.strictEqual(rem._test.timerDelay(), 8 * 3600000 - 2000);
+    at(local(2026, 11, 25, 8, 0));
+    await rem.tick();
+    assert.strictEqual(sent(dueId('rep', local(2026, 11, 25))), 1, 'the new due date fires too');
+
+    // ---- snooze on the new id (also after a Calendar save took the task out of the computed list); dismiss before it fires
+    const repId = dueId('rep', local(2026, 11, 25));
+    files = [file('t8', text.replace(/DTSTAMP:\w+/, `DTSTAMP:${stampAt(local(2026, 11, 25, 8, 1))}`).replace(/LAST-MODIFIED:\w+\r\n/, ''))];
+    at(local(2026, 11, 25, 8, 2));
+    await rem.tick();
+    assert.deepStrictEqual(ids(), []);
+    assert.ok(rem.snooze('admin', repId, { minutes: 10 }).ok);
+    assert.strictEqual(byId(repId).state, 'cleared');
+    assert.strictEqual(rem._test.timerDelay(), 10 * 60000);
+    at(local(2026, 11, 25, 8, 12));
+    await rem.tick();
+    assert.deepStrictEqual([byId(repId).state, byId(repId).title, sent(repId)], ['new', '8:12 | Reminder', 2]);
+    at(local(2026, 11, 25, 8, 20));
+    await rem.tick();
+    assert.strictEqual(sent(repId), 2, 'nothing more');
+    at(local(2026, 11, 26, 7, 0));
+    files = [file('t9', ics(todo('dis', [dueDate('26'), `DTSTAMP:${stampAt(local(2026, 11, 25, 12, 0))}`])))];
+    await rem.tick();
+    assert.ok(rem.dismiss('admin', dueId('dis', local(2026, 11, 26))).ok);
+    at(local(2026, 11, 26, 8, 0));
+    await rem.tick();
+    assert.ok(!byId(dueId('dis', local(2026, 11, 26))), 'dismissed first: never fires');
+
+    // ==== the inbox guard (#1299): every shape of calendar / task reminder and due notice registers, and comes back from a snooze
+    restart();
+    at(local(2026, 11, 27, 7, 0));
+    const g = `DTSTAMP:${stampAt(local(2026, 11, 26, 12, 0))}`;
+    const at8 = alarm('TRIGGER;VALUE=DATE-TIME:20261127T130000Z');
+    const bare = (uid, lines) => `BEGIN:VTODO\r\nUID:${uid}\r\n${lines.join('\r\n')}\r\nEND:VTODO\r\n`;
+    files = [file('g', ics(
+        ev('g-rel', ['DTSTART:20261127T131500Z', 'DTEND:20261127T140000Z', 'SUMMARY:Timed', alarm('TRIGGER:-PT15M')])
+        + ev('g-allday', ['DTSTART;VALUE=DATE:20261128', 'DTEND;VALUE=DATE:20261129', 'SUMMARY:All day', alarm('TRIGGER:-PT16H')])
+        + ev('g-nosubject', ['DTSTART:20261127T130000Z', 'DTEND:20261127T130000Z', alarm('TRIGGER:PT0S')])
+        + todo('g-own-due', [dueDate('27'), g, at8])
+        + todo('g-own', [g, at8])
+        + bare('g-own-empty', [g, at8])
+        + bare('g-own-blank', ['SUMMARY:   ', g, at8])
+        + todo('g-due', [dueDate('27'), g])
+        + todo('g-due-timed', ['DUE:20261127T130000Z', g])
+        + bare('g-due-blank', ['SUMMARY:   ', dueDate('27'), g])
+    ))];
+    await rem.tick();
+    const shapes = rem._test.items().slice();
+    assert.strictEqual(shapes.length, 10, 'all ten shapes computed');
+    at(local(2026, 11, 27, 8, 0));
+    await rem.tick();
+    const passes = (nt, label) => {
+        assert.ok(String(nt.text || '').trim(), `${label}: a body`);
+        assert.ok(nt.actions.length && nt.app && nt.data.app, `${label}: a call to action`);
+        if (typeof inbox.noticeGap === 'function') assert.strictEqual(inbox.noticeGap(nt), '', `${label}: the guard`);
+    };
+    for (const s of shapes) {
+        passes(s.notice, s.id);
+        assert.ok(byId(s.id) && byId(s.id).state === 'new', `${s.id}: registered in the inbox`);
+        assert.strictEqual(sent(s.id), 1, `${s.id}: sent to the phones`);
+        assert.ok(rem.snooze('admin', s.id, { minutes: 5 }).ok);
+    }
+    assert.strictEqual(byId('rem:task:g-own-blank:' + local(2026, 11, 27, 8, 0)).text, 'No Subject');
+    at(local(2026, 11, 27, 8, 5));
+    await rem.tick();
+    for (const s of shapes) {
+        passes(byId(s.id), `${s.id} after snooze`);
+        assert.deepStrictEqual([byId(s.id).state, sent(s.id)], ['new', 2], `${s.id}: back after the snooze`);
+    }
+    assert.deepStrictEqual(refusals, [], 'the guard refused nothing in this whole run');
+    if (typeof inbox.noticeGap === 'function') { // the guard really was in the way of the notices above
+        assert.strictEqual(inbox.publish({ user: 'admin', app: 'tasks', id: 'rem:guard-control', cls: 'reminder', title: 't', text: ' ', actions: ['dismiss'] }), null);
+        assert.deepStrictEqual(refusals, ['rem:guard-control']);
+    }
 
     rem._test.reset();
     inbox._test.reset();

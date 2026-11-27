@@ -62,6 +62,25 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-count {
     vertical-align: top;
 }
 
+/* The classic Today's Tasks row (Titanium switched off; 6.5 and 6.5.1, whose data-wm-version is 6.5
+   too): the overdue count after the first line, in .wm-ti-count's proportions of the row's 24 units
+   (text 14, gap 4, here in the superscript's own em). Colour, font and weight are the row's. 6.1 has none. */
+html.ui-mobile .wm-today-count {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-today-count {
+    display: inline-block;
+    margin-left: calc(4em / 14);
+    font-size: calc(14em / 24);
+    line-height: 1.2075;
+    vertical-align: top;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-today-count:empty {
+    display: none;
+}
+
 /* a drawn mark in the count's place (Yukimi, Nov 13: music shows its playback as e-mail shows its
    count): play is a right-pointing triangle, pause two bars, both white like the count's digits and
    standing on the count's cap line. Drawn, not ▶/⏸ characters (Android shows those as colour emoji). */

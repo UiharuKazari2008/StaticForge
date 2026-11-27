@@ -22,6 +22,9 @@
  *               rule, 19.5 px rows), tabs Task | Notes, the kit's month calendar under a date
  *               ("Today:" and "None" rows) and its time box for the reminder; ok saves, Menu >
  *               Cancel leaves
+ *   reminders   a reminder offered by default is never a moment already past. A task with a due date and no
+ *               reminder gets the server's due notice (#1290, modules/reminderScheduler.js); its switch is Options'
+ *               "Notify when a task is due" (registry REG_KEY TaskDueNotice, default on)
  *   delete      "Tasks will be permanently deleted. Continue?" Yes / No (No is the default)
  *   Today       "No tasks" / "2 Active tasks" and under it "1 High priority"
  *
@@ -87,6 +90,12 @@
         try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) { /* private mode */ }
     }
     const options = () => Object.assign({ reminders: true, dates: false, bar: true }, pref('wmTasksOptions', {}));
+    // the server's due notice (#1290): a registry value, so the server reads it; on unless '0' / 0 / false
+    const dueNoticeOn = () => {
+        const v = window.melatonRegistry ? window.melatonRegistry.get(REG_KEY, 'TaskDueNotice', 1) : 1;
+        return !(v === '0' || v === 0 || v === false);
+    };
+    const setDueNotice = (on) => { if (window.melatonRegistry) void window.melatonRegistry.set(REG_KEY, { TaskDueNotice: on ? 1 : 0 }); };
     const sortBy = () => pref('wmTasksSort', 'priority');
     const filter = () => Object.assign({ show: 'all', status: '' }, pref('wmTasksFilter', {}));
 
@@ -346,7 +355,19 @@
     let hiddenSeen = '[]'; // the registry's Hidden as last applied to cals
     // a new link may have missed a vfs_updated: the next reader reads again (not every 5 minutes by time, #890)
     let tasksDirty = false;
-    if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', () => { if (loadedAt) tasksDirty = true; }, { signal: appScopeSignal });
+    // A failed load ends in changed() too, and Today's redraw asks summary() again: without a hold that was one
+    // failing load a frame while Today showed. summary() waits RELOAD_MS (by the clock, no timer) or for something
+    // that can change the answer: a calendar change, a new link, a workspace switch. Opening Tasks asks at once.
+    let failedAt = 0;
+    let wakes = 0; // counts those events: one that came while the failing load ran leaves no hold
+    function retryNow() {
+        wakes += 1;
+        if (!failedAt) return;
+        failedAt = 0;
+        changed();
+    }
+    const held = () => !!failedAt && Date.now() - failedAt < RELOAD_MS;
+    if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', () => { if (loadedAt) tasksDirty = true; retryNow(); }, { signal: appScopeSignal });
 
     function reload(force) {
         if (loading) return loading;
@@ -354,7 +375,9 @@
         tasksDirty = false;
         const first = !loadedAt || loadedFor !== workspaceId();
         const shown = () => ws && ws.current === APP_ID;
-        const p = load().catch((err) => {
+        const woke = wakes;
+        const p = load().then(() => { failedAt = 0; }, (err) => {
+            if (woke === wakes) failedAt = Date.now();
             if (first && shown()) ws.messageBox({ title: 'Tasks', icon: 'error', text: (err && err.message) || 'The tasks could not be opened.' });
             else console.warn('wmTasks: reload failed', err);
         }).finally(() => {
@@ -675,10 +698,18 @@
         form.description = page.querySelector('.wtk-fnotes').value;
     }
 
-    function defaultReminder(day) {
+    /** 8:00 AM on that day. */
+    function morningOf(day) {
         const d = startOfDay(day);
         d.setHours(8, 0, 0, 0);
         return d;
+    }
+
+    /** What "Remind me" starts at: 8:00 AM on that day, or once that has passed, the next half hour from now. */
+    function defaultReminder(day) {
+        const d = morningOf(day);
+        const now = Date.now();
+        return d.getTime() > now ? d : new Date((Math.floor(now / 1800000) + 1) * 1800000);
     }
 
     function pick(btn) {
@@ -695,7 +726,8 @@
                     else if (ruleKind(f.rrule).kind === 'weekly') f.rrule = ruleWeekly(d.getDay());
                 }
                 // "Set reminders for new items": a new task's first due date brings its reminder (8:00 AM that day)
-                if (k === 'due' && d && !f.task && !f.remind && options().reminders) { f.remind = true; f.reminderAt = defaultReminder(d); }
+                // only while that moment is still ahead: else the Reminder stays None
+                if (k === 'due' && d && !f.task && !f.remind && options().reminders && morningOf(d).getTime() > Date.now()) { f.remind = true; f.reminderAt = morningOf(d); }
                 redo();
             });
             return;
@@ -799,8 +831,9 @@
 
     function renderOptions() {
         const o = options();
-        const check = (k, label) => `<label class="wm-check"><input type="checkbox" data-opt="${k}"${o[k] ? ' checked' : ''}><span>${label}</span></label>`;
-        page.querySelector('.wtk-options').innerHTML = `<div class="wm-form-hdr">Options</div><div class="wtk-opts">${check('reminders', 'Set reminders for new items')}${check('dates', 'Show start and due dates')}${check('bar', 'Show Tasks entry bar')}</div>`;
+        const box = (attr, on, label) => `<label class="wm-check"><input type="checkbox" ${attr}${on ? ' checked' : ''}><span>${label}</span></label>`;
+        const check = (k, label) => box(`data-opt="${k}"`, o[k], label);
+        page.querySelector('.wtk-options').innerHTML = `<div class="wm-form-hdr">Options</div><div class="wtk-opts">${check('reminders', 'Set reminders for new items')}${box('data-due-notice', dueNoticeOn(), 'Notify when a task is due')}${check('dates', 'Show start and due dates')}${check('bar', 'Show Tasks entry bar')}</div>`;
     }
 
     // ---------------------------------------------------------------- drawing and input
@@ -1009,6 +1042,7 @@
                 }
                 return;
             }
+            if (t.matches('[data-due-notice]')) { setDueNotice(t.checked); return; }
             const opt = t.closest('[data-opt]');
             if (opt) setPref('wmTasksOptions', Object.assign(options(), { [opt.dataset.opt]: opt.checked }));
         });
@@ -1023,6 +1057,7 @@
         if (d.type !== 'vfs_updated') return;
         const path = String((d.data && d.data.path) || '');
         if (path && !/\/Calendars(\/|$)/i.test(path)) return;
+        retryNow();
         // nothing read yet (Tasks and Today's Tasks row not opened since boot or a workspace switch): there is
         // nothing to refresh, and the first reader reads the calendars as they are then
         if (!loadedAt) return;
@@ -1093,7 +1128,7 @@
 
     /** { active, high, overdue, printing, text }: Today's row ("2 Active tasks" and "1 High priority" under it). */
     function summary() {
-        if (!loading && (!loadedAt || loadedFor !== workspaceId() || tasksDirty)) reload(true);
+        if (!loading && !held() && (!loadedAt || loadedFor !== workspaceId() || tasksDirty)) reload(true);
         const open = loadedFor === workspaceId() ? allTasks().filter((t) => !t.completed) : [];
         const active = open.length;
         const high = open.filter(isHigh).length;
@@ -1150,19 +1185,22 @@
             onEnd() { view = 'list'; form = null; closePicker(); },
             softKeys
         });
-        document.addEventListener('workspaceSwitchComplete', () => { loadedAt = 0; cals = []; sel = null; if (page && ws.current === APP_ID) { view = 'list'; reload(true); } else changed(); }, { signal: appScopeSignal });
+        document.addEventListener('workspaceSwitchComplete', () => { loadedAt = 0; cals = []; sel = null; wakes += 1; failedAt = 0; if (page && ws.current === APP_ID) { view = 'list'; reload(true); } else changed(); }, { signal: appScopeSignal });
         document.addEventListener('wsMessage', onVfsMessage, { signal: appScopeSignal });
         // the Hidden calendars changed (desktop Calendar's tick boxes, another device): applied to the loaded
         // calendars without reading files; Today's row draws again (wmTasksChange)
         if (window.melatonRegistry && typeof window.melatonRegistry.onChange === 'function') {
             const offReg = window.melatonRegistry.onChange(() => {
+                // Options on screen: its due notice box shows the value as it is now (loaded late, or set elsewhere)
+                const due = view === 'options' && page ? page.querySelector('[data-due-notice]') : null;
+                if (due) due.checked = dueNoticeOn();
                 if (!loadedAt) return;
                 const h = window.melatonRegistry.get(REG_KEY, 'Hidden', '[]');
                 if (h === hiddenSeen) return;
                 hiddenSeen = h;
                 let list = [];
                 try { list = JSON.parse(h) || []; } catch (_) { list = []; }
-                cals.forEach((c) => { c.hidden = !list.includes(c.name); });
+                cals.forEach((c) => { c.hidden = list.includes(c.name); });
                 changed();
                 if (page && view !== 'form') { if (listSeen()) render(); else pageStale = true; }
             });

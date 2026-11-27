@@ -4599,7 +4599,7 @@
         if (today && typeof today.refresh === 'function' && current === 'today' && awake()) {
             let st = null;
             try { st = typeof today.state === 'function' ? today.state() : null; } catch (_) { st = null; }
-            const tk = st ? [st.connection && st.connection.text, st.mailUnread, st.smsUnread, st.chatUnread, st.tasks, st.owner, st.workspace, !!(dir && dir.running), printsInProgress(), statusTodayBump].join('|') : String(Math.random());
+            const tk = st ? [st.connection && st.connection.text, st.mailUnread, st.smsUnread, st.chatUnread, st.tasks, st.tasksOverdue, st.owner, st.workspace, !!(dir && dir.running), printsInProgress(), statusTodayBump].join('|') : String(Math.random());
             if (tk !== statusTodayKey) { statusTodayKey = tk; today.refresh(); }
         }
         // notifications held back during startup or a takeover come up once it ends
@@ -11963,18 +11963,21 @@
             return { text: 'No service', plain: false };
         }
 
-        function tasksText() {
+        function tasksToday() {
             // the Tasks program's own count ("2 Active tasks" / "1 High priority", as the device's
-            // Today row), the prints in progress with it (wmTasks.js summary)
+            // Today row), the prints in progress with it, and how many are overdue (wmTasks.js summary)
             try {
-                if (window.wmTasks && typeof window.wmTasks.summary === 'function') return window.wmTasks.summary().text || 'No tasks';
+                if (window.wmTasks && typeof window.wmTasks.summary === 'function') {
+                    const s = window.wmTasks.summary();
+                    return { text: s.text || 'No tasks', overdue: s.overdue || 0 };
+                }
             } catch (_) { /* the print count alone */ }
             const ws = window.wsClient;
             let n = 0;
             if (ws && ws.pendingRequests && typeof ws.pendingRequests.forEach === 'function') {
                 ws.pendingRequests.forEach((req) => { if (req && GEN_TYPES.has(req.type)) n++; });
             }
-            return n ? `${n} ${n === 1 ? 'print' : 'prints'} in progress` : 'No tasks';
+            return { text: n ? `${n} ${n === 1 ? 'print' : 'prints'} in progress` : 'No tasks', overdue: 0 };
         }
 
         // Director: its status push (director_computer_status, kept on directorInstance._status
@@ -12075,7 +12078,7 @@
                         ${imgTag('today-messages')}<span class="wm-today-text" data-f="messages">Messages</span>
                     </div>
                     <div class="wm-today-row is-plain" data-row="tasks">
-                        ${imgTag('today-tasks')}<span class="wm-today-text" data-f="tasks"></span>
+                        ${imgTag('today-tasks')}<span class="wm-today-text"><span data-f="tasks"></span><span class="wm-today-count" data-f="tasksOverdue"></span><span data-f="tasksMore"></span></span>
                     </div>
                     <div class="wm-today-search-row" data-row="search" role="search">
                         <button type="button" class="wm-today-search-step" data-dir="-1" aria-label="Previous search">${imgTag('cal-prev')}</button>
@@ -12259,8 +12262,12 @@
                     const unread = mailUnread + imapUnread() + smsUnread() + chatUnread();
                     setText(page.querySelector('[data-f="messages"]'), unread ? `${unread} unread ${unread === 1 ? 'message' : 'messages'}` : 'No unread messages');
                 }
-                const tasks = tasksText();
-                setText(page.querySelector('[data-f="tasks"]'), tasks);
+                // the overdue count stands after the first line, the other lines follow it (the row keeps its line breaks)
+                const { text: tasks, overdue } = tasksToday();
+                const br = tasks.indexOf('\n');
+                setText(page.querySelector('[data-f="tasks"]'), br < 0 ? tasks : tasks.slice(0, br));
+                setText(page.querySelector('[data-f="tasksOverdue"]'), overdue ? String(overdue) : '');
+                setText(page.querySelector('[data-f="tasksMore"]'), br < 0 ? '' : tasks.slice(br));
                 // (hidden and style written only when they differ: the same value written again is a
                 // mutation record and a style invalidation every draw, #849)
                 const setHidden = (el, v) => { if (el && el.hidden !== v) el.hidden = v; };
@@ -12303,7 +12310,7 @@
                 const acc = window.meletonAccounts;
                 let workspace = '';
                 try { if (typeof workspaces !== 'undefined' && typeof activeWorkspace !== 'undefined' && workspaces[activeWorkspace]) workspace = workspaces[activeWorkspace].name || ''; } catch (_) { /* not loaded yet */ }
-                const tasks = tasksText();
+                const { text: tasks, overdue } = tasksToday();
                 return {
                     connection: carrierText(),
                     owner: acc && typeof acc.name === 'function' ? acc.name() : '',
@@ -12312,6 +12319,7 @@
                     smsUnread: smsUnread(),
                     chatUnread: chatUnread(),
                     tasks: tasks === 'No tasks' ? '' : tasks,
+                    tasksOverdue: overdue,
                     workspace,
                     workspaceMenu: () => workspaceMenu(),
                     workspaces: (() => {
