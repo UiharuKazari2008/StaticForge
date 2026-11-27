@@ -151,9 +151,27 @@ function recentImages(dir, sinceMs, limit = 5) {
     return hits;
 }
 
-function readServerPid(pm2Home) {
-    const n = parseInt(String(readText(path.join(pm2Home, 'pids', 'Dreamscape-0.pid')) || '').trim(), 10);
-    return Number.isFinite(n) && n > 1 ? n : null;
+/**
+ * Dreamscape's pid from PM2's pid files. The number in Dreamscape-<id>.pid is PM2's id of the app, and it changes when
+ * PM2 registers the apps again (Nov 27 2026: -1, so the check said UNKNOWN and the gate refused every restart). Of the
+ * files there: the newest one whose process is alive, else the newest (checkIdle then finds it dead: undecided).
+ */
+function readServerPid(pm2Home, procRoot = '/proc') {
+    const dir = path.join(pm2Home, 'pids');
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch (_) { return null; }
+    const found = [];
+    for (const name of names) {
+        if (!/^Dreamscape-\d+\.pid$/.test(name)) continue;
+        const file = path.join(dir, name);
+        const n = parseInt(String(readText(file) || '').trim(), 10);
+        if (!Number.isFinite(n) || n <= 1) continue;
+        let at = 0;
+        try { at = fs.statSync(file).mtimeMs; } catch (_) { continue; }
+        found.push({ pid: n, at, alive: !!procStat(procRoot, n) });
+    }
+    found.sort((x, y) => (Number(y.alive) - Number(x.alive)) || (y.at - x.at));
+    return found.length ? found[0].pid : null;
 }
 
 function uniqueReasons(list) {
@@ -174,7 +192,7 @@ function checkIdle(opts = {}) {
     const now = opts.now || Date.now();
     const genWindowSec = opts.genWindowSec || 120;
     const serverPid = opts.serverPid !== undefined ? opts.serverPid
-        : readServerPid(opts.pm2Home || process.env.PM2_HOME || path.join(home, '.pm2'));
+        : readServerPid(opts.pm2Home || process.env.PM2_HOME || path.join(home, '.pm2'), procRoot);
     const skip = selfAndAncestors(procRoot, opts.selfPid || process.pid);
     const xi = xiRuns({ home, procRoot, xiRunsDir: opts.xiRunsDir, skip });
     const wren = wrenSandboxes({ procRoot, serverPid, skip });

@@ -127,6 +127,22 @@ try {
     r = checkIdle({ ...base, serverPid: 555 });
     assert.strictEqual(r.idle, false); assert.strictEqual(r.decided, false);
 
+    // The server's pid comes from PM2's pid files whatever PM2's id for the app is (-1 after PM2 registered them again).
+    const pm2Home = path.join(tmp, 'pm2');
+    fs.mkdirSync(path.join(pm2Home, 'pids'), { recursive: true });
+    const pidFile = (name, pid, at) => { const f = path.join(pm2Home, 'pids', name); fs.writeFileSync(f, `${pid}\n`); fs.utimesSync(f, at, at); };
+    const fromFiles = () => { const o = { ...base, pm2Home }; delete o.serverPid; return checkIdle(o); };
+    assert.strictEqual(fromFiles().decided, false, 'no pid file: undecided');
+    pidFile('Dreamscape-1.pid', 100, 2000);
+    pidFile('other-app-2.pid', 555, 3000);
+    r = fromFiles();
+    assert.deepStrictEqual([r.serverPid, r.serverAlive, r.idle], [100, true, true], 'Dreamscape-1.pid is found');
+    pidFile('Dreamscape-0.pid', 555, 4000);
+    assert.strictEqual(fromFiles().serverPid, 100, 'a newer file of a dead process does not win over the live one');
+    fs.rmSync(path.join(pm2Home, 'pids', 'Dreamscape-1.pid'));
+    r = fromFiles();
+    assert.deepStrictEqual([r.serverPid, r.idle, r.decided], [555, false, false], 'only a dead one: never idle');
+
     console.log('test-director-idle-check: ok');
 } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
