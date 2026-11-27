@@ -168,6 +168,7 @@ function restoreStandIn() {
         'default': async () => { await tap('.wmns-list [data-key="default"]'); await sleep(250); await tap('#wmShell .wm-softkey[data-side="left"]', '^Select$'); await sleep(500); return 'Event sounds selected'; },
         'tapcat': async () => { await tap('.wmns-list [data-key="cat:notification"]'); await waitFor(`!!document.querySelector('#wmns-q')`, 2500); return 'tapped the Notifications row'; },
         'clear': async () => { await tap('#wmns-q'); await sleep(300); for (let i = 0; i < 6; i++) { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 }); } await sleep(700); return 'cleared the search box'; },
+        'start': async () => { await tap('#wmShell .wm-start'); await sleep(800); return 'tapped Start'; },
         'standin': async () => ev(`(${installStandIn.toString()})()`),
         // the stand-in's own stored choice: a sound far down the Notifications list (row 151 of 212), to see it pinned first
         'standin-chosen': async () => ev(`(function(){ const b = window.AndroidSounds; if (!(b && b.__standIn)) return 'no stand-in installed'; const l = JSON.parse(b.list('notification', '', 150, 1)).items[0]; b.set('sound', l.id, l.title, 'notification'); return JSON.parse(b.get()); })()`),
@@ -179,6 +180,8 @@ function restoreStandIn() {
     };
     for (const s of steps) {
         const [name, label] = s.split('=');
+        // 'cell:<text>' taps the Start screen cell with exactly that text (6.5 Start: 'start' then 'cell:Settings')
+        if (name.startsWith('cell:')) { const o = await step(label || name.replace(/[^A-Za-z0-9]+/g, '-'), async () => { const t = await tap('#wmShell .wm-s65-cell', `^${name.slice(5).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`); await sleep(700); return `tapped the Start cell "${t}"`; }); if (o.error) break; continue; }
         if (!all[name]) { console.log(JSON.stringify({ step: s, error: 'unknown step' })); continue; }
         const o = await step(label || name, all[name]);
         if (o.error) break;

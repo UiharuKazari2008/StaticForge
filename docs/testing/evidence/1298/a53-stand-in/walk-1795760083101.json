@@ -1,0 +1,71 @@
+[
+ {
+  "step": "00-start",
+  "did": "look",
+  "state": {
+   "app": "today",
+   "title": "Start",
+   "heading": "",
+   "keys": [
+    "Pictures",
+    "Set"
+   ],
+   "rowBtn": null,
+   "depth": 0,
+   "nRows": 0,
+   "rows": [],
+   "last": [],
+   "search": null,
+   "listScroll": null,
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-stand-in/00-start.png"
+ },
+ {
+  "step": "00-where",
+  "did": {
+   "grid": [],
+   "s65": [],
+   "tabs": [],
+   "action": []
+  },
+  "state": {
+   "app": "today",
+   "title": "Start",
+   "heading": "",
+   "keys": [
+    "Pictures",
+    "Set"
+   ],
+   "rowBtn": null,
+   "depth": 0,
+   "nRows": 0,
+   "rows": [],
+   "last": [],
+   "search": null,
+   "listScroll": null,
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-stand-in/00-where.png"
+ }
+]

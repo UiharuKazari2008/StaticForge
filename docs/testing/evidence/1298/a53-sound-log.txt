@@ -64,3 +64,15 @@ The picker previews in the walk therefore ran at volume 0 (the app's player star
 13 / 14        Back: the categories with Notifications highlighted; Back: the page, still "80s Toms".
 15-saved       the title's ok: AndroidSounds.get() = { mode sound, content://media/internal/audio/media/55, "80s Toms", notification }.
 16-left-as-found  choice back to Event sounds (through the bridge), Today, ringer VIBRATE, volumes as found, unmarked.
+
+== 7. The picker at "hundreds of sounds", with a stand-in bridge (a53-stand-in/*.png; 01:15-01:19 EST, nothing played) ==
+window.AndroidSounds replaced in the page by the walk driver's stand-in (377 invented sounds: Notifications 212, Ringtones 96,
+Alarms 38, Melaton 24, Added by you 7), its stored choice set to row 151 of Notifications ("Lagoon whistle 151").
+05-row         the Sounds tab's row reads "Lagoon whistle 151".
+06-categories  seven rows: Event sounds (default), None, Notifications 212 [tick], Ringtones 96, Alarms 38, Melaton 24,
+               Added by you 7; opened in 162 ms.
+07-pinned      Notifications: the sound in use is the FIRST row with its tick and Play, then rows 1-50 and "Show more"
+               (52 rows): a chosen sound that is on page 4 is visible at once.
+08 / 09        Show more twice: 102, then 152 rows; the pinned row stays first.
+The stand-in's call log: list("notification","",0,50), (50,50), (100,50) - fifty at a time, never the whole category;
+stop on each Back; no set (the choice was not changed). Then the page's own bridge was put back (version 2, choice default).
