@@ -3808,7 +3808,7 @@
             children: kinds.map(kid).concat([{
                 id: 'gt-dev', name: `Device Testing (${devWaiting()})`, icon: clk,
                 children: dv.map((d) => ({ id: `gt-d:${d.device}`, name: `${d.label} (${d.queue.length})`, icon: clk }))
-            }])
+            }, { id: 'gt-consent', name: 'Phone Consent', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'When an agent must ask before it uses a shared phone' }])
         };
     }
 
@@ -3879,6 +3879,78 @@
             ], rows, { sortId: 'cd-devices', sort: { key: 'device', dir: 1 }, empty: 'No device is known yet. Agents take one with coord_device_request before they test on it.', fit: true }),
             list: true
         };
+    }
+
+    // ---- Phone Consent: how the question before an agent uses a shared phone behaves (Yozora #1284) ----------------
+    // Read once when the page opens and again after a save (request / response, never polled).
+
+    const dconUi = () => (S.dcon || (S.dcon = { data: null, draft: null, loading: false, busy: false, error: '' }));
+    const DCON_TIMEOUT = [['wait', 'Keep waiting (never granted)'], ['deny', 'Deny'], ['allow', 'Allow it without asking']];
+    const DCON_READONLY = [['ask', 'Ask like any other command'], ['allow', 'Allow without asking']];
+    async function dconLoad() {
+        const u = dconUi();
+        if (u.loading) return;
+        u.loading = true;
+        u.error = '';
+        try {
+            const r = await send('device_consent_settings_get', {});
+            if (r.ok && r.settings) u.data = r.settings; else u.error = r.error || 'The server refused.';
+        } catch (e) { u.error = errText(e); }
+        u.loading = false;
+        repaint();
+    }
+    function consentPage(c) {
+        const u = dconUi();
+        const T = 'Phone Consent';
+        if (!u.data && !u.loading && !u.error) void dconLoad();
+        if (!u.data) return c.page(T, '', [{ id: 'cd-dc-wait', title: T, body: u.error ? `<p>${esc(u.error)}</p><p class="mmc-hint">Use Read Again to try once more.</p>` : '<p class="mmc-hint">Reading the settings...</p>' }]);
+        const st = u.draft || { timeoutSec: String(u.data.timeoutSec), onTimeout: u.data.onTimeout, readOnly: u.data.readOnly, devices: (u.data.consentDevices || []).join(', ') };
+        const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`).join('');
+        const form = `<div class="cd-sup-form">
+            <label title="How long the question on the phone stays loud. After that it stays on the phone, quietly, until the answer below applies."><span>Wait (seconds):</span><input type="text" inputmode="numeric" data-dcon="timeoutSec" value="${esc(st.timeoutSec)}" autocomplete="off" spellcheck="false" aria-label="Seconds the question waits loudly, 10 to 600"></label>
+            <label title="What happens when nobody answers in that time."><span>No answer:</span><select class="vdt-select" data-dcon="onTimeout">${opts(DCON_TIMEOUT, st.onTimeout)}</select></label>
+            <label title="Commands that only read (dumpsys, getprop, pm list ...)."><span>Read-only checks:</span><select class="vdt-select" data-dcon="readOnly">${opts(DCON_READONLY, st.readOnly)}</select></label>
+            <label title="Device ids, separated by commas or spaces."><span>Phones asked:</span><input type="text" data-dcon="devices" value="${esc(st.devices)}" autocomplete="off" spellcheck="false" aria-label="Device ids that need consent"></label>
+            <p class="mmc-hint">Wait is 10 to 600 seconds. With Keep waiting, nothing is granted until you answer.${st.onTimeout === 'allow' ? ' Allow it without asking gives the agent the phone when you do not answer.' : ''}</p>
+            <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="dcon-save"${u.busy ? ' disabled' : ''}>Save</button>${u.draft ? ' <span class="mmc-hint">Not saved yet.</span>' : ''}</p>
+        </div>`;
+        return {
+            html: c.page(T, 'Before an agent uses a shared phone', [{ id: 'cd-dc-set', title: 'Settings', body: form }]),
+            mount: (pane) => {
+                const read = (ev) => {
+                    const el = ev.target.closest('[data-dcon]');
+                    if (!el) return;
+                    const dr = dconUi().draft || { timeoutSec: String(u.data.timeoutSec), onTimeout: u.data.onTimeout, readOnly: u.data.readOnly, devices: (u.data.consentDevices || []).join(', ') };
+                    dr[el.dataset.dcon] = el.value;
+                    dconUi().draft = dr;
+                    const note = pane.querySelector('.cd-sup-form .cd-sup-actions');
+                    if (note && !note.querySelector('.mmc-hint')) note.insertAdjacentHTML('beforeend', ' <span class="mmc-hint">Not saved yet.</span>');
+                };
+                pane.addEventListener('input', read);
+                pane.addEventListener('change', read);
+            }
+        };
+    }
+    async function dconSave(c) {
+        const u = dconUi();
+        const dr = u.draft;
+        if (!dr || u.busy) return;
+        const secs = String(dr.timeoutSec).trim();
+        if (!/^\d+$/.test(secs) || Number(secs) < 10 || Number(secs) > 600) {
+            await c.box('<p>The wait must be a whole number of seconds from 10 to 600.</p>', null, { icon: 'warning', title: 'Phone Consent' });
+            return;
+        }
+        const devices = String(dr.devices || '').split(/[\s,;]+/).filter(Boolean);
+        u.busy = true;
+        c.note('Saving...');
+        repaint();
+        try {
+            const r = await send('device_consent_settings_set', { patch: { timeoutSec: Number(secs), onTimeout: dr.onTimeout, readOnly: dr.readOnly, consentDevices: devices } });
+            if (r.ok && r.settings) { u.data = r.settings; u.draft = null; } else await c.box(`<p>${esc(r.error || 'The server refused.')}</p>`, null, { icon: 'error', title: 'Phone Consent' });
+        } catch (e) { await failBox(c, e); }
+        u.busy = false;
+        c.note('');
+        repaint();
     }
 
     async function devRelease(c) {
@@ -5254,6 +5326,7 @@
             case 'rc-host': return hostRcPage(c);
             case 'gating': return buildsPage(c);
             case 'gt-dev': return devicesPage(c);
+            case 'gt-consent': return consentPage(c);
             case 'gt-restart': case 'gt-client': case 'gt-android': case 'gt-windows': case 'gt-other': return gatePage(c, n.id.slice(3));
             case 'co-locks': return locksPage(c);
             case 'sup-manager': return managerPage(c);
@@ -5332,6 +5405,7 @@
             case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
             case 'gating': return [{ text: 'Read Again', action: 'gate-refresh' }];
             case 'gt-dev': return [{ text: 'Release...', action: 'dev-release' }, { text: 'Read Again', action: 'gate-refresh' }];
+            case 'gt-consent': return [{ text: 'Save Settings', action: 'dcon-save', disabled: !dconUi().draft || dconUi().busy }, { text: 'Read Again', action: 'dcon-refresh' }];
             case 'gt-restart': case 'gt-client': case 'gt-android': case 'gt-windows': case 'gt-other': return [{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
             case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Issues...', action: 'work-issues', disabled: !!S.sup.busy }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
@@ -5564,6 +5638,8 @@
                 repaint();
                 return true;
             }
+            case 'dcon-save': await dconSave(c); return true;
+            case 'dcon-refresh': { const u = dconUi(); u.data = null; u.draft = null; u.error = ''; void dconLoad(); repaint(); return true; }
             case 'maint-run': await maintAct(c, { action: 'maintenance_run' }, 'Starting the maintenance run...'); return true;
             case 'maint-dry': await maintAct(c, { action: 'maintenance_run', dryRun: true }, 'Starting a dry run...'); return true;
             case 'maint-save': { const dr = maintUi().draft; if (dr) await maintAct(c, { action: 'maintenance_save', settings: { enabled: !!dr.enabled, time: String(dr.time || '').trim(), dryRun: !!dr.dryRun, deleteRemoteBranches: !!dr.deleteRemoteBranches, checks: dr.checks } }, 'Saving...'); return true; }
@@ -7201,6 +7277,7 @@
                 if (n.id === 'gating') return plural(gatingCount(), 'gate or wait');
                 if (GATE_NODE[n.id.slice(3)] && n.id.startsWith('gt-')) return `${plural(gateBuilds(n.id.slice(3)).length, 'gate')}, ${plural(gateWaits(n.id.slice(3)).length, 'wait')}`;
                 if (n.id.startsWith('gt-d:')) return devStatus(n.id.slice(5));
+                if (n.id === 'gt-consent') return dconUi().data ? `${dconUi().data.timeoutSec} s, ${(dconUi().data.consentDevices || []).join(', ') || 'no phone'}` : '';
                 if (n.id === 'gt-dev') return `${plural((S.coord.devices && S.coord.devices.holding) || 0, 'device')} in use, ${devWaiting()} waiting`;
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
                 if (n.id === 'co-work') return S.sup.busy || (S.sup.counts ? `${S.sup.counts.active} running, ${S.sup.counts.queued} queued` : plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request'));

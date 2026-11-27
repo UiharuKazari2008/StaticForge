@@ -32,6 +32,7 @@ const cn = require('../modules/deviceConsentNotices');
 
 // a stubbed modules/deviceConsent.js (P1 writes the real one): answers recorded, the file need not exist
 const answers = [];
+const patches = [];
 let nextResult = { ok: true };
 const stubPath = path.resolve(__dirname, '../modules/deviceConsent.js');
 const origResolve = Module._resolveFilename;
@@ -39,7 +40,7 @@ Module._resolveFilename = function (req, parent, ...rest) {
     if (parent && /296-deviceConsentHandler\.js$/.test(parent.filename || '') && /deviceConsent$/.test(req)) return stubPath;
     return origResolve.call(this, req, parent, ...rest);
 };
-require.cache[stubPath] = { id: stubPath, filename: stubPath, loaded: true, exports: { answer: (id, a, by) => { answers.push([id, a, by]); return nextResult; }, settings: () => ({}) } };
+require.cache[stubPath] = { id: stubPath, filename: stubPath, loaded: true, exports: { answer: (id, a, by) => { answers.push([id, a, by]); return nextResult; }, settings: () => ({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }), setSettings: (p) => { patches.push(p); if (p.onTimeout === 'bogus') throw new Error('onTimeout must be wait, deny, allow'); return Object.assign({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }, p); } } };
 
 const loud = () => sent.filter((m) => m && m.type === 'inbox_updated' && m.data.reason === 'new' && m.data.notice.alert).length;
 const mark = () => { sent.length = 0; toPhones.length = 0; };
@@ -193,6 +194,60 @@ async function test(name, f) {
         assert.strictEqual(replies[0].data.error, 'test device');
         assert.deepStrictEqual(answers, []);
         assert.strictEqual(mine().length, 1);
+    });
+
+    // ---- the settings packets ----
+    const callS = async (type, message, clientInfo) => { replies.length = 0; errors.length = 0; patches.length = 0; await registry.getWsPacketEntry(type).handler({ ws: {}, message: Object.assign({ type, requestId: 'r2' }, message), clientInfo }); };
+    const ADMIN = { userType: 'admin', clientId: 'c1' };
+
+    await test('settings packets registered: get plain, set destructive', () => {
+        assert.ok(registry.getWsPacketEntry('device_consent_settings_get'));
+        assert.notStrictEqual(registry.getWsPacketEntry('device_consent_settings_get').meta.destructive, true);
+        assert.strictEqual(registry.getWsPacketEntry('device_consent_settings_set').meta.destructive, true);
+    });
+
+    await test('settings get: the settings in force', async () => {
+        await callS('device_consent_settings_get', {}, ADMIN);
+        assert.strictEqual(replies[0].type, 'device_consent_settings_get_response');
+        assert.strictEqual(replies[0].requestId, 'r2');
+        assert.strictEqual(replies[0].data.ok, true);
+        assert.deepStrictEqual(replies[0].data.settings.consentDevices, ['a53', 'fold']);
+    });
+
+    await test('settings set: patch goes through, the settings come back (also in data)', async () => {
+        await callS('device_consent_settings_set', { patch: { onTimeout: 'deny', timeoutSec: 90 } }, ADMIN);
+        assert.deepStrictEqual(patches, [{ onTimeout: 'deny', timeoutSec: 90 }]);
+        assert.strictEqual(replies[0].data.ok, true);
+        assert.strictEqual(replies[0].data.settings.onTimeout, 'deny');
+        await callS('device_consent_settings_set', { data: { patch: { readOnly: 'allow' } } }, { userType: 'dev_admin', clientId: 'c1' });
+        assert.deepStrictEqual(patches, [{ readOnly: 'allow' }]);
+    });
+
+    await test('settings set: bad patch, out-of-range wait and an invalid field report an error and save nothing', async () => {
+        for (const message of [{}, { patch: 'x' }, { patch: [] }, { patch: { timeoutSec: 5 } }, { patch: { timeoutSec: 601 } }, { patch: { timeoutSec: 'abc' } }]) {
+            await callS('device_consent_settings_set', message, ADMIN);
+            assert.strictEqual(replies[0].data.ok, false, JSON.stringify(message));
+            assert.ok(replies[0].data.error);
+            assert.deepStrictEqual(patches, []);
+        }
+        await callS('device_consent_settings_set', { patch: { onTimeout: 'bogus' } }, ADMIN);
+        assert.strictEqual(replies[0].data.ok, false);
+        assert.ok(/onTimeout/.test(replies[0].data.error));
+    });
+
+    await test('settings packets: non-admin and the test lane are refused', async () => {
+        for (const type of ['device_consent_settings_get', 'device_consent_settings_set']) {
+            await callS(type, { patch: { readOnly: 'allow' } }, { userType: 'guest', clientId: 'c2' });
+            assert.deepStrictEqual(errors, ['INSUFFICIENT_PERMISSIONS']);
+            assert.strictEqual(replies.length, 0);
+            const testDevices = require('../modules/testDevices');
+            const orig = testDevices.isTestInfo;
+            testDevices.isTestInfo = () => true;
+            try { await callS(type, { patch: { readOnly: 'allow' } }, ADMIN); } finally { testDevices.isTestInfo = orig; }
+            assert.strictEqual(replies[0].data.ok, false);
+            assert.strictEqual(replies[0].data.error, 'test device');
+            assert.deepStrictEqual(patches, []);
+        }
     });
 
     fs.rmSync(tmp, { recursive: true, force: true });

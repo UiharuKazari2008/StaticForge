@@ -11,8 +11,10 @@ Before an agent can use a shared phone, the household is asked on the phone's sc
 | Request | Body -> reply |
 |---|---|
 | `device_consent_answer` | `{ id, answer: 'allow' \| 'deny' }` -> `{ ok, error? }`. `id` is the ask notice's id (`device-ask:<leaseId>`) or the bare lease id. Answered through `deviceConsent.answer(leaseId, answer, by)`; the ask's notice is cleared at once, whatever the result (an answer that came too late is still dealt with). `error` is `'bad request'` (missing id or an answer other than allow / deny), `'test device'`, or the lease logic's own reason. Destructive. |
+| `device_consent_settings_get` | `{}` -> `{ ok, settings }`. `settings` is `deviceConsent.settings()`: `{ timeoutSec, onTimeout: 'wait' \| 'deny' \| 'allow', readOnly: 'ask' \| 'allow', consentDevices: [id, ...] }` (defaults 60, `wait`, `ask`, `['a53', 'fold']`). Fleet reads it once when its Phone Consent page opens and after a save; never polled. |
+| `device_consent_settings_set` | `{ patch }` -> `{ ok, settings }` or `{ ok: false, error }`. `patch` holds any of the four fields; it is merged through `deviceConsent.setSettings(patch)` and the settings in force come back. `timeoutSec` is a whole number of seconds from 10 to 600 here (the lease logic itself accepts 1 to 3600). `onTimeout` is what happens when nobody answers: `wait` (stays pending, never granted), `deny`, or `allow` (grants without asking). `readOnly` `allow` lets read-only shell checks (dumpsys, getprop, pm list ...) run without asking. `error` is `'bad request'` (no `patch` object), `'test device'`, or the validation message. Destructive. |
 
-No broadcast: the packet is request / response only (so it needs no entry in the `modules/websocket.js` audience lists).
+No broadcast: the packets are request / response only (so they need no entry in the `modules/websocket.js` audience lists).
 
 ## Notices
 
