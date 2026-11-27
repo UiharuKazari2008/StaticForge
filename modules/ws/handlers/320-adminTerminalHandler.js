@@ -15,13 +15,20 @@
  * (modules/adminTerminal.js fullAdminClient: userType admin, no application key / certificate-only /
  * approved-IP sign-in); the stored session is read again at open and at most every GUARD_TTL_MS after.
  * Anyone else is refused and nothing is spawned. Nothing typed is ever logged.
+ * A CaféReady certificate session is refused with ADMIN_PIN_REQUIRED until the administrator PIN is typed in the
+ * terminal (admin_terminal_pin {pin} -> admin_terminal_pin_response {success}); 5 wrong PINs lock it for 15 minutes.
  */
 
 const wsPacketRegistry = require('../wsPacketRegistry');
 const terminal = require('../../adminTerminal');
 
+const { verifyPin } = require('../../pinAuth');
+
 const GUARD_TTL_MS = 10 * 1000;
+const PIN_TRIES = 5;
+const PIN_LOCK_MS = 15 * 60 * 1000;
 const verdicts = new WeakMap(); // ws -> { at, ok }
+const pinFails = new Map(); // sessionId -> { n, until }
 
 function readSession(handlersCtx, sessionId) {
     return new Promise((resolve) => {
@@ -29,6 +36,15 @@ function readSession(handlersCtx, sessionId) {
         const store = gr && typeof gr.getSessionStore === 'function' ? gr.getSessionStore() : null;
         if (!store || typeof store.get !== 'function' || !sessionId) { resolve(null); return; }
         try { store.get(sessionId, (err, sess) => resolve(err ? null : sess || null)); } catch (_) { resolve(null); }
+    });
+}
+
+function writeSession(handlersCtx, sessionId, sess) {
+    return new Promise((resolve, reject) => {
+        const gr = handlersCtx && handlersCtx.globalResources;
+        const store = gr && typeof gr.getSessionStore === 'function' ? gr.getSessionStore() : null;
+        if (!store || typeof store.set !== 'function') { reject(new Error('No session store')); return; }
+        store.set(sessionId, sess, (err) => (err ? reject(err) : resolve()));
     });
 }
 
@@ -48,6 +64,10 @@ function registerPackets() {
             const { ws, message, clientInfo, handlers } = ctx;
             const m = message || {};
             if (!(await allowed(handlers, ws, clientInfo, fresh))) {
+                if (fresh && terminal.fullAdminClient(clientInfo) && terminal.sessionNeedsPin(await readSession(handlers, clientInfo.sessionId))) {
+                    handlers.sendError(ws, 'Type the administrator PIN to open the Administrator Terminal', 'ADMIN_PIN_REQUIRED', m.requestId);
+                    return;
+                }
                 handlers.sendError(ws, 'The Administrator Terminal needs an administrator signed in with a full sign-in', 'INSUFFICIENT_PERMISSIONS', m.requestId);
                 return;
             }
@@ -67,6 +87,42 @@ function registerPackets() {
         if (command) info.title = command.title;
         ctx.wsServer.sendToClient(ctx.ws, { type: 'admin_terminal_open_response', requestId: m.requestId, data: Object.assign({ success: true }, info), timestamp: new Date().toISOString() });
     });
+    // the administrator PIN on a certificate session (CaféReady): stored on the session, so it is asked once per sign-in
+    wsPacketRegistry.registerWsPacket('admin_terminal_pin', async (ctx) => {
+        const { ws, message, clientInfo, handlers } = ctx;
+        const m = message || {};
+        const sid = clientInfo && clientInfo.sessionId;
+        const sess = terminal.fullAdminClient(clientInfo) ? await readSession(handlers, sid) : null;
+        if (!terminal.sessionNeedsPin(sess)) {
+            handlers.sendError(ws, 'The Administrator Terminal needs an administrator signed in with a full sign-in', 'INSUFFICIENT_PERMISSIONS', m.requestId);
+            return;
+        }
+        const now = Date.now();
+        const f = pinFails.get(sid);
+        if (f && f.until > now) {
+            handlers.sendError(ws, 'Too many wrong PINs. Try again in 15 minutes.', 'PIN_LOCKED', m.requestId);
+            return;
+        }
+        const gr = handlers.globalResources;
+        const secure = gr && typeof gr.getSecureConfig === 'function' ? gr.getSecureConfig() : null;
+        if (!verifyPin(String(m.pin == null ? '' : m.pin), secure && secure.loginPin)) {
+            const n = (f && !f.until ? f.n : 0) + 1; // a lock that ran out starts the count again
+            pinFails.set(sid, { n, until: n >= PIN_TRIES ? now + PIN_LOCK_MS : 0 });
+            handlers.sendError(ws, n >= PIN_TRIES ? 'Too many wrong PINs. Try again in 15 minutes.' : 'The PIN is incorrect.', n >= PIN_TRIES ? 'PIN_LOCKED' : 'BAD_PIN', m.requestId);
+            return;
+        }
+        pinFails.delete(sid);
+        try {
+            sess.adminPinAt = now;
+            await writeSession(handlers, sid, sess);
+        } catch (error) {
+            handlers.sendError(ws, error.message, 'ADMIN_TERMINAL_FAILED', m.requestId);
+            return;
+        }
+        verdicts.delete(ws);
+        ctx.wsServer.sendToClient(ws, { type: 'admin_terminal_pin_response', requestId: m.requestId, data: { success: true }, timestamp: new Date().toISOString() });
+    }, { owner: 'adminTerminal', destructive: true, dispatch: 'fifo' });
+
     reg('admin_terminal_input', false, (ctx, m) => { terminal.write(ctx.ws, m.id, m.data); });
     reg('admin_terminal_resize', false, (ctx, m) => { terminal.resize(ctx.ws, m.id, m.cols, m.rows); });
     reg('admin_terminal_ack', false, (ctx, m) => { terminal.ack(ctx.ws, m.id, m.chars); });

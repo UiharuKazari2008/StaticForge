@@ -662,6 +662,7 @@ module.exports = {
         'admin_terminal_close',
         'admin_terminal_input',
         'admin_terminal_open',
+        'admin_terminal_pin',
         'admin_terminal_resize',
         'agent_print_failed',
         'app_describe',

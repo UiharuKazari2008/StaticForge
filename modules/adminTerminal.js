@@ -88,9 +88,23 @@ function fullAdminClient(info) {
 function sessionIsFull(sess) {
     if (!sess || sess.authenticated !== true) return false;
     if (sess.userType !== 'admin') return false;
-    if (sess.approvedIpId || sess.clientCertSerial || sess.applicationKeyId || sess.applicationAuth) return false;
+    if (sess.approvedIpId || sess.applicationKeyId || sess.applicationAuth) return false;
+    // CaféReady's sign-in is the device certificate (modules/clientCertificates.js): the administrator PIN typed on this
+    // session (admin_terminal_pin) shows a person is there. A Log off / logon regenerates the session and drops it.
+    if (certSession(sess)) return Number.isFinite(sess.adminPinAt);
     if (sess.authMethod && sess.authMethod !== 'session') return false;
     return true;
+}
+
+/** A certificate's session (CaféReady), with or without the logon's PIN check carried over (web_server.js 'login'). */
+function certSession(sess) {
+    return !!(sess && sess.clientCertSerial && (!sess.authMethod || sess.authMethod === 'session' || sess.authMethod === 'client_cert'));
+}
+
+/** An administrator's certificate session that has not had the administrator PIN typed on it yet. */
+function sessionNeedsPin(sess) {
+    return !!(sess && sess.authenticated === true && sess.userType === 'admin' && !sess.approvedIpId
+        && !sess.applicationKeyId && !sess.applicationAuth && certSession(sess) && !Number.isFinite(sess.adminPinAt));
 }
 
 function clampInt(value, min, max, fallback) {
@@ -267,5 +281,5 @@ function count() { return sessions.size; }
 
 module.exports = {
     MAX_SESSIONS, HIGH_WATER, LOW_WATER, FLUSH_MS, FLUSH_BYTES, TerminalError,
-    fullAdminClient, sessionIsFull, open, write, resize, ack, close, closeAllFor, closeAll, count
+    fullAdminClient, sessionIsFull, sessionNeedsPin, open, write, resize, ack, close, closeAllFor, closeAll, count
 };

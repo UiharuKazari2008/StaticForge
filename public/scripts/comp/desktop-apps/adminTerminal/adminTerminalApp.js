@@ -78,6 +78,7 @@
             }
             this.opened = false;
             this.exited = false;
+            this.pin = null; // the administrator PIN being typed (a certificate sign-in), null when not asking
             this.closed = false;
             this.ackPending = 0;
             this.writing = 0;
@@ -203,7 +204,11 @@
             }
             // every size the fit finds goes to the pty
             term.onResize(({ cols, rows }) => { if (this.opened && !this.exited) this.send('admin_terminal_resize', { cols, rows }); });
-            term.onData((data) => { if (this.opened && !this.exited) this.send('admin_terminal_input', { data }); else if (this.exited) this.close(); });
+            term.onData((data) => {
+                if (this.opened && !this.exited) this.send('admin_terminal_input', { data });
+                else if (this.pin !== null) this.pinKeys(data);
+                else if (this.exited) this.close();
+            });
             term.attachCustomKeyEventHandler((ev) => this.onKey(ev));
             this.host.addEventListener('contextmenu', (ev) => {
                 ev.preventDefault();
@@ -224,17 +229,58 @@
             return c.send(Object.assign({ type, id: this.id }, data));
         }
 
-        async spawn() {
+        /** A request whose error this window shows itself (no "Unhandled exception" box). */
+        request(type, data) {
             const c = root.wsClient;
+            if (!c || typeof c.sendMessage !== 'function') return Promise.reject(new Error('Not connected to Dreamscape'));
+            const go = () => c.sendMessage(type, data, false);
+            return typeof c.handlesErrors === 'function' ? c.handlesErrors(go) : go();
+        }
+
+        /** CaféReady's certificate sign-in: the administrator PIN, typed here without echo, once per sign-in. */
+        askPin(note) {
+            if (note) this.term.write(`\x1b[31m${note}\x1b[0m\r\n`);
+            this.term.write('Administrator PIN: ');
+            this.pin = '';
+        }
+
+        pinKeys(data) {
+            for (const ch of data) {
+                if (this.pin === null) return;
+                if (ch === '\r' || ch === '\n') { void this.sendPin(); return; }
+                if (ch === '\x03' || ch === '\x1b') { this.pin = null; this.close(); return; }
+                if (ch === '\x7f' || ch === '\b') { this.pin = this.pin.slice(0, -1); continue; }
+                if (ch >= ' ' && this.pin.length < 64) this.pin += ch;
+            }
+        }
+
+        async sendPin() {
+            const pin = this.pin;
+            this.pin = null;
+            this.term.write('\r\n');
             try {
-                if (!c || typeof c.sendMessage !== 'function') throw new Error('Not connected to Dreamscape');
-                await c.sendMessage('admin_terminal_open', Object.assign({ id: this.id, cols: this.term.cols, rows: this.term.rows }, this.claudeSession ? { claudeSession: this.claudeSession } : {}), false);
+                await this.request('admin_terminal_pin', { pin });
+            } catch (err) {
+                if (this.closed) return;
+                const code = err && err.details;
+                if (code === 'BAD_PIN') { this.askPin(err.message); return; }
+                this.exited = true;
+                this.term.write(`\x1b[31m${String((err && err.message) || 'The PIN could not be checked').replace(/[\x00-\x1f]/g, ' ')}\x1b[0m\r\n[Process exited]`);
+                return;
+            }
+            if (!this.closed) void this.spawn();
+        }
+
+        async spawn() {
+            try {
+                await this.request('admin_terminal_open', Object.assign({ id: this.id, cols: this.term.cols, rows: this.term.rows }, this.claudeSession ? { claudeSession: this.claudeSession } : {}));
                 if (this.closed) { this.send('admin_terminal_close', {}); return; }
                 this.opened = true;
                 // a window resized while the shell started
                 if (this.fit) { this.refit(); this.send('admin_terminal_resize', { cols: this.term.cols, rows: this.term.rows }); }
             } catch (err) {
                 if (this.closed) return;
+                if (err && err.details === 'ADMIN_PIN_REQUIRED') { this.askPin(); return; }
                 this.exited = true;
                 this.term.write(`\x1b[31m${String((err && err.message) || 'The shell could not be started').replace(/[\x00-\x1f]/g, ' ')}\x1b[0m\r\n[Process exited]`);
             }
