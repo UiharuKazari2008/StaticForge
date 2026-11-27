@@ -20,6 +20,22 @@
  *             removes its files. When ffmpeg stops (the source hiccuped, the address ran out) and someone is
  *             still watching, it is started again with a fresh address; when the channel went offline the
  *             session ends. One timer runs only while a session exists.
+ *   record    The phone's player keeps asking for the same address with the screen off, so the session's
+ *             address must outlive the session (#1365). Each session leaves a small record on disk
+ *             (modules/videosRelayStore.js: channel, quality, start time, last request). The idle end stays
+ *             45 s (encoder and files go), but it no longer costs the stream: it and a server restart keep the
+ *             record. Only the viewer ends a stream for good (stop, another quality of the channel, a channel
+ *             taken off the list), and that removes it.
+ *   revive    When the playlist of an address that has no session is asked for and its record is there, the
+ *             session is started again in the background under the SAME address and the player is told to
+ *             come back in a few seconds (503 with Retry-After): the request never waits for ffmpeg. If the
+ *             channel already runs in another session, that one answers for the old address and nothing is
+ *             started. Only the playlist revives, never a piece. A revive never pushes a running stream out
+ *             and is bounded so Kick is never hammered: at least 20 s between tries for one address, doubling
+ *             while the revived stream never plays (up to 5 minutes), and at most 5 tries in 10 minutes. A
+ *             channel that is offline keeps its record and is tried again within those bounds. The new
+ *             encoder starts its piece numbers past anything the earlier run wrote, because pieces are cached
+ *             by the player under their address.
  */
 'use strict';
 
@@ -80,12 +96,30 @@ let allowed = () => true; // (slug) => is this a channel on the program's list
 let hooks = { address: null, spawn: null }; // tests stand in for the browser and ffmpeg
 const sessions = new Map(); // id -> session
 const addresses = new Map(); // slug -> { at, url }
+const aliases = new Map(); // an old address (session id) -> the running session of the same channel that answers for it
+const reviving = new Set(); // ids being started again: one in flight per id
+const idleEnded = new Set(); // ids whose session ended for lack of viewers in this run (the log line says idle, else restart)
+let store = null; // the session records (modules/videosRelayStore.js), opened on first use
+let budget = null; // how often a gone session may be started again (per id)
+let disposed = false; // this version was reloaded away: nothing it has in flight may start a session
 let timer = null;
+let wiping = Promise.resolve(); // bind() clearing the folder: no session folder is made before it is done
+const RETRY_FULL_S = 30;
+
+const records = () => store || (store = require('./videosRelayStore').open(process.env.VIDEOS_LIVE_STORE || path.join(__dirname, '..', '.cache', 'videos-live-sessions.json')));
+const revives = () => budget || (budget = new (require('./videosRelayStore').ReviveBudget)());
+/** The record, the budget entry and the aliases of an address that is over for good. */
+function dropRecord(id) {
+    records().remove(id);
+    revives().forget(id);
+    aliases.delete(id);
+    idleEnded.delete(id);
+}
 
 function bind(opts = {}) {
     if (typeof opts.allowed === 'function') allowed = opts.allowed;
     // files of a session that did not end cleanly (a restart mid-stream)
-    fs.promises.rm(ROOT, { recursive: true, force: true }).catch(() => {});
+    wiping = fs.promises.rm(ROOT, { recursive: true, force: true }).catch(() => {});
     return module.exports;
 }
 
@@ -206,16 +240,20 @@ async function variantFor(slug, mode, fresh) {
 
 // ------------------------------------------------------------------------------------------ ffmpeg
 
-function ffmpegArgs(mode, inputUrl, dir) {
+// startNumber: only for a session started again under its old address (its pieces are cached by the player by
+// name, so a new encoder must never write s00000.ts again); with append_list a restart in the same session
+// still continues after the last piece (tested with the real ffmpeg)
+function ffmpegArgs(mode, inputUrl, dir, startNumber) {
     return ['-hide_banner', '-loglevel', 'error', '-nostdin', ...(mode.pre || []), '-i', inputUrl,
         ...(mode.copy ? ['-c', 'copy'] : mode.args),
         '-f', 'hls', '-hls_time', String(SEGMENT_S), '-hls_list_size', '15',
         '-hls_flags', 'delete_segments+append_list+omit_endlist+independent_segments+temp_file+discont_start',
+        ...(startNumber > 0 ? ['-start_number', String(startNumber)] : []),
         '-hls_segment_filename', path.join(dir, 's%05d.ts'), path.join(dir, 'index.m3u8')];
 }
 
 function run(session, variant) {
-    const args = ffmpegArgs(session.mode, variant.url, session.dir);
+    const args = ffmpegArgs(session.mode, variant.url, session.dir, session.startNumber);
     // a notch below the server's own work: an encode must not starve Dreamscape
     const child = hooks.spawn ? hooks.spawn(args, session) : spawn('nice', ['-n', '6', FFMPEG, ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
     session.child = child;
@@ -233,7 +271,8 @@ function run(session, variant) {
 
 /** ffmpeg stopped while the session was wanted: a fresh address and another run, or the end when the channel is offline. */
 async function again(session, why) {
-    if (Date.now() - session.lastHit > IDLE_MS || session.restarts >= MAX_RESTARTS) { await stop(session.id, why || 'stopped'); return; }
+    // nobody is asking any more (or the source never came back): the stream's address stays good, see revive()
+    if (Date.now() - session.lastHit > IDLE_MS || session.restarts >= MAX_RESTARTS) { await stop(session.id, why || 'stopped', { keep: true, idle: true }); return; }
     session.restarts += 1;
     session.state = 'restarting';
     await new Promise((r) => setTimeout(r, Math.min(15000, 1500 * session.restarts)));
@@ -262,36 +301,59 @@ async function ready(session) {
     return false;
 }
 
+// the idle end: its record stays, so the player's next ask for the playlist starts the stream again (see revive)
+function sweep() {
+    const now = Date.now();
+    for (const s of sessions.values()) if (now - s.lastHit > IDLE_MS) void stop(s.id, 'nobody watching', { keep: true, idle: true });
+    if (!sessions.size && timer) { clearInterval(timer); timer = null; }
+}
+
 function watch() {
     if (timer || !sessions.size) return;
-    timer = setInterval(() => {
-        const now = Date.now();
-        for (const s of sessions.values()) if (now - s.lastHit > IDLE_MS) void stop(s.id, 'nobody watching');
-        if (!sessions.size) { clearInterval(timer); timer = null; }
-    }, 15000);
+    timer = setInterval(sweep, 15000);
     if (timer.unref) timer.unref();
 }
 
 const view = (s) => ({ id: s.id, slug: s.slug, mode: s.mode.id, state: s.state, error: s.error || '', url: `/api/videos/live/${s.id}/index.m3u8`, source: s.source || null, restarts: s.restarts, startedAt: s.startedAt });
 
-/** Start watching a channel in a mode (or take the session already running it): resolves once the phone can play. */
-async function start(slugIn, modeId) {
-    const slug = String(slugIn || '').toLowerCase().replace(/^kick:/, '');
-    const mode = modeById(String(modeId || '')) || modeById(DEFAULT_MODE);
-    if (!SLUG.test(slug) || !allowed(slug)) throw new RelayError('Add the channel under Channels > Kick first', 'KICK_NOT_LISTED');
-    for (const s of sessions.values()) {
-        if (s.slug === slug && s.mode.id === mode.id && !s.stopped && s.state !== 'ended' && s.state !== 'error') { s.lastHit = Date.now(); if (s.starting) await s.starting; return view(s); }
-    }
-    // first that there is a stream to pull: a channel that is not live must not push a running stream out
-    const variant = await variantFor(slug, mode, false);
-    // another quality of the same channel, or an older stream past the limit, makes room
-    for (const s of [...sessions.values()]) if (s.slug === slug) await stop(s.id, 'replaced');
-    while (sessions.size >= MAX_SESSIONS) await stop([...sessions.values()].sort((a, b) => a.lastHit - b.lastHit)[0].id, 'replaced');
-    const id = crypto.randomBytes(12).toString('hex');
-    const session = { id, slug, mode, dir: path.join(ROOT, id), state: 'starting', error: '', child: null, stopped: false, restarts: 0, startedAt: Date.now(), lastHit: Date.now(), source: null, starting: null };
+/** A running session of the channel (any quality), or null. */
+function runningFor(slug) {
+    for (const s of sessions.values()) if (s.slug === slug && !s.stopped && s.state !== 'ended' && s.state !== 'error') return s;
+    return null;
+}
+
+/** A session answers for its address: its own id, or an old address of the same channel (see revive). */
+function sessionFor(id) {
+    const s = sessions.get(id);
+    if (s) return s;
+    const target = aliases.get(id);
+    if (!target) return null;
+    const t = sessions.get(target);
+    if (t && !t.stopped) return t;
+    aliases.delete(id);
+    return null;
+}
+
+/** Somebody asked for the session (or its old address): it lives on, and so does its record. */
+function hit(s, askedId) {
+    s.lastHit = Date.now();
+    records().touch(s.id, { lastHit: s.lastHit });
+    if (askedId && askedId !== s.id) records().touch(askedId, { lastHit: s.lastHit });
+}
+
+function openSession(id, slug, mode, extra) {
+    if (disposed) throw new RelayError('The server is reloading this part, try again in a moment', 'KICK_STREAM');
+    const now = Date.now();
+    const session = Object.assign({ id, slug, mode, dir: path.join(ROOT, id), state: 'starting', error: '', child: null, stopped: false, restarts: 0, startedAt: now, lastHit: now, source: null, starting: null }, extra);
     sessions.set(id, session);
     watch();
+    return session;
+}
+
+/** The steps of a start that both a new session and a revived one share: folder, ffmpeg, the first pieces. Throws when it did not start. */
+async function begin(session, variant) {
     session.starting = (async () => {
+        await wiping;
         await fs.promises.mkdir(session.dir, { recursive: true });
         run(session, variant);
         if (!(await ready(session))) throw new RelayError(session.error || 'The stream did not start', 'KICK_STREAM');
@@ -299,20 +361,65 @@ async function start(slugIn, modeId) {
     })();
     try {
         await session.starting;
-    } catch (e) {
-        await stop(id, e.message);
-        throw e;
     } finally {
         session.starting = null;
     }
+}
+
+/** The viewer chose a new quality of the channel: the addresses of the other qualities are dead for good. */
+function dropOtherModes(slug, modeId) {
+    for (const r of records().all()) if (r.slug === slug && r.mode !== modeId) dropRecord(r.id);
+}
+
+/** Start watching a channel in a mode (or take the session already running it): resolves once the phone can play. */
+async function start(slugIn, modeId) {
+    const slug = String(slugIn || '').toLowerCase().replace(/^kick:/, '');
+    const mode = modeById(String(modeId || '')) || modeById(DEFAULT_MODE);
+    if (!SLUG.test(slug) || !allowed(slug)) throw new RelayError('Add the channel under Channels > Kick first', 'KICK_NOT_LISTED');
+    for (const s of sessions.values()) {
+        if (s.slug === slug && s.mode.id === mode.id && !s.stopped && s.state !== 'ended' && s.state !== 'error') { hit(s); dropOtherModes(slug, mode.id); if (s.starting) await s.starting; return view(s); }
+    }
+    // first that there is a stream to pull: a channel that is not live must not push a running stream out
+    const variant = await variantFor(slug, mode, false);
+    // another quality of the same channel, or an older stream past the limit, makes room
+    for (const s of [...sessions.values()]) if (s.slug === slug) await stop(s.id, 'replaced');
+    while (sessions.size >= MAX_SESSIONS) await stop([...sessions.values()].sort((a, b) => a.lastHit - b.lastHit)[0].id, 'replaced');
+    dropOtherModes(slug, mode.id);
+    const id = crypto.randomBytes(12).toString('hex');
+    const session = openSession(id, slug, mode, {});
+    try {
+        await begin(session, variant);
+    } catch (e) {
+        await stop(id, e.message);
+        throw e;
+    }
+    if (sessions.get(id) === session) records().put(id, { slug, mode: mode.id, startedAt: session.startedAt, lastHit: session.lastHit });
     return view(session);
 }
 
-async function stop(id, _why) {
-    const s = sessions.get(String(id || ''));
+/**
+ * Ends a session. The record of its address is removed unless opts.keep: only the idle ends keep it (nobody
+ * asked for 45 s, or the source never came back), so that the player's next ask for the playlist can start the
+ * stream again. A stop that is not for the idle end (the viewer, another quality, a failed start) is for good.
+ */
+async function stop(id, _why, opts) {
+    const key = String(id || '');
+    const keep = !!(opts && opts.keep);
+    const s = sessionFor(key);
+    if (!keep) {
+        // the addresses that stood in for this session end with it
+        for (const [old, target] of [...aliases]) if (s && target === s.id) dropRecord(old);
+        dropRecord(key);
+        if (s) dropRecord(s.id);
+    }
     if (!s) return false;
+    for (const [old, target] of [...aliases]) if (target === s.id) aliases.delete(old);
     s.stopped = true;
     sessions.delete(s.id);
+    if (keep && opts.idle) {
+        idleEnded.add(s.id);
+        if (idleEnded.size > 64) idleEnded.delete(idleEnded.values().next().value);
+    }
     if (s.child) { try { s.child.kill('SIGTERM'); } catch (_) { /* gone */ } }
     await fs.promises.rm(s.dir, { recursive: true, force: true }).catch(() => {});
     if (!sessions.size && timer) { clearInterval(timer); timer = null; }
@@ -320,33 +427,161 @@ async function stop(id, _why) {
 }
 
 function state(id) {
-    const s = sessions.get(String(id || ''));
-    if (!s) return { id: String(id || ''), state: 'gone' };
-    s.lastHit = Date.now();
+    const key = String(id || '');
+    const s = sessionFor(key);
+    if (!s) return { id: key, state: 'gone' };
+    hit(s, key);
     return view(s);
+}
+
+// ------------------------------------------------------------------------------------------ a gone session comes back
+
+/**
+ * The playlist of an address with no session was asked for and its record is there (the server restarted, or the
+ * viewer's phone was away past the idle end): the same address plays again. Decides at once and never throws:
+ *   { session }  a session answers for the address now (the channel already runs: no budget, no Kick request)
+ *   { wait }     come back in that many seconds (503): starting in the background, or not allowed yet
+ *   { gone }     the address is over (the channel left the list, the record is bad): 404
+ */
+function revive(id, record) {
+    try {
+        if (reviving.has(id)) return { wait: 3 };
+        const mode = modeById(String((record && record.mode) || ''));
+        const slug = String((record && record.slug) || '');
+        if (!mode || !SLUG.test(slug) || !allowed(slug)) { dropRecord(id); return { gone: true }; }
+        const running = runningFor(slug);
+        if (running) { aliases.set(id, running.id); return { session: running }; }
+        // a revive never pushes out a running stream
+        if (sessions.size >= MAX_SESSIONS) return { wait: RETRY_FULL_S };
+        const now = Date.now();
+        if (!revives().take(id, now)) return { wait: Math.min(300, Math.max(1, Math.ceil(revives().waitMs(id, now) / 1000))) };
+        reviving.add(id);
+        void reviveRun(id, record, mode, idleEnded.has(id) ? 'idle' : 'restart');
+        return { wait: 3 };
+    } catch (e) {
+        console.warn(`[videos] kick: a stream could not be started again (${e.message})`);
+        return { wait: RETRY_FULL_S };
+    }
+}
+
+/** The background half of revive(): the same steps as start(), under the old id; a failure never reaches anybody. */
+async function reviveRun(id, record, mode, why) {
+    const slug = String(record.slug);
+    let session = null;
+    try {
+        const variant = await variantFor(slug, mode, false);
+        // the viewer may have ended the stream while the address was being read: an ended one stays ended
+        if (disposed || !records().get(id)) return;
+        const running = runningFor(slug);
+        if (running) { aliases.set(id, running.id); return; } // the viewer started the channel meanwhile
+        if (sessions.size >= MAX_SESSIONS) throw new RelayError('There is no room for another stream just now', 'RELAY_FULL');
+        // pieces are made in real time, so this is past every number the earlier run reached under this address
+        const startedAt = Number(record.startedAt) || Date.now();
+        const startNumber = Math.min(9999000, Math.max(8, Math.floor((Date.now() - startedAt) / (SEGMENT_S * 1000)) + 8));
+        session = openSession(id, slug, mode, { startedAt, startNumber, revive: { served: 0, proven: false } });
+        await begin(session, variant);
+        idleEnded.delete(id);
+        console.log(`[videos] kick ${slug}: session started again (${why})`);
+    } catch (e) {
+        const over = e.code === 'KICK_NOT_FOUND' || e.code === 'KICK_NOT_LISTED';
+        console.warn(`[videos] kick ${slug}: the stream could not be started again (${e.message})`);
+        // the budget's doubling gap bounds the next try; a channel that is gone is over for good
+        if (session) await stop(id, e.message, { keep: !over });
+        if (over) dropRecord(id);
+    } finally {
+        reviving.delete(id);
+    }
+}
+
+/** A revived stream that served its pieces has come to play: the next revive's gap starts over. */
+function pieceServed(s) {
+    if (!s.revive || s.revive.proven) return;
+    s.revive.served += 1;
+    if (s.revive.served >= 5) { s.revive.proven = true; revives().proven(s.id); }
 }
 
 // ------------------------------------------------------------------------------------------ the phone's player reads here
 
-function mount(app, authMiddleware) {
-    app.get('/api/videos/live/:id/:file', authMiddleware, (req, res) => {
-        const s = sessions.get(String(req.params.id || ''));
-        const file = String(req.params.file || '');
-        if (!s || !FILE.test(file)) { res.status(404).end(); return; }
-        s.lastHit = Date.now();
-        const playlist = file.endsWith('.m3u8');
-        res.sendFile(path.join(s.dir, file), {
-            dotfiles: 'allow', // the files live under .cache
-            headers: {
-                'Content-Type': playlist ? 'application/vnd.apple.mpegurl' : 'video/mp2t',
-                // the live list changes every piece and must never be reused; a piece never changes
-                'Cache-Control': playlist ? 'no-store' : 'private, max-age=120, immutable'
-            }
-        }, (err) => { if (err && !res.headersSent) res.status(404).end(); });
+function retryLater(res, seconds) {
+    res.set('Retry-After', String(Math.min(300, Math.max(1, Math.round(seconds)))));
+    res.set('Cache-Control', 'no-store');
+    res.status(503).end();
+}
+
+function serve(req, res) {
+    const id = String(req.params.id || '');
+    const file = String(req.params.file || '');
+    if (!FILE.test(file)) { res.status(404).end(); return; }
+    const playlist = file.endsWith('.m3u8');
+    let s = sessionFor(id);
+    if (!s) {
+        // only the playlist brings a stream back, never a piece
+        let record = null;
+        if (playlist) { try { record = records().get(id); } catch (_) { record = null; } }
+        if (!record) { res.status(404).end(); return; }
+        const r = revive(id, record);
+        if (r.gone) { res.status(404).end(); return; }
+        if (!r.session) { retryLater(res, r.wait); return; }
+        s = r.session;
+    }
+    hit(s, id);
+    // a session still starting has no list worth sending yet: the player asks again
+    if (playlist && s.starting) { retryLater(res, 3); return; }
+    res.sendFile(path.join(s.dir, file), {
+        dotfiles: 'allow', // the files live under .cache
+        headers: {
+            'Content-Type': playlist ? 'application/vnd.apple.mpegurl' : 'video/mp2t',
+            // the live list changes every piece and must never be reused; a piece never changes
+            'Cache-Control': playlist ? 'no-store' : 'private, max-age=120, immutable'
+        }
+    }, (err) => {
+        if (err) { if (!res.headersSent) res.status(404).end(); return; }
+        if (!playlist) pieceServed(s);
     });
 }
 
+function mount(app, authMiddleware) {
+    // late-bound: a reload of this module replaces serve() without a new route
+    app.get('/api/videos/live/:id/:file', authMiddleware, (req, res) => module.exports.serve(req, res));
+}
+
 module.exports = {
-    bind, mount, start, stop, state, modes: modesView, RelayError,
-    _test: { parseMaster, pickVariant, ffmpegArgs, MODES, sessions, setHooks(h) { hooks = Object.assign({ address: null, spawn: null }, h); }, reset() { for (const s of sessions.values()) s.stopped = true; sessions.clear(); addresses.clear(); if (timer) { clearInterval(timer); timer = null; } } }
+    bind, mount, serve, start, stop, state, modes: modesView, RelayError,
+    _test: {
+        parseMaster, pickVariant, ffmpegArgs, MODES, sessions, aliases, reviving, IDLE_MS, sweep,
+        setHooks(h) { hooks = Object.assign({ address: null, spawn: null }, h); },
+        setStore(s) { store = s; },
+        setBudget(b) { budget = b; },
+        dispose: () => hotDispose(),
+        accept: (st) => hotAccept(st),
+        reset() {
+            for (const s of sessions.values()) s.stopped = true;
+            sessions.clear(); aliases.clear(); reviving.clear(); idleEnded.clear(); addresses.clear();
+            store = null; budget = null; disposed = false;
+            if (timer) { clearInterval(timer); timer = null; }
+        }
+    }
 };
+
+// Reload without a restart (#1292, docs/server/hot-reload.md): a reload ends every session the way a restart would. The records
+// stay, so the next ask for a playlist starts the stream again under its address. The route is late-bound (serve above).
+function hotDispose() {
+    disposed = true;
+    for (const s of sessions.values()) {
+        s.stopped = true;
+        if (s.child) { try { s.child.kill('SIGTERM'); } catch (_) { /* gone */ } }
+        // at once, not later: a revive of the same address right after the reload must not find its folder removed under it
+        try { fs.rmSync(s.dir, { recursive: true, force: true }); } catch (_) { /* gone */ }
+    }
+    sessions.clear(); aliases.clear(); reviving.clear(); idleEnded.clear(); addresses.clear();
+    if (timer) { clearInterval(timer); timer = null; }
+    if (store) store.flush();
+    return { allowed };
+}
+
+function hotAccept(st) {
+    disposed = false; // also when the old version is re-armed by a rollback
+    if (st && typeof st.allowed === 'function') allowed = st.allowed;
+}
+
+require('./hotReload').mark(module, { dispose: hotDispose, accept: hotAccept });

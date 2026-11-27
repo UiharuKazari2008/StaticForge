@@ -16,6 +16,25 @@
  *
  * A session is one video in one quality from one place (`at`, seconds): the player asks again to move outside
  * what is written, or to change quality. Files go 20 minutes after the last request, or on stop.
+ *
+ * An address must outlive the session behind it. The phone's player keeps asking for the same address with the
+ * screen off, so a restart or a long pause must not kill the video for good. Each session has a small record
+ * (modules/videosRelayStore.js, a file outside the cache folder): the video, the quality, the place, the highest
+ * piece sent, and whether the whole video was written. Only the viewer ends a video (stop): then the record goes.
+ * The idle end, a restart and a module reload keep it. When the playlist of an address is asked for, no session
+ * is in memory and a record exists, one of two things happens:
+ *   - adopt: the whole video was written and its folder survived the restart. The session comes back from the
+ *     files at once. No request goes to YouTube.
+ *   - revive: the same address, the same place and the same quality start again in the background. The same
+ *     place and the same piece size give the same pieces, so numbers and cache headers stay true. The player was
+ *     somewhere inside the old list, so the new playlist is held back (503) until it reaches that place plus
+ *     8 pieces, or ends. A player given a shorter list would jump back to its end. Pieces are served as soon as
+ *     they exist.
+ * Bounds: only the playlist ever brings a session back (a piece of a dead address is a 404). One revive per
+ * address at a time. A revive may take a session nobody asked for in the last minute, never one that is being
+ * watched. Each address has a budget (a growing gap, a few tries per ten minutes) so YouTube is not asked in a
+ * loop. A video that can never come back (not a video, live, too long, past its end) loses its record. Every
+ * other failure keeps it and the gap bounds the next try. A record is forgotten after a day.
  */
 'use strict';
 
@@ -38,6 +57,11 @@ const UPDATE_MS = 24 * 3600000;
 const MAX_SESSIONS = 2;
 const MAX_SECONDS = 8 * 3600;
 const READY_MS = 45000;
+const QUIET_MS = 60000; // a session not asked for this long may make room for a session that comes back
+const NEED_MORE = 8; // a session that comes back reaches the place the player was at, plus this many pieces
+const ID_RE = /^[a-f0-9]{24}$/;
+const STORE_FILE = process.env.VIDEOS_YT_STORE || path.join(__dirname, '..', '.cache', 'videos-yt-sessions.json');
+const NEVER_BACK = new Set(['YT_BAD_VIDEO', 'YT_BAD_PLACE', 'YT_LIVE', 'YT_TOO_LONG']); // a video that can never come back
 
 const MODES = [
     { id: 'v1080', label: '1080p', height: 1080 },
@@ -56,8 +80,61 @@ class YtRelayError extends Error {
 }
 
 const sessions = new Map();
+const aliases = new Map(); // an older address of the same video, place and quality -> the id of the session that serves it now
+const reviving = new Map(); // id -> true while that address starts again
 let timer = null;
 let hooks = { info: null, spawn: null };
+let store = null;
+let budgetInst = null;
+let swept = null; // the boot sweep in progress (a playlist waits for it)
+let disposed = false; // this version was handed over (hot reload): its late callbacks write nothing
+let storeWarned = false;
+
+// ------------------------------------------------------------------------------------------ records
+
+/** The record store (opened on first use, so this file loads without it). A store that cannot open never stops a video. */
+function recCall(name, args, dflt) {
+    if (disposed) return dflt;
+    try {
+        if (!store) store = require('./videosRelayStore').open(STORE_FILE, { ttlMs: 24 * 3600000 });
+        return store[name](...args);
+    } catch (e) {
+        if (!storeWarned) { storeWarned = true; console.warn(`[videos] youtube records: ${String(e && e.message || e).slice(0, 160)}`); }
+        return dflt;
+    }
+}
+const recPut = (id, rec) => recCall('put', [id, rec], null);
+const recGet = (id) => (ID_RE.test(id) ? recCall('get', [id], null) : null);
+const recTouch = (id, patch) => recCall('touch', [id, patch], false);
+const recRemove = (id) => recCall('remove', [id], false);
+const recAll = () => recCall('all', [], []);
+const recFlush = () => recCall('flush', [], null);
+function getBudget() {
+    if (!budgetInst) budgetInst = new (require('./videosRelayStore').ReviveBudget)();
+    return budgetInst;
+}
+function budgetCall(name, id) { if (budgetInst && !disposed) { try { budgetInst[name](id); } catch (_e) { /* a budget is only a bound */ } } }
+
+/** An address ends for good: its record, the addresses that lead to it and their records, and its budget entry. */
+function dropRecord(id) {
+    recRemove(id);
+    budgetCall('forget', id);
+    for (const [k, v] of [...aliases]) {
+        if (k === id) aliases.delete(k);
+        else if (v === id) { aliases.delete(k); recRemove(k); budgetCall('forget', k); }
+    }
+}
+
+/** The session behind an address (an older address of the same timeline leads to the session that serves it now). */
+function liveSession(id) {
+    const s = sessions.get(id);
+    if (s) return s;
+    const t = aliases.get(id);
+    if (!t) return null;
+    const a = sessions.get(t);
+    if (!a) aliases.delete(id);
+    return a || null;
+}
 
 // ------------------------------------------------------------------------------------------ yt-dlp, kept current
 
@@ -203,7 +280,7 @@ function run(session, src) {
         (session.feeders || []).forEach((f) => { try { f.kill('SIGTERM'); } catch (_e) { /* gone */ } });
         if (session.stopped) return;
         // the whole video is written (the list is closed), or the pull broke off part way
-        if (code === 0) session.state = 'done';
+        if (code === 0) { session.state = 'done'; recTouch(session.id, { done: true }); recFlush(); }
         else { infoMemo.delete(`${session.video} ${session.mode.id}`); session.state = 'error'; session.error = String(session.feedErr || err).trim().split('\n').slice(-1)[0].replace(/^ERROR:\s*/, '') || 'The video stopped arriving'; }
     });
 }
@@ -221,17 +298,42 @@ async function ready(session) {
     return false;
 }
 
+/** The idle end: a session nobody asked for in 20 minutes goes, its record stays (the player may come back). */
+function idleTick() {
+    const now = Date.now();
+    for (const s of [...sessions.values()]) if (now - s.lastHit > IDLE_MS) void stop(s.id, { keep: true });
+    if (!sessions.size && timer) { clearInterval(timer); timer = null; }
+}
+
 function watch() {
     if (timer || !sessions.size) return;
-    timer = setInterval(() => {
-        const now = Date.now();
-        for (const s of sessions.values()) if (now - s.lastHit > IDLE_MS) void stop(s.id);
-        if (!sessions.size) { clearInterval(timer); timer = null; }
-    }, 60000);
+    timer = setInterval(idleTick, 60000);
     if (timer.unref) timer.unref();
 }
 
 const view = (s) => ({ id: s.id, video: s.video, mode: s.mode.id, state: s.state, error: s.error || '', url: `/api/videos/yt/${s.id}/index.m3u8`, at: s.at, duration: s.duration, title: s.title, height: s.height, kbit: s.kbit, copied: s.copied });
+
+/** A session object (state 'starting' until its files say otherwise). `rec` is set when the session comes back from a record. */
+function makeSession(id, video, mode, at, src, rec) {
+    const now = Date.now();
+    const from = rec || src || {};
+    return {
+        id, video, mode, at, dir: path.join(ROOT, id), state: 'starting', error: '', child: null, stopped: false, lastHit: now,
+        duration: from.duration || 0, title: from.title || '', height: from.height || 0, kbit: from.kbit || 0, copied: !!(rec ? rec.copied : src && src.copy), starting: null,
+        maxSeg: rec ? Number(rec.maxSeg) || 0 : 0, // the highest piece a client was sent
+        recHit: rec ? Number(rec.lastHit) || 0 : now, recSeg: rec ? Number(rec.maxSeg) || 0 : 0, // what the record says (it is touched only when this moves)
+        revived: false, caughtUp: true, need: 0, served: 0, proven: false
+    };
+}
+
+/** The part every start shares: the folder, ffmpeg and the first piece written. Throws when the video did not start. */
+async function launch(session, src) {
+    await fs.promises.mkdir(session.dir, { recursive: true });
+    if (session.stopped) throw new YtRelayError('The video was stopped', 'YT_STOPPED');
+    run(session, src);
+    if (!(await ready(session))) throw new YtRelayError(session.error || 'The video did not start', 'YT_STREAM');
+    if (session.state === 'starting') session.state = 'live';
+}
 
 /** Start a video in a mode from `at` seconds (or take the session already doing exactly that). */
 async function start(videoIn, modeId, atIn) {
@@ -244,18 +346,17 @@ async function start(videoIn, modeId, atIn) {
     }
     const src = await info(video, mode);
     if (at >= src.duration) throw new YtRelayError('That place is past the end of the video', 'YT_BAD_PLACE');
-    for (const s of [...sessions.values()]) if (s.video === video) await stop(s.id);
+    // the viewer moved or changed quality: the older sessions of this video end and their addresses die (a broken
+    // pull of this very place and quality is only set aside, its address leads to the new session below)
+    for (const s of [...sessions.values()]) if (s.video === video) await stop(s.id, s.mode.id === mode.id && s.at === at ? { keep: true } : undefined);
     while (sessions.size >= MAX_SESSIONS) await stop([...sessions.values()].sort((a, b) => a.lastHit - b.lastHit)[0].id);
     const id = crypto.randomBytes(12).toString('hex');
-    const session = { id, video, mode, at, dir: path.join(ROOT, id), state: 'starting', error: '', child: null, stopped: false, lastHit: Date.now(), duration: src.duration, title: src.title, height: src.height, kbit: src.kbit, copied: !!src.copy, starting: null };
+    const session = makeSession(id, video, mode, at, src, null);
     sessions.set(id, session);
+    recPut(id, { video, mode: mode.id, at, startedAt: session.lastHit, lastHit: session.lastHit, maxSeg: 0, done: false, duration: session.duration, title: session.title, height: session.height, kbit: session.kbit, copied: session.copied });
+    for (const r of recAll()) if (r.video === video && r.id !== id && (r.mode !== mode.id || r.at !== at)) dropRecord(r.id);
     watch();
-    session.starting = (async () => {
-        await fs.promises.mkdir(session.dir, { recursive: true });
-        run(session, src);
-        if (!(await ready(session))) throw new YtRelayError(session.error || 'The video did not start', 'YT_STREAM');
-        if (session.state === 'starting') session.state = 'live';
-    })();
+    session.starting = launch(session, src);
     try {
         await session.starting;
     } catch (e) {
@@ -264,14 +365,31 @@ async function start(videoIn, modeId, atIn) {
     } finally {
         session.starting = null;
     }
+    // older addresses of this very place and quality (their session is gone) now serve this session's pieces
+    for (const r of recAll()) if (r.video === video && r.id !== id && r.mode === mode.id && r.at === at && !sessions.has(r.id)) aliases.set(r.id, id);
     return view(session);
 }
 
-async function stop(id) {
-    const s = sessions.get(String(id || ''));
-    if (!s) return false;
+/**
+ * End a session. Without `keep` the viewer ended the video: the record, its aliases and its budget entry go too
+ * (also when no session is in memory any more). With `keep` (the idle end, making room for another) the record stays,
+ * so the same address can start again.
+ */
+async function stop(id, opts) {
+    const key = String(id || '');
+    const keep = !!(opts && opts.keep);
+    const s = sessions.get(key);
+    if (!s) {
+        const t = aliases.get(key);
+        if (!keep && t && sessions.has(t)) return stop(t);
+        if (!keep) dropRecord(key);
+        return false;
+    }
     s.stopped = true;
     sessions.delete(s.id);
+    reviving.delete(s.id);
+    if (keep) { if (s.state === 'done') recTouch(s.id, { done: false }); } // its files go below
+    else dropRecord(s.id);
     if (s.child) { try { s.child.kill('SIGTERM'); } catch (_e) { /* gone */ } }
     (s.feeders || []).forEach((f) => { try { f.kill('SIGTERM'); } catch (_e) { /* gone */ } });
     await fs.promises.rm(s.dir, { recursive: true, force: true }).catch(() => {});
@@ -280,32 +398,249 @@ async function stop(id) {
 }
 
 function state(id) {
-    const s = sessions.get(String(id || ''));
+    const s = liveSession(String(id || ''));
     if (!s) return { id: String(id || ''), state: 'gone' };
     s.lastHit = Date.now();
     return view(s);
 }
 
-/** Files left by a run that ended without tidying. */
-function sweep() {
-    fs.promises.rm(ROOT, { recursive: true, force: true }).catch(() => {});
+// ------------------------------------------------------------------------------------------ an address comes back
+
+const PLAYLIST_END = /#EXT-X-ENDLIST/;
+const readPlaylist = (dir) => fs.promises.readFile(path.join(dir, 'index.m3u8'), 'utf8').catch(() => '');
+
+/** Another session of the same video decides what a record means: the same place and quality is the same timeline, another is a stale address. */
+function sameVideo(id, rec, mode, at, old) {
+    for (const o of sessions.values()) {
+        if (o === old || o.id === id || o.video !== rec.video || o.stopped || o.state === 'error') continue;
+        if (o.mode.id !== mode.id || o.at !== at) { dropRecord(id); return { status: 404 }; }
+        aliases.set(id, o.id);
+        if (o.revived && !o.caughtUp) o.need = Math.max(o.need, (Number(rec.maxSeg) || 0) + NEED_MORE);
+        if (old) void stop(old.id, { keep: true });
+        return { session: o };
+    }
+    return null;
 }
 
-function mount(app, authMiddleware) {
-    app.get('/api/videos/yt/:id/:file', authMiddleware, (req, res) => {
-        const s = sessions.get(String(req.params.id || ''));
-        const file = String(req.params.file || '');
-        if (!s || !FILE.test(file)) { res.status(404).end(); return; }
-        s.lastHit = Date.now();
-        const playlist = file.endsWith('.m3u8');
-        res.sendFile(path.join(s.dir, file), {
-            dotfiles: 'allow', // the files live under .cache
-            headers: { 'Content-Type': playlist ? 'application/vnd.apple.mpegurl' : 'video/mp2t', 'Cache-Control': playlist ? 'no-store' : 'private, max-age=600, immutable' }
-        }, (err) => { if (err && !res.headersSent) res.status(404).end(); });
+/** The whole video was written and its folder survived: the session comes back from the files, no request to YouTube. */
+async function adopt(id, rec, mode, at) {
+    const text = await readPlaylist(path.join(ROOT, id));
+    if (!PLAYLIST_END.test(text)) return null;
+    const have = sessions.get(id);
+    if (have) return { session: have };
+    const same = sameVideo(id, rec, mode, at, null);
+    if (same) return same;
+    const session = makeSession(id, rec.video, mode, at, null, rec);
+    session.state = 'done';
+    sessions.set(id, session);
+    watch();
+    console.log(`[videos] youtube ${rec.video}: session taken back from its files`);
+    return { session };
+}
+
+/** The same address starts again in the background (same place, same quality, same folder). */
+function revive(id, rec, mode, at, old) {
+    const session = makeSession(id, rec.video, mode, at, null, rec);
+    session.revived = true;
+    session.caughtUp = false;
+    session.need = (Number(rec.maxSeg) || 0) + NEED_MORE;
+    const gone = old ? stop(old.id, { keep: true }) : null; // a broken pull: its files go first, then the same folder is used again
+    sessions.set(id, session);
+    reviving.set(id, true);
+    watch();
+    const p = (async () => {
+        const src = await info(session.video, mode);
+        if (at >= src.duration) throw new YtRelayError('That place is past the end of the video', 'YT_BAD_PLACE');
+        if (session.stopped) throw new YtRelayError('The video was stopped', 'YT_STOPPED');
+        Object.assign(session, { duration: src.duration, title: src.title, height: src.height, kbit: src.kbit, copied: !!src.copy });
+        if (gone) await gone;
+        await fs.promises.rm(session.dir, { recursive: true, force: true }); // nothing of the old run may look like the new one
+        await launch(session, src);
+    })();
+    session.starting = p;
+    p.then(() => {
+        reviving.delete(id);
+        session.starting = null;
+        if (!session.stopped) console.log(`[videos] youtube ${session.video}: session started again`);
+    }, (e) => {
+        reviving.delete(id);
+        session.starting = null;
+        if (session.stopped) return; // the viewer ended it, or a reload did
+        console.warn(`[videos] youtube ${session.video}: could not start again (${String(e && e.message || e).slice(0, 160)})`);
+        if (NEVER_BACK.has(e && e.code)) dropRecord(id);
+        if (sessions.get(id) === session) void stop(id, { keep: true });
     });
 }
 
+/**
+ * What a playlist request gets when its session is gone (or broke part way: `old`). Returns { session } to serve now,
+ * or { status, retry } to answer. Never throws a failure of YouTube: a revive runs on its own.
+ */
+async function recover(id, rec, old) {
+    const mode = modeById(String(rec.mode || ''));
+    const at = Number(rec.at);
+    if (!VIDEO_ID.test(String(rec.video || '')) || !mode || !Number.isInteger(at) || at < 0) {
+        dropRecord(id);
+        if (old) void stop(old.id);
+        return { status: 404 };
+    }
+    if (rec.done && !old) {
+        const a = await adopt(id, rec, mode, at);
+        if (a) return a;
+        recTouch(id, { done: false }); // its folder is not whole any more
+    }
+    // from here on nothing awaits: the checks and the start are one step
+    const have = sessions.get(id);
+    if (have && have !== old) return { session: have };
+    if (reviving.has(id)) return { status: 503, retry: 3 };
+    const same = sameVideo(id, rec, mode, at, old);
+    if (same) return same;
+    const now = Date.now();
+    let victims = [];
+    const room = MAX_SESSIONS - (sessions.size - (old ? 1 : 0));
+    if (room < 1) {
+        victims = [...sessions.values()].filter((o) => o !== old && now - o.lastHit > QUIET_MS).sort((a, b) => a.lastHit - b.lastHit);
+        if (victims.length < 1 - room) return { status: 503, retry: 10 }; // everything is being watched
+        victims = victims.slice(0, 1 - room);
+    }
+    const budget = getBudget();
+    if (!budget.take(id, now)) return { status: 503, retry: Math.ceil((Number(budget.waitMs(id, now)) || 0) / 1000) };
+    victims.forEach((o) => { void stop(o.id, { keep: true }); });
+    revive(id, rec, mode, at, old);
+    return { status: 503, retry: 3 };
+}
+
+/** The new playlist covers the place the player was at (or the video is whole): once true it stays true. */
+async function gateOpen(s) {
+    if (!s.revived || s.caughtUp) return true;
+    if (s.state === 'done' || s.state === 'error') { s.caughtUp = true; return true; }
+    const text = await readPlaylist(s.dir);
+    if (PLAYLIST_END.test(text) || (text.match(/#EXTINF/g) || []).length >= s.need) { s.caughtUp = true; return true; }
+    return false;
+}
+
+/** The record learns how far this session got (the store writes to disk at its own pace). */
+function noteHit(s) {
+    if (s.stopped) return;
+    const now = Date.now();
+    if (now - s.recHit <= 5000 && s.maxSeg <= s.recSeg) return;
+    s.recHit = now;
+    s.recSeg = s.maxSeg;
+    recTouch(s.id, { lastHit: now, maxSeg: s.maxSeg });
+}
+
+function pieceSent(s, file) {
+    const n = Number(file.slice(1, 6));
+    if (n > s.maxSeg) s.maxSeg = n;
+    noteHit(s);
+    // a session that came back played: its budget gap starts over
+    if (s.revived && s.caughtUp && !s.proven && ++s.served >= 3) { s.proven = true; budgetCall('proven', s.id); }
+}
+
+/** Files left by a run that ended without tidying: a folder of a video written whole (with a record) stays, any other goes. */
+function sweep() {
+    const p = (async () => {
+        let names = [];
+        try { names = await fs.promises.readdir(ROOT); } catch (_e) { return; }
+        const whole = new Set(recAll().filter((r) => r.done).map((r) => r.id));
+        for (const name of names) {
+            if (sessions.has(name)) { whole.delete(name); continue; }
+            const dir = path.join(ROOT, name);
+            if (whole.has(name) && PLAYLIST_END.test(await readPlaylist(dir))) { whole.delete(name); continue; }
+            await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+        }
+        for (const id of whole) if (!sessions.has(id)) recTouch(id, { done: false }); // a record whose folder is not whole
+    })().catch(() => {});
+    swept = p;
+    p.then(() => { if (swept === p) swept = null; });
+    return p;
+}
+
+function answer(res, status, retry) {
+    if (status === 503) {
+        res.set('Retry-After', String(Math.min(300, Math.max(1, Math.ceil(Number(retry) || 3)))));
+        res.set('Cache-Control', 'no-store');
+    }
+    res.status(status).end();
+}
+
+async function serveFile(req, res) {
+    const id = String(req.params.id || '');
+    const file = String(req.params.file || '');
+    if (!FILE.test(file)) { res.status(404).end(); return; }
+    const playlist = file === 'index.m3u8';
+    let s = liveSession(id);
+    // only a playlist brings an address back (a piece of a dead address stays a 404)
+    if (!s && !playlist) { res.status(404).end(); return; }
+    if (playlist && (!s || s.state === 'error')) {
+        if (!s && swept) { await swept; s = liveSession(id); }
+        if (!s || s.state === 'error') {
+            const rid = s ? s.id : id;
+            const rec = recGet(rid);
+            if (rec) {
+                const r = await recover(rid, rec, s);
+                if (!r.session) { answer(res, r.status, r.retry); return; }
+                s = r.session;
+            } else if (!s) { res.status(404).end(); return; }
+        }
+    }
+    s.lastHit = Date.now();
+    if (playlist) {
+        if (!(await gateOpen(s))) { answer(res, 503, 2); return; }
+        noteHit(s);
+    }
+    res.sendFile(path.join(s.dir, file), {
+        dotfiles: 'allow', // the files live under .cache
+        headers: { 'Content-Type': playlist ? 'application/vnd.apple.mpegurl' : 'video/mp2t', 'Cache-Control': playlist ? 'no-store' : 'private, max-age=600, immutable' }
+    }, (err) => {
+        if (err) { if (!res.headersSent) res.status(404).end(); return; }
+        if (!playlist) pieceSent(s, file);
+    });
+}
+
+/** The route's handler (late-bound through module.exports, so a reload needs no new mount). */
+async function serve(req, res) {
+    try {
+        await serveFile(req, res);
+    } catch (e) {
+        console.warn(`[videos] youtube relay: ${String(e && e.message || e).slice(0, 160)}`);
+        if (!res.headersSent) answer(res, 503, 5);
+    }
+}
+
+function mount(app, authMiddleware) {
+    app.get('/api/videos/yt/:id/:file', authMiddleware, (req, res) => module.exports.serve(req, res));
+}
+
+// ------------------------------------------------------------------------------------------ reload
+
+/** A reload ends every session the way a restart would: records stay, a folder of a video written whole stays, the rest goes. */
+function hotDispose() {
+    if (timer) { clearInterval(timer); timer = null; }
+    const gone = [...sessions.values()];
+    sessions.clear();
+    aliases.clear();
+    reviving.clear();
+    infoMemo.clear();
+    for (const s of gone) {
+        s.stopped = true;
+        if (s.child) { try { s.child.kill('SIGTERM'); } catch (_e) { /* gone */ } }
+        (s.feeders || []).forEach((f) => { try { f.kill('SIGTERM'); } catch (_e) { /* gone */ } });
+        if (s.state !== 'done') fs.promises.rm(s.dir, { recursive: true, force: true }).catch(() => {});
+    }
+    recFlush();
+    disposed = true; // this version's late callbacks write nothing
+    return null;
+}
+function hotAccept() { disposed = false; } // nothing to take back; the next playlist request brings addresses back
+
 module.exports = {
-    mount, start, stop, state, sweep, modes: modesView, YtRelayError, DEFAULT_MODE,
-    _test: { formatFor, ffmpegArgs, toolArgs, MODES, sessions, setHooks(h) { hooks = Object.assign({ info: null, spawn: null }, h); }, reset() { infoMemo.clear(); for (const s of sessions.values()) s.stopped = true; sessions.clear(); if (timer) { clearInterval(timer); timer = null; } } }
+    mount, serve, start, stop, state, sweep, modes: modesView, YtRelayError, DEFAULT_MODE,
+    _test: {
+        formatFor, ffmpegArgs, toolArgs, MODES, sessions, aliases, idleTick, setHooks(h) { hooks = Object.assign({ info: null, spawn: null }, h); },
+        setStore(st) { store = st; }, setBudget(b) { budgetInst = b; },
+        reset() { infoMemo.clear(); for (const s of sessions.values()) s.stopped = true; sessions.clear(); aliases.clear(); reviving.clear(); swept = null; disposed = false; if (timer) { clearInterval(timer); timer = null; } }
+    }
 };
+
+require('./hotReload').mark(module, { dispose: hotDispose, accept: hotAccept });
