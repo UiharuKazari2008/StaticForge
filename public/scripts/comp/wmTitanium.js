@@ -1591,6 +1591,7 @@
         if (tiltRaf) { cancelAnimationFrame(tiltRaf); tiltRaf = 0; }
         tiltNow.x = 0;
         tiltNow.y = 0;
+        shineLean = 0;
         wallVar('--wm-ti-tx', '0%');
         wallVar('--wm-ti-ty', '0%');
         shineVar('--wm-ti-sx', '0px');
@@ -1634,6 +1635,13 @@
     // (the shell's minute tick) so the resting hold stays current. The look while in use is the same.
     const TILT_IDLE_MS = 30000;
     const TILT_PEEK_MS = 1000;
+    // the glass light (#1413) follows the lean through its own slow low-pass, well behind the picture (Yukimi, Nov 27:
+    // "too reactive to gyro, should be damped more"): 4 % of the way a frame (about 0.4 s), and at full lean it
+    // slides 6 % of the picture's width and its slant tips 3 degrees
+    const SHINE_EASE = 0.04;
+    const SHINE_SLIDE = 6;
+    const SHINE_SKEW = 3;
+    let shineLean = 0;
     let tiltOn = false;
     let tiltBase = null;
     let tiltRaw = null;
@@ -1673,6 +1681,7 @@
         tiltBase = null;
         tiltRaw = null;
         tiltNow.x = 0; tiltNow.y = 0;
+        shineLean = 0;
         cancelAnimationFrame(tiltRaf); tiltRaf = 0;
         wallVar('--wm-ti-tx', '0%');
         wallVar('--wm-ti-ty', '0%');
@@ -1759,13 +1768,17 @@
         const qy = Math.round((-tiltNow.y * k) / tiltPx.y) * tiltPx.y;
         wallVar('--wm-ti-tx', `${(qx || 0).toFixed(4)}%`);
         wallVar('--wm-ti-ty', `${(qy || 0).toFixed(4)}%`);
-        // the glass light follows the same smoothed lean (#1413): it slides 9 % of the picture's width at full lean, in
-        // whole device pixels (tiltPx is the measured width, nothing is read from the layout here), and its slant
-        // tips up to 5 degrees the way it slides, so the light's angle moves with the phone
+        // the glass light follows that smoothed lean through its own slower low-pass (#1413): it slides in whole device
+        // pixels (tiltPx is the measured width, nothing is read from the layout here) and its slant tips the way it
+        // slides, so the light's angle moves with the phone. The frames go on until the light has arrived too (under
+        // half a device pixel left), then stop
+        shineLean += (tiltNow.x - shineLean) * SHINE_EASE;
+        const shineDone = Math.abs(tiltNow.x - shineLean) * SHINE_SLIDE < 0.5 * tiltPx.x;
+        if (done && shineDone) shineLean = tiltNow.x;
         const dpr = window.devicePixelRatio || 1;
-        shineVar('--wm-ti-sx', `${(Math.round((-tiltNow.x * 9) / tiltPx.x) / dpr).toFixed(2)}px`);
-        shineVar('--wm-ti-sk', `${(tiltNow.x * 5 || 0).toFixed(1)}deg`);
-        if (!done) tiltRaf = requestAnimationFrame(tiltFrame);
+        shineVar('--wm-ti-sx', `${(Math.round((-shineLean * SHINE_SLIDE) / tiltPx.x) / dpr).toFixed(2)}px`);
+        shineVar('--wm-ti-sk', `${(shineLean * SHINE_SKEW || 0).toFixed(1)}deg`);
+        if (!done || !shineDone) tiltRaf = requestAnimationFrame(tiltFrame);
     }
 
     // ---- the frosted band: the picture blurred once into a small cached image, shown in the band's

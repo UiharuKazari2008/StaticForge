@@ -460,9 +460,10 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-band::
 }
 
 /* the slanted light on the glass (#1413, Yukimi Nov 25): god rays of different widths on one layer a little wider than
- * the glass. The phone's lean slides it and tips its slant (transform, wmTitanium.js tiltFrame, the same smoothing as
- * the picture's tilt); `translate` is the idle drift, one slow transition that ends by itself. Nothing else moves; no
- * keyframes. */
+ * the glass. Soft, broad and uneven (Yukimi, Nov 27: the first set was "too sharp, too thin and consistent"). The
+ * phone's lean slides it and tips its slant (transform, wmTitanium.js tiltFrame), slowly: the light has its own
+ * low-pass behind the picture's tilt ("too reactive to gyro, should be damped more"). `translate` is the idle drift,
+ * one slow transition that ends by itself. Nothing else moves; no keyframes, no filter. */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-shine { display: none; }
 html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-shine {
     display: block;
@@ -483,14 +484,16 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-shine > i {
     bottom: 0;
     transform: translate3d(var(--wm-ti-sx, 0px), 0, 0) skewX(var(--wm-ti-sk, 0deg));
     translate: var(--wm-ti-dr, 0%) 0;
+    /* seven shafts, each a soft bell (no hard edge, no hairline), from about 26 to 150 px across the glass, of uneven
+     * strength and spacing, two with a quicker rise than fall, fanning by a few degrees as light from one side does */
     background:
-        linear-gradient(104deg, rgba(255, 255, 255, 0) 33%, rgba(255, 255, 255, 0.16) 33.5%, rgba(255, 255, 255, 0) 34.2%),
-        linear-gradient(104deg, rgba(255, 255, 255, 0) 42%, rgba(255, 255, 255, 0.22) 42.6%, rgba(255, 255, 255, 0.22) 43%, rgba(255, 255, 255, 0) 43.7%),
-        linear-gradient(104deg, rgba(255, 255, 255, 0) 47%, rgba(255, 255, 255, 0.07) 49.5%, rgba(255, 255, 255, 0.11) 51%, rgba(255, 255, 255, 0.04) 53.5%, rgba(255, 255, 255, 0) 55%),
-        linear-gradient(104deg, rgba(255, 255, 255, 0) 57%, rgba(255, 255, 255, 0.2) 57.5%, rgba(255, 255, 255, 0) 58.2%),
-        linear-gradient(104deg, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, 0.05) 63%, rgba(255, 255, 255, 0.075) 65%, rgba(255, 255, 255, 0) 70%),
-        linear-gradient(104deg, rgba(255, 255, 255, 0) 71.5%, rgba(255, 255, 255, 0.15) 72%, rgba(255, 255, 255, 0) 72.6%),
-        linear-gradient(104deg, rgba(255, 255, 255, 0) 24%, rgba(255, 255, 255, 0.04) 28%, rgba(255, 255, 255, 0.065) 30.5%, rgba(255, 255, 255, 0) 32%);
+        linear-gradient(110deg, rgba(255, 255, 255, 0) 19%, rgba(255, 255, 255, 0.004) 20.6%, rgba(255, 255, 255, 0.014) 22.2%, rgba(255, 255, 255, 0.026) 23.4%, rgba(255, 255, 255, 0.042) 24.6%, rgba(255, 255, 255, 0.055) 25.8%, rgba(255, 255, 255, 0.059) 26.44%, rgba(255, 255, 255, 0.06) 27%, rgba(255, 255, 255, 0.059) 27.56%, rgba(255, 255, 255, 0.055) 28.2%, rgba(255, 255, 255, 0.042) 29.4%, rgba(255, 255, 255, 0.026) 30.6%, rgba(255, 255, 255, 0.014) 31.8%, rgba(255, 255, 255, 0.004) 33.4%, rgba(255, 255, 255, 0) 35%),
+        linear-gradient(109deg, rgba(255, 255, 255, 0) 31%, rgba(255, 255, 255, 0.007) 31.5%, rgba(255, 255, 255, 0.023) 32%, rgba(255, 255, 255, 0.044) 32.38%, rgba(255, 255, 255, 0.069) 32.75%, rgba(255, 255, 255, 0.091) 33.12%, rgba(255, 255, 255, 0.098) 33.33%, rgba(255, 255, 255, 0.1) 33.5%, rgba(255, 255, 255, 0.098) 33.67%, rgba(255, 255, 255, 0.091) 33.88%, rgba(255, 255, 255, 0.069) 34.25%, rgba(255, 255, 255, 0.044) 34.62%, rgba(255, 255, 255, 0.023) 35%, rgba(255, 255, 255, 0.007) 35.5%, rgba(255, 255, 255, 0) 36%),
+        linear-gradient(107deg, rgba(255, 255, 255, 0) 41.5%, rgba(255, 255, 255, 0.007) 42%, rgba(255, 255, 255, 0.021) 42.5%, rgba(255, 255, 255, 0.039) 42.88%, rgba(255, 255, 255, 0.062) 43.25%, rgba(255, 255, 255, 0.082) 43.62%, rgba(255, 255, 255, 0.088) 43.83%, rgba(255, 255, 255, 0.09) 44%, rgba(255, 255, 255, 0.088) 44.45%, rgba(255, 255, 255, 0.082) 44.98%, rgba(255, 255, 255, 0.062) 45.95%, rgba(255, 255, 255, 0.039) 46.92%, rgba(255, 255, 255, 0.021) 47.9%, rgba(255, 255, 255, 0.007) 49.2%, rgba(255, 255, 255, 0) 50.5%),
+        linear-gradient(105deg, rgba(255, 255, 255, 0) 50.6%, rgba(255, 255, 255, 0.008) 50.98%, rgba(255, 255, 255, 0.025) 51.36%, rgba(255, 255, 255, 0.048) 51.65%, rgba(255, 255, 255, 0.076) 51.93%, rgba(255, 255, 255, 0.1) 52.22%, rgba(255, 255, 255, 0.108) 52.37%, rgba(255, 255, 255, 0.11) 52.5%, rgba(255, 255, 255, 0.108) 52.63%, rgba(255, 255, 255, 0.1) 52.78%, rgba(255, 255, 255, 0.076) 53.07%, rgba(255, 255, 255, 0.048) 53.35%, rgba(255, 255, 255, 0.025) 53.64%, rgba(255, 255, 255, 0.008) 54.02%, rgba(255, 255, 255, 0) 54.4%),
+        linear-gradient(104deg, rgba(255, 255, 255, 0) 51%, rgba(255, 255, 255, 0.004) 53.2%, rgba(255, 255, 255, 0.012) 55.4%, rgba(255, 255, 255, 0.022) 57.05%, rgba(255, 255, 255, 0.035) 58.7%, rgba(255, 255, 255, 0.046) 60.35%, rgba(255, 255, 255, 0.049) 61.23%, rgba(255, 255, 255, 0.05) 62%, rgba(255, 255, 255, 0.049) 62.77%, rgba(255, 255, 255, 0.046) 63.65%, rgba(255, 255, 255, 0.035) 65.3%, rgba(255, 255, 255, 0.022) 66.95%, rgba(255, 255, 255, 0.012) 68.6%, rgba(255, 255, 255, 0.004) 70.8%, rgba(255, 255, 255, 0) 73%),
+        linear-gradient(103deg, rgba(255, 255, 255, 0) 62%, rgba(255, 255, 255, 0.006) 63%, rgba(255, 255, 255, 0.02) 64%, rgba(255, 255, 255, 0.037) 64.75%, rgba(255, 255, 255, 0.059) 65.5%, rgba(255, 255, 255, 0.078) 66.25%, rgba(255, 255, 255, 0.083) 66.65%, rgba(255, 255, 255, 0.085) 67%, rgba(255, 255, 255, 0.083) 67.14%, rgba(255, 255, 255, 0.078) 67.3%, rgba(255, 255, 255, 0.059) 67.6%, rgba(255, 255, 255, 0.037) 67.9%, rgba(255, 255, 255, 0.02) 68.2%, rgba(255, 255, 255, 0.006) 68.6%, rgba(255, 255, 255, 0) 69%),
+        linear-gradient(101deg, rgba(255, 255, 255, 0) 71.8%, rgba(255, 255, 255, 0.005) 73.04%, rgba(255, 255, 255, 0.015) 74.28%, rgba(255, 255, 255, 0.028) 75.21%, rgba(255, 255, 255, 0.045) 76.14%, rgba(255, 255, 255, 0.059) 77.07%, rgba(255, 255, 255, 0.064) 77.57%, rgba(255, 255, 255, 0.065) 78%, rgba(255, 255, 255, 0.064) 78.43%, rgba(255, 255, 255, 0.059) 78.93%, rgba(255, 255, 255, 0.045) 79.86%, rgba(255, 255, 255, 0.028) 80.79%, rgba(255, 255, 255, 0.015) 81.72%, rgba(255, 255, 255, 0.005) 82.96%, rgba(255, 255, 255, 0) 84.2%);
 }
 /* the drift eases only from an idle's start (wmTitanium.js sets .is-drift). With Today put away - hidden, the screen
  * off, a program in front - the class is gone: the light goes back at once and no transition runs on a page nobody sees */
