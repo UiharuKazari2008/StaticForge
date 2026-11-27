@@ -36,6 +36,9 @@ Common fields: `{ "url", "title", "subtitle", "audioOnly" }`.
   `vod: true`; its place comes from `at()`).
 - **XM Radio:** `/api/xmradio/{live,eco,track,channel}/…`, with `radio: { channels: [{ id, title }], index, q, back }`
   so next / previous work from the media notification with the page asleep.
+- **XM Radio Monitor** (a recording in progress): `/api/xmradio/rec/<rid>/index.m3u8`, no `radio` list, so no next /
+  previous. The app clears the report when a Monitor ends by itself, and ends it when the playlist stays 404 / 410 for
+  2 minutes (an app older than 1.0.3631988 rejects the address and the page's player plays it).
 - **Melaton Media:** `audioOnly: true` and
   `music: { items: [{ url, title, artist, album, art }], index, positionMs, repeat, volume }`.
   `url` is `items[index].url`. `items` are **in play order** (the page applies shuffle). Addresses are absolute and are
