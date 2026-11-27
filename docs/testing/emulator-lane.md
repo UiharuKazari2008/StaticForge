@@ -32,17 +32,41 @@ A53 shape, the `-2` instances. This page is updated as each is proven.
 
 | id | shape | console / adb port | tunnel port | CDP port | Android |
 | --- | --- | --- | --- | --- | --- |
-| `aemu-fold-1` | fold | 5600 / 5601 | 15101 | 9381 | 17 (API 37, google_apis x86_64, userdebug) |
-| `aemu-fold-2` | fold | 5602 / 5603 | 15102 | 9382 | 17 |
-| `aemu-a53-1` | a53 | 5610 / 5611 | 15111 | 9391 | 16 (API 36, google_apis x86_64, userdebug) |
-| `aemu-a53-2` | a53 | 5612 / 5613 | 15112 | 9392 | 16 |
+| `aemu-fold-1` | fold | 5556 / 5557 (5600 until it is restarted) | 15101 | 9381 | 17 (API 37, google_apis x86_64, userdebug) |
+| `aemu-fold-2` | fold | 5558 / 5559 | 15102 | 9382 | 17 |
+| `aemu-fold-3` | fold | 5564 / 5565 | 15103 | 9383 | 17 |
+| `aemu-fold-4` | fold | 5572 / 5573 | 15104 | 9384 | 17 |
+| `aemu-a53-1` | a53 | 5560 / 5561 | 15111 | 9391 | 16 (API 36, google_apis x86_64, userdebug) |
+| `aemu-a53-2` | a53 | 5562 / 5563 | 15112 | 9392 | 16 |
+| `aemu-a53-3` | a53 | 5566 / 5567 | 15113 | 9393 | 16 |
+| `aemu-a53-4` | a53 | 5568 / 5569 | 15114 | 9394 | 16 |
 
+`lane.sh list` shows which exist, which run and who holds a lease. An id that was never created is made with
+`lane.sh create <fold|a53> <n>` (after `coord_device_request <id>`).
+
+- **Console ports are even and inside adb's scan range 5554..5584.** adb's server finds and reconnects emulators there
+  by itself. Outside it (the first lane used 5600) an emulator is registered once at its start and stays `offline`
+  after a guest reboot. 5570 and 5580 are the other sessions' emulators (`fold7-test`, `DSFold7`): never touch them.
+  An instance that still runs on old ports keeps them in `~/.config/aemu-lane/<id>.ports` until it is restarted.
 - **fold**: inner display 1968x2184 at 360 dpi, cover display 1080x2520 as a second built-in display,
-  hinge sensor, the Fold7 camera cutout (fabricated overlay, as `scripts/fold7-emu.sh`).
+  hinge sensor, the Fold7 camera cutout (fabricated overlay, as `scripts/fold7-emu.sh`). 3 GB guest.
 - **a53**: one display 1080x2400 at 420 dpi (411x824 CSS at 2.625, memory #3).
-- At most 4 run at once (48 GB RAM on Ruiko). An instance nobody used for 30 minutes is stopped by
-  `ruiko/reap.ps1`, run by the Ruiko scheduled task `aemu-lane-reap` every 10 minutes (and by `lane.sh reap`).
-  Every `lane.sh` command refreshes the idle clock. Long quiet work: `lane.sh <id> keep 60`.
+- **Capacity is Ruiko's memory, not a count.** One running instance takes about 4.6 GB (fold) / 3.3 GB (a53).
+  `lane.sh up` and `create` read Ruiko's free memory and refuse (exit code 4, a clear message) when one more instance
+  would leave less than 3 GB free. Stop what you do not use: `lane.sh <id> down` keeps the instance and its `golden`
+  snapshot, and frees the memory for the next one. A lease held only for "building" counts as idle.
+- **CPU guard**: `up` and `create` also refuse (exit code 5) when Ruiko's CPU load is above 85 % (mean of five samples
+  over about 10 s, `LANE_MAX_CPU` changes it). Ruiko is Yukimi's desktop: six emulators at once make every page
+  download crawl and adb time out.
+- **One create / provision at a time**: they take a lock (`~/.cache/claude-run/aemu-lane/provision.lock`); a second one
+  answers with exit code 6 and names the holder. Each downloads ~200 MB and installs ~8,000 files; the server rebuilds its
+  pack on every publish, so a first install may show "Couldn't download updates": `provision` presses RETRY by itself.
+- **Reaper**: `lane.sh reap` stops a running instance that nobody used for 30 minutes, and one whose coord lease has
+  ended and that has been idle for 5 minutes. It runs from the Ruiko scheduled task (idle rule only, Ruiko cannot read
+  the lease) and, at most every 5 minutes, from any `lane.sh` command. Always `release` your lease when done.
+- An instance nobody used for 30 minutes is stopped by `ruiko/reap.ps1`: the Ruiko scheduled task
+  `aemu-lane-reap` (every 10 minutes) and, at most every 5 minutes, any `lane.sh` command (no polling loop on the
+  Dreamscape server). Every `lane.sh` command refreshes the idle clock. Long quiet work: `lane.sh <id> keep 60`.
 - Each instance is its own AVD with its own userdata, so it has its own ActiveSync device id.
   The device is a marked test device named `Lane <id>` (modules/testDevices.js): household notices never
   reach it and its test notices never reach a real phone.
@@ -78,7 +102,7 @@ Release the instance when your test ends. Leave it running: the reaper stops it 
 | `$L $I provision` | the setup steps of `create` again (idempotent) |
 | `$L $I golden` | save the snapshot `golden` of the running state |
 | `$L $I reset` | stop, boot from `golden`: the instance as it was when it was saved |
-| `$L $I reboot` | `adb reboot`, wait for boot. Nothing is set up again (see "What survives a reboot") |
+| `$L $I reboot` | clean guest shutdown, then a cold boot of a fresh emulator process (disk kept). Nothing is set up again (see "What survives a reboot") |
 | `$L $I posture closed\|half\|open` | fold only: cover (logical display 0 = 1080x2520, hinge 0) / hinge 90 / inner |
 | `$L $I rotate 0..3\|auto` | fixed rotation / auto-rotate |
 | `$L $I shot out.png [inner\|cover\|external\|<id>\|all]` | screencap of a display; `all` writes `out-inner.png`, `out-cover.png`, ... |
@@ -92,7 +116,7 @@ Release the instance when your test ends. Leave it running: the reaper stops it 
 | `$L $I net on\|off\|hang\|slow\|flaky` | Wi-Fi + data on / off; HTTPS black-holed; 2 s delay at 64 kbit/s; 40 % loss |
 | `$L $I install-release [buildId] [--force]` | newest server release (`GET /api/android-builds`), sha256 checked, `adb install -r -g` on this emulator only, once per build |
 | `$L $I shizuku start\|stop\|grant\|status` | Shizuku as the shell user |
-| `$L $I adbd status\|tcpip [port]\|usb\|wireless on\|off` | the guest's adbd: 5555, wireless debugging |
+| `$L $I adbd status\|tcpip [port]\|usb\|gate on\|off\|wireless on\|off` | the guest's adbd: 5555, wireless debugging; `gate` is the manual shim below |
 | `$L $I cdp` / `eval '<js>'` | the page's DevTools pages / run JavaScript in the page |
 | `$L $I tap X Y` / `key KEYCODE` / `text 'str'` / `tap-text '<regex>'` | input on display 0; `tap-text` taps an Android view by its text (uiautomator) |
 | `$L $I sh '<cmd>'` / `su '<script>'` / `adb <args>` | shell / root shell (userdebug `su`) / adb, pinned to the serial |
@@ -128,8 +152,32 @@ $L --agent $ME $I shade /tmp/shade.png
 
 ## What survives a reboot
 
-`$L $I reboot` is a real guest reboot (`adb reboot`). Nothing is set up again. The table is filled from a
-real run (see the "Reboot facts" section at the end).
+`$L $I reboot` is a clean guest shutdown (`svc power shutdown`) and a cold boot of a fresh emulator process. The AVD's
+disk is kept, so everything the phone keeps in `/data` is kept. Nothing is set up again (`up --nosetup`: only the
+quiet volumes). Why not `adb reboot`: inside the running emulator process it leaves adb's transport flapping `offline`
+a minute after the guest is back (seen on `aemu-a53-1` and `aemu-fold-1`).
+
+Measured on `aemu-a53-1` after a reboot (real `status` output, 40 s boot):
+
+| thing | after the reboot |
+| --- | --- |
+| Shizuku server | **gone** (`shizukuRunning: false`), as on the phone. Start it again with `shizuku start` or let the app do it |
+| guest adbd on 5555 | **listening** (`listening5555: true`) with `service.adb.tcp.port` and `persist.adb.tcp.port` empty: see "5555 on the emulator" |
+| wireless debugging | **off** (`adbWifiEnabled: 0`), as Android does after a restart |
+| the app | not started by Android by itself within 40 s (`appPid: null`, the stock launcher in front). The phone starts it as the home app. Open question for part B (boot receiver / home role), not a lane setting |
+| test-device mark, partnership, golden snapshot | kept (server side and userdata) |
+
+### 5555 on the emulator (read this before a reboot test)
+
+The emulator's guest adbd **always listens on `*:5555`**, even right after a boot with no tcp port property. That is
+the listener the host's adb link uses: `adb tcpip 5556` moves it and the instance goes `offline`. So "5555 is
+back after a reboot" is true on the lane whatever the app does, and proves nothing about a phone.
+What can be proven on the lane: Shizuku is gone after a reboot, the app's restore logic runs, the refusal of
+`setprop service.adb.tcp.port` by the shell user on Android 17 (fold instances), the Wireless-debugging door.
+`$L $I adbd gate on` is a **manual shim**: it rejects connections to 5555 on the loopback interface only (the app's
+`127.0.0.1:5555`), the host link keeps working, so the app sees a closed port. `gate off` opens it. The gate is not
+automatic and is lost at the next boot. The iptables calls need a root with network capabilities: if they answer
+"Permission denied" the status says `appSees5555Closed: false`.
 
 ## Prove a notice
 

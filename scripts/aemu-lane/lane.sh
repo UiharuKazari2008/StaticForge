@@ -35,7 +35,8 @@ SHZ_APK=${LANE_SHIZUKU_APK:-$HOME/.cache/claude-run/aemu-lane/shizuku-13.6.0.apk
 COORD_DB=${AGENT_COORD_DB:-$HOME/.local/state/dreamscape-agents/coord.db}
 IDLE_MIN=${LANE_IDLE_MIN:-30}
 MAX_RUNNING=${LANE_MAX_RUNNING:-8}   # hard ceiling; the real limit is Ruiko's free memory (mem_guard)
-INSTANCE_GB=4.6                # what one more running instance takes (observed qemu working set 4.1-4.9 GB)
+# what one more running instance takes (observed qemu working set): fold 4.1-4.9 GB (3 GB guest); a53 with a 2 GB guest: see the docs
+instance_gb() { case "${SHAPE:-fold}" in a53) echo "${LANE_A53_GB:-3.3}";; *) echo "${LANE_FOLD_GB:-4.6}";; esac; }
 KEEP_FREE_GB=3                 # Ruiko keeps at least this free after one more instance starts
 # The emulator's guest adbd ALWAYS listens on *:5555 (even with service.adb.tcp.port empty after a boot): that is the listener the
 # host adb link uses, and moving it (`adb tcpip 5556`) takes the instance offline. So "5555 is back after a reboot" is true on the
@@ -255,12 +256,27 @@ PS
 }
 
 ruiko_free_gb() { rps '[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)' | tail -1; }
-mem_guard() { # refuses (exit 4) when one more running instance would leave Ruiko with less than KEEP_FREE_GB free
-  local free; free=$(ruiko_free_gb)
-  case "$free" in ''|*[!0-9.]*) return 0;; esac     # unreadable: do not block
-  if awk "BEGIN{exit !($free - $INSTANCE_GB < $KEEP_FREE_GB)}"; then
-    die "Ruiko has only $free GB free: one more instance (about $INSTANCE_GB GB) would leave it under $KEEP_FREE_GB GB. Stop one you do not need (lane.sh <id> down) or wait; instances nobody used for $IDLE_MIN min are stopped by the reaper" 4
-  fi
+ruiko_cpu() { # Ruiko's CPU load %, the mean of 5 samples over ~10 s (Win32_Processor LoadPercentage)
+  rps '$v = @(); 1..5 | ForEach-Object { $v += (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average; Start-Sleep -Seconds 2 }; [math]::Round(($v | Measure-Object -Average).Average, 0)' | tail -1
+}
+mem_guard() { # refuses when Ruiko cannot take one more instance: exit 4 = memory (under KEEP_FREE_GB free after it), exit 5 = CPU above LANE_MAX_CPU %
+  local free need cpu; free=$(ruiko_free_gb); need=$(instance_gb)
+  case "$free" in ''|*[!0-9.]*) ;; *)
+    if awk "BEGIN{exit !($free - $need < $KEEP_FREE_GB)}"; then
+      die "Ruiko has only $free GB free: one more $SHAPE instance (about $need GB) would leave it under $KEEP_FREE_GB GB. Stop one you do not need (lane.sh <id> down) or wait; instances nobody used for $IDLE_MIN min, or whose lease ended, are stopped by the reaper" 4
+    fi;; esac
+  cpu=$(ruiko_cpu)
+  case "$cpu" in ''|*[!0-9]*) ;; *)
+    if [ "$cpu" -gt "${LANE_MAX_CPU:-85}" ]; then
+      die "Ruiko's CPU is at $cpu % (mean over 10 s), above ${LANE_MAX_CPU:-85} %: starting another instance would slow every running one (page downloads crawl, adb times out). Wait, or stop an instance you do not need (lane.sh <id> down)" 5
+    fi;; esac
+}
+
+# only ONE create / provision runs at a time (they download ~200 MB and install ~8,000 files each): a lock file
+provision_lock() {
+  exec 9>"$STATE/provision.lock"
+  if ! flock -n 9; then die "another create/provision is running ($(cat "$STATE/provision.lock" 2>/dev/null | head -1)): wait for it, they share Ruiko's CPU and the server's pack (exit 6)" 6; fi
+  printf '%s pid %s since %s\n' "$ID" "$$" "$(date +%H:%M:%S)" > "$STATE/provision.lock"
 }
 
 start_emulator() { # start_emulator <extra emulator args>
@@ -302,9 +318,29 @@ cmd_list() {
   printf ']\n'
 }
 
-cmd_reap() {
-  local emus line avd pid port idle last now=$(date +%s) stopped='[]'
-  rps "& '$RBASE\\reap.ps1' -IdleMinutes $IDLE_MIN"
+cmd_reap() { # stop lane instances nobody used for IDLE_MIN minutes, and those whose coord lease ended and idle for 5 minutes
+  local idle stopped='' id row j
+  idle=$(rps "if (Test-Path '$RBASE\\reap.ps1') { & '$RBASE\\reap.ps1' -IdleMinutes $IDLE_MIN }" | tail -1)
+  # lease ended: no held lease on a running instance that has been idle for 5 minutes (a creator / a driver holds its lease)
+  local all names=''; all=$(rps "if (Test-Path '$RBASE\\reap.ps1') { & '$RBASE\\reap.ps1' -IdleMinutes 100000 -DryRun }" | tail -1)
+  names=$(printf '%s' "$all" | python3 -c "
+import json,sys,subprocess
+try: rows=json.load(sys.stdin)
+except Exception: rows=[]
+rows=rows if isinstance(rows,list) else [rows]
+out=[]
+for r in rows:
+    if r.get('idleMinutes',0)>=5: out.append(r['avd'])
+print(' '.join(out))")
+  local nolease=''
+  for id in $names; do
+    row=$(lease_row "$id"); [ -z "$row" ] && nolease="$nolease,$id"
+  done
+  nolease=${nolease#,}
+  if [ -n "$nolease" ]; then
+    rps "& '$RBASE\\reap.ps1' -IdleMinutes 0 -Names $(printf "'%s'" "$nolease" | sed "s/,/','/g")" >/dev/null
+  fi
+  J ok=b:true "idleReaped=j:${idle:-[]}" "leaseEndedStopped=$nolease" "idleMinutes=n:$IDLE_MIN"
 }
 
 # ------------------------------------------------------------------ dispatch
@@ -465,6 +501,9 @@ wait_page() { # wait_page <max secs> : until the page is past the launch / Softw
   while :; do
     page_forward >/dev/null 2>&1 && r=$(cdp_js eval 'JSON.stringify({p:location.pathname,b:document.documentElement.dataset.wmBoot||"",t:document.body?document.body.innerText.slice(0,60).replace(/\n/g," / "):""})' 2>/dev/null) || r=''
     case "$r" in *'\"b\":\"done\"'*) echo done; return 0;; esac
+    # the first install is a whole-pack download; the server rebuilds the pack on every publish (many agents publish), so it can fail
+    # ("Couldn't download updates"): press RETRY, as a person would
+    case "$r" in *Couldn*download*) cdp_js eval '[].slice.call(document.querySelectorAll("*")).filter(function(x){return /^\s*RETRY\s*$/i.test(x.textContent||"")&&x.children.length==0}).forEach(function(x){x.click()})' >/dev/null 2>&1;; esac
     now=$(date +%s); progress "page: ${r:-no page yet}"
     [ $(( now - t0 )) -gt "$1" ] && return 1
     sleep 15
@@ -545,11 +584,12 @@ touch_last
 # stop idle instances (nobody used for $IDLE_MIN min) from here too, at most every 5 minutes (also a Ruiko scheduled task): no polling loop
 case "$cmd" in status|list|wait-boot) ;; *)
   rs=$STATE/reap.stamp; nowt=$(date +%s)
-  if [ ! -f "$rs" ] || [ $(( nowt - $(stat -c %Y "$rs") )) -gt 300 ]; then : > "$rs"; ( rps "if (Test-Path '$RBASE\\reap.ps1') { & '$RBASE\\reap.ps1' -IdleMinutes $IDLE_MIN }" >/dev/null 2>&1 & ); fi;;
+  if [ ! -f "$rs" ] || [ $(( nowt - $(stat -c %Y "$rs") )) -gt 300 ]; then : > "$rs"; ( "$0" reap >/dev/null 2>&1 & ); fi;;
 esac
 
 case "$cmd" in
   create)
+    provision_lock
     avd_present && die "$ID already exists (lane.sh $ID provision / reset; delete it on Ruiko to start over)"
     mem=$(rps '[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)')
     progress "Ruiko free memory $mem GB"
@@ -574,9 +614,9 @@ case "$cmd" in
     secs=''
     for attempt in 1 2; do
       if [ "$mode" = golden ]; then start_emulator "-snapshot golden -force-snapshot-load"; else start_emulator "-no-snapshot-load"; fi
-      secs=$(wait_boot 150) && break
+      secs=$(wait_boot 300) && break
       # adb's server did not register the emulator (it registers once at the emulator's start): a second start fixes it
-      progress "attempt $attempt: adb does not see $SERIAL after 150 s: restarting it"; stop_instance
+      progress "attempt $attempt: adb does not see $SERIAL after 300 s: restarting it"; stop_instance
     done
     [ -n "$secs" ] || die "not booted (Ruiko $RBASE\\logs\\$ID.txt): adb never saw $SERIAL"
     noaudio_check || { con kill >/dev/null 2>&1; die "the emulator started without -no-audio: stopped it (never Ruiko's speakers)"; }
@@ -589,7 +629,7 @@ case "$cmd" in
   status)
     running || { J ok=b:true id="$ID" running=b:false; exit 0; }
     status_json;;
-  provision) provision;;
+  provision) provision_lock; provision;;
   partner) dev=$(dev_id); partner_device "$dev" && J ok=b:true id="$ID" partnered=b:true || die "partnership not accepted: $(cat "$STATE/partner-$ID.out" 2>/dev/null | tail -2)";;
   reset)
     golden_present || die "$ID has no golden snapshot (lane.sh $ID provision, then lane.sh $ID golden)"
