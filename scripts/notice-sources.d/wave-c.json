@@ -1,0 +1,164 @@
+{
+ "sources": {
+  "text-message": {
+   "area": "native: activesync/TextMessageNotifier.kt, one MessagingStyle notification per conversation",
+   "trigger": "server-push",
+   "action": "tap opens the conversation (ACTION_OPEN_TEXT_MESSAGE); Reply and Mark as read on the card",
+   "sound": true,
+   "switch": "Settings > Sounds & Notifications > the Text Messaging 'New text message' event (sound, vibrate, display); Android's own Text messages channel settings",
+   "note": "N1 data the user asked for (a text), N4 yes, N6 by conversation id, channel silent: the sound is the person's WM choice via NoteAlerts. A delivery guarantee (cafeready-background); unchanged by wave C."
+  },
+  "inbox-notice": {
+   "area": "native: activesync/InboxNotifier.kt, every server notice (mail, Director, Fleet, prints, weather, reminders) while the page is not on screen",
+   "trigger": "server-push",
+   "action": "tap opens Melaton Mobile; reminders carry Snooze / Dismiss, device consents carry Allow / Deny",
+   "sound": true,
+   "switch": "Settings > Sounds & Notifications per notice class (sound, vibrate, display on screen); the source's own notify setting (e.g. a mail account). Display off does not stop the Android card: see #1314",
+   "note": "N1 data the user asked for or a real alert; N4 yes; N6 by id (page-shown ack, stack coalescing, shown map); channel silent, the sound is NoteAlerts. Channel is HIGH for every class including status ones: needs a decision, #1314. A delivery guarantee; unchanged by wave C."
+  },
+  "alarm-ring": {
+   "area": "native: DeviceNotices.kt, the Melaton Mobile alarm ringing with the page asleep",
+   "trigger": "timer",
+   "action": "tap opens Melaton Mobile; Dismiss and Snooze 5 minutes buttons; full-screen intent",
+   "sound": true,
+   "switch": "the alarm itself (Settings > Clock & Alarms > Alarms: delete or switch it off) and its sound mode (once / repeat / vibrate)",
+   "note": "N7 satisfied: an alarm the person set. Channel silent, the alarm's own WM sound plays from the app. Unchanged by wave C."
+  },
+  "battery-low": {
+   "area": "native: DeviceNotices.kt, Main Battery Low / Very Low while Melaton Mobile is not in front",
+   "trigger": "boot",
+   "action": "tap opens Melaton Mobile",
+   "sound": true,
+   "switch": "none",
+   "note": "A real alert (the phone is about to die), N1 ok, N4 yes. N5 no switch and N7: the channel is DEFAULT and plays Android's default tone nobody picked (fixed at creation). Needs a decision (route through NoteAlerts as a 'battery' event), #1313."
+  },
+  "battery-full": {
+   "area": "native: DeviceNotices.kt, Battery Fully Charged while Melaton Mobile is not in front",
+   "trigger": "boot",
+   "action": "tap opens Melaton Mobile",
+   "sound": false,
+   "switch": "none",
+   "note": "Wave C: sound removed (N7, a status): new silent LOW channel melaton_battery_full, setSilent. Still a status with no switch (N5), #1313."
+  },
+  "camera-alert": {
+   "area": "native: DriveWatch.kt postCameraNote, a speed or red light camera 1 mile ahead; also CafeTasks.cameraAlert",
+   "trigger": "server-push",
+   "action": "tap opens Dreamscape (launch intent); WM popup Dismiss",
+   "sound": true,
+   "switch": "the Traffic way-home watch (armed from Traffic); WM event 'traffic-camera' sound / vibrate / display in Settings > Sounds & Notifications; the Android heads-up copy has no own off, #1313",
+   "note": "N7 satisfied: an alert she configured by arming the watch; navigation-guidance audio. With the WM table known the Android copy is quiet. Delivery guarantee, unchanged by wave C."
+  },
+  "traffic-watch-fgs": {
+   "area": "native: DriveWatch.kt ongoing() and CafeTasks.kt CafeLocationService, the location foreground service's notification (channel traffic_drive)",
+   "trigger": "user-action",
+   "action": "tap opens Dreamscape",
+   "sound": false,
+   "switch": "Android requires it while the location service runs; it ends with the Traffic watch (stop watching) or the drive-alerts task",
+   "note": "Foreground-service notice: LOW, silent, one line saying why the service runs. Stays."
+  },
+  "app-foreground-service": {
+   "area": "native: DreamScapeForegroundService.kt (placeholder and full notification) and its channel in MainActivity.createNotificationChannel",
+   "trigger": "boot",
+   "action": "tap opens Dreamscape; Lock and Close buttons",
+   "sound": false,
+   "switch": "Android requires it while the app runs; the Close button ends it",
+   "note": "Foreground-service notice: LOW, silent, ongoing, collapses. Stays."
+  },
+  "miniport-state": {
+   "area": "native: MelatonMiniport.kt, the Melaton Cafe Miniport state (its own notification, or merged into the foreground service's on a phone that runs Dreamscape as home)",
+   "trigger": "server-push",
+   "action": "tap opens Dreamscape (added by wave C: it had none); Disconnect / Reconnect and Restart Devices buttons",
+   "sound": false,
+   "switch": "Android requires it while the app runs (merged into the foreground service); the Disconnect button",
+   "note": "MIN, silent, ongoing state notice posted only when the state changed. It echoes ActiveSync status and workspace text; kept as the home-screen design (#945). N4 fixed by wave C."
+  },
+  "download-progress": {
+   "area": "native: MainActivity.kt, the Downloads channel and the Saving... progress notice",
+   "trigger": "user-action",
+   "action": "none while running (progress); the finished notice opens the picture",
+   "sound": false,
+   "switch": "none",
+   "note": "LOW, silent progress of a Save the user started: N7 ok. No in-app switch (N5), #1313."
+  },
+  "download-saved": {
+   "area": "native: MainActivity.kt, the Saved notice with the picture after a Save",
+   "trigger": "user-action",
+   "action": "tap opens the saved picture (ACTION_VIEW)",
+   "sound": false,
+   "switch": "none",
+   "note": "A deliverable the user started (N1 exempt), LOW, silent. Wave C: the duplicate Image saved toast now only shows when notifications are off (N2 / N6). No in-app switch (N5), #1313."
+  },
+  "download-failed": {
+   "area": "native: MainActivity.kt, Save failed",
+   "trigger": "user-action",
+   "action": "tap opens the app (added by wave C: it had none)",
+   "sound": false,
+   "switch": "none",
+   "note": "An error that stopped the user's own Save (real failure), LOW, silent. N4 fixed by wave C. No in-app switch (N5), #1313."
+  },
+  "download-folder": {
+   "area": "native: MainActivity.kt, Download folder not set",
+   "trigger": "user-action",
+   "action": "tap brings the app to the front where the folder picker is open",
+   "sound": false,
+   "switch": "none",
+   "note": "A call to action raised by the user's own Save, LOW, silent; the picker opens at the same moment. No in-app switch (N5), #1313."
+  },
+  "app-notifications-bridge": {
+   "area": "native: MainActivity.kt NotificationBridge (window.AndroidNotification), a page toast mirrored as an Android notification in desktop (DeX) mode",
+   "trigger": "user-action",
+   "action": "tap opens the app (added by wave C: it had none); a toast's own buttons answer the page",
+   "sound": false,
+   "switch": "the app's Settings > In-app notifications; the page's notificationBridgeEnabled preference",
+   "note": "Channel js_notifications is silent but IMPORTANCE_HIGH, so every mirrored toast heads-up, progress included. In DeX the mirror is the only place such a toast shows, so lowering it needs a decision (the page toast policy decides which toasts reach it, other wave). N4 fixed by wave C."
+  },
+  "media-playback": {
+   "area": "native: MediaLibraryBridge.kt, Melaton Media now playing (media-style notification)",
+   "trigger": "user-action",
+   "action": "tap opens Melaton Media (the media session's activity); Previous / Pause / Next",
+   "sound": false,
+   "switch": "stops when playback stops; the notice is the player's controls",
+   "note": "LOW, silent, ongoing while playing: the content the user asked for (N1 exempt)."
+  },
+  "apk-install-waiting": {
+   "area": "native: activesync/ActiveSyncApkInstaller.kt, a program sent over ActiveSync waiting for Android's installer (or the unknown-apps permission)",
+   "trigger": "server-push",
+   "action": "tap opens Android's installer prompt / the Install unknown apps page",
+   "sound": false,
+   "switch": "none",
+   "note": "Wave C: new silent LOW channel activesync_install_quiet (was HIGH with Android's default tone: N7). A last-resort fallback that apk-installs-via-adb says should not be reached; no switch (N5), #1313."
+  },
+  "adb-access-note": {
+   "area": "native: activesync/LocalAdb.kt, Android Bridge Advanced Access (ADB 5555 restored / Shizuku started)",
+   "trigger": "boot",
+   "action": "tap opens Dreamscape (added by wave C: it had none)",
+   "sound": false,
+   "switch": "none",
+   "note": "Wave C: new silent LOW channel android_bridge_access_quiet, setSilent, one hour timeout (was DEFAULT with Android's default tone and no tap target: N7, N4). Still a status with no switch (N5), #1313."
+  },
+  "instant-hotspot-use": {
+   "area": "native: hotspot/InstantHotspot.kt, a computer is using this phone's mobile data",
+   "trigger": "user-action",
+   "action": "none",
+   "sound": false,
+   "switch": "none",
+   "note": "LOW, silent, ongoing for as long as the hotspot is shared: a data-use indicator. No tap target and no switch (N4, N5); not changed in wave C because the destination is Yukimi's call (Android hotspot settings or a Dreamscape page), #1313."
+  },
+  "widget-generation-fgs": {
+   "area": "native: widget/PresetWidget.kt GenerationService, a widget-started generation's progress",
+   "trigger": "user-action",
+   "action": "tap opens Dreamscape (added by wave C: it had none)",
+   "sound": false,
+   "switch": "ends when the generation ends; remove the widget",
+   "note": "Foreground-service progress of a job the user started: LOW, silent, ongoing. N4 fixed by wave C."
+  },
+  "widget-live-fgs": {
+   "area": "native: widget/WidgetLiveService.kt, keeps Latest frames and the workspace list live",
+   "trigger": "boot",
+   "action": "tap opens Dreamscape",
+   "sound": false,
+   "switch": "Android requires it while the service runs; it stops when no widget follows the server live",
+   "note": "Foreground-service notice: MIN, silent, ongoing. Stays."
+  }
+ }
+}
