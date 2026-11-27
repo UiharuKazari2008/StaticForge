@@ -61,5 +61,12 @@ pump.on('gap', (g) => gaps.push(g));
     assert.strictEqual(fetched.filter((u) => u.endsWith('seg100.aac')).length, 1, 'fetched once, never re-fetched');
     assert.strictEqual(pump.stats().refetches, 0);
     assert.strictEqual(gaps.length, 0);
+    // a hole whose segment is held after all (fetched again by a resumed recording) is dropped on load; a real one stays
+    const dir = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'xmrec-'));
+    const seg = (seq, pdt) => JSON.stringify({ seq, pdt, dur: 10, f: `s${seq}.aac` });
+    require('fs').writeFileSync(require('path').join(dir, 'segs.ndjson'), [seg(1, 0), '{"gap":true,"from":10000,"to":20000}', seg(2, 10000.2), '{"gap":true,"from":20000,"to":40000}', seg(3, 20000), seg(5, 40000), '{"gap":true,"from":50000,"to":60000}', seg(7, 60000)].join('\n'));
+    const disk = await require('../modules/xmRadioRecorder')._test.readRecDisk(dir);
+    require('fs').rmSync(dir, { recursive: true, force: true });
+    assert.deepStrictEqual(disk.gaps, [{ from: 20000, to: 40000 }, { from: 50000, to: 60000 }]);
     console.log('test-xmradio-pump-id3: ok');
 })().catch((err) => { console.error(err); process.exitCode = 1; }).finally(() => { global.fetch = realFetch; });

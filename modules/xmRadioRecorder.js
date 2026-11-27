@@ -2041,6 +2041,8 @@ async function readRecDisk(dir) {
             else out.segs.push(Object.assign(row, { ok: true }));
         }
     } catch (_) { /* nothing recorded */ }
+    // a hole whose audio is held after all (a resumed recording fetched it again) is no hole: its silence would be added
+    out.gaps = out.gaps.filter((g) => out.segs.reduce((t, x) => t + Math.max(0, Math.min(g.to, x.pdt + x.dur * 1000) - Math.max(g.from, x.pdt)), 0) < (g.to - g.from) - 1000);
     try { out.cuts = (await fs.promises.readFile(path.join(dir, 'cuts.ndjson'), 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.at - b.at); } catch (_) { /* none */ }
     return out;
 }
