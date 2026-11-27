@@ -340,7 +340,7 @@
     // notices only the server raises (no page app shows its own live note for them): the inbox shows them itself
     // test: the test lane's notices (modules/testDevices.js, the emulator harness) have no page producer either
     // director: the turn-finished notice (wmShell no longer posts one of its own: it was a second notification, #997)
-    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test', 'director', 'work-done', 'work-attention', 'account-login', 'maintenance', 'usage-flag']); // Fleet's notices (modules/fleetNotices.js, #1196, #1291)
+    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test', 'director', 'work-done', 'work-attention', 'account-login', 'maintenance', 'usage-flag', 'device-ask', 'device-hold']); // Fleet's notices (modules/fleetNotices.js, #1196, #1291)
 
     let iconPrefsSent = '';
     function sendIconPrefs() {
@@ -386,7 +386,7 @@
             silent: !!opts.quiet,
             // 6.5.1's reminder keys on every notice (Yukimi, Nov 18): Dismiss | Menu, the Menu with View, Hide and the
             // reminder's Snooze times (the server brings the notice back then, sounding); the app's own box has the same
-            softKeys: () => ({
+            softKeys: () => answerKeys(notice) || ({
                 left: { label: 'Dismiss', icon: 'dismiss', action: () => { ack(notice.id, 'cleared'); close(notice.id); } },
                 right: { label: 'Menu', icon: 'menu', menu: () => noticeMenu(notice) },
             }),
@@ -395,6 +395,22 @@
         shownNotes.set(notice.id, note);
         pageShown(notice.id);
         ack(notice.id, 'seen');
+    }
+
+    /**
+     * A phone-consent question (StaticForge #1284, notice data.buttons + answerType 'device_consent_answer'): the box's keys are
+     * the answer, Allow | Deny, sent as that packet - the same one the app's Android notification buttons send with the page
+     * asleep. The server clears the notice when it is answered; null for every other notice.
+     */
+    function answerKeys(notice) {
+        const d = (notice && notice.data) || {};
+        if (d.answerType !== 'device_consent_answer' || !Array.isArray(d.buttons) || d.buttons.length < 2) return null;
+        const key = (b) => ({ label: String(b.label || b.id).slice(0, 20), action: () => {
+            const c = client();
+            if (c && typeof c.sendMessage === 'function') void Promise.resolve(c.sendMessage('device_consent_answer', { id: notice.id, answer: String(b.id) }, false)).catch(() => { /* the notice stays: tap again */ });
+            close(notice.id);
+        } });
+        return { left: key(d.buttons[0]), right: key(d.buttons[1]) };
     }
 
     // the page's notification boxes (showGlassToast ids toast-<n>): the newest number, and whether one carries a title
