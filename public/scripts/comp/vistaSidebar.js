@@ -3147,7 +3147,9 @@ const vsbMobileWatch = function (inst, paint) {
 const vsbMobileOptions = {
     html(set, inst) {
         const as = window.activeSync;
-        const list = as && as.kind === 'computer' ? as.state().devices.filter((d) => d.partner || d.online) : [];
+        // the set-up devices alone (#1299): a test device or an emulator is not hers at all, and one that merely
+        // connected waits to be set up
+        const list = as && as.kind === 'computer' ? (typeof as.listedDevices === 'function' ? as.listedDevices() : as.state().devices.filter((d) => d.partner)) : [];
         const opts = [['', list.some((d) => d.primary) ? 'The primary device' : 'The connected phone']].concat(list.map((d) => [d.deviceId, d.online ? d.name : `${d.name} (not connected)`]));
         // Mobile Notifications: how many rows, the apps' icons, a Dismiss button on each row (#827)
         const count = inst && inst.g.type === 'mobilenotify'

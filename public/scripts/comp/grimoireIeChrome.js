@@ -1379,7 +1379,11 @@
         sendItems(tab) {
             const as = window.activeSync;
             const st = as && typeof as.state === 'function' ? as.state() : null;
-            const devices = st && st.kind === 'computer' ? (st.devices || []).filter((d) => d.online || d.partner) : [];
+            // a set-up device alone (#1299): a test device or an emulator sends nothing, and one that merely
+            // connected is offered for setup in Device Center instead
+            const devices = st && st.kind === 'computer'
+                ? (typeof as.listedDevices === 'function' ? as.listedDevices() : (st.devices || []).filter((d) => d.partner))
+                : [];
             if (!devices.length) return [{ text: 'No devices connected', disabled: true }];
             return devices.map((d) => ({ text: d.name || 'Windows Mobile device', subtext: d.online ? '' : 'Sends when it connects', action: 'send-device', deviceId: d.deviceId, deviceName: d.name, tabId: tab ? tab.id : null }));
         }
