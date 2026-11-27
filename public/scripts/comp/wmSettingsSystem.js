@@ -340,7 +340,7 @@
      * while it has none) and the week S M T W T F S with the alarm's days filled; under them "Sound
      * alarms even when the device is set to silent or vibrate". A tap on the time or the description
      * opens Alarm Settings: the time, the description, the days (large), Sound (No Sound and every
-     * WMA of \Windows: Alarm-01 first), Play / Stop, and Play once / Repeat / Repeat and Vibrate /
+     * WMA of \Windows), Play / Stop, and Play once / Repeat / Repeat and Vibrate /
      * Vibrate only. The alarms live on this device (wmLock65.js window.wmAlarms rings them); 6.1 and
      * 6.5 have no Alarms tab here and keep none.
      */
@@ -399,7 +399,7 @@
                 ui.timeField(el.querySelector('.wm-alarm651-time'), { value: a.time, label: 'Time', onChange: (v) => { a.time = v; } });
                 el.querySelector('[data-f="text"]').addEventListener('input', (e) => { a.text = e.target.value; });
                 days(el);
-                ui.bindCombo(el.querySelector('[data-act="sound"]'), sounds, a.sound, (v) => { a.sound = v; });
+                ui.bindCombo(el.querySelector('[data-act="sound"]'), sounds, a.sound, (v) => { a.sound = v; a.soundPicked = true; });
                 ui.bindCombo(el.querySelector('[data-act="mode"]'), modes, a.mode, (v) => { a.mode = v; });
                 const s = sh();
                 // a radio channel previews by playing it in XM Radio (and Stop stops it there)

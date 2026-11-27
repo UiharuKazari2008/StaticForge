@@ -44,5 +44,9 @@ a = send('push', snap({ mode: 'off' }), at(14, 5));
 assert.strictEqual(timer(a), 0, 'off cancels the timer');
 // server side
 const hc = require('../modules/hourChime');
-assert.deepStrictEqual(hc.clean({ mode: 'x', hourSound: '../a', strike: 1 }), { mode: 'off', hourSound: 'Alarm-01', halfSound: 'Remind-01', strike: true });
+assert.deepStrictEqual(hc.clean({ mode: 'x', hourSound: '../a', strike: 1 }), { mode: 'off', hourSound: 'Remind-02', halfSound: 'Remind-01', strike: true });
+// #1321: a stored Alarm file she never picked becomes the default; one she picked stays
+assert.strictEqual(hc.clean({ mode: 'off', hourSound: 'Alarm-01', halfSound: 'Remind-01' }).hourSound, 'Remind-02', 'the old unpicked default');
+assert.strictEqual(hc.clean({ mode: 'hour', hourSound: 'Alarm-03', picked: ['hourSound'] }).hourSound, 'Alarm-03', 'her own pick stays');
+assert.strictEqual(hc.clean({ mode: 'half', halfSound: 'Alarm4' }).halfSound, 'Remind-01', 'half hour too');
 console.log('test-cafe-hour-chime ok');

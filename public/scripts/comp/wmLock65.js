@@ -671,8 +671,10 @@
     const ALARM_MODES = [['once', 'Play once'], ['repeat', 'Repeat'], ['repeat-vibrate', 'Repeat and Vibrate'], ['vibrate', 'Vibrate only']];
     const ALARM_SNOOZE_MIN = 10;      // the Snooze slide: SnoozeTime 600 s
     const ALARM_RING_MS = 120000;     // the sound gives up after two minutes; the alarm stays on screen
-    // device defaults: 6:00 AM, Monday, Alarm-01, Repeat and Vibrate, off
-    const alarmBlank = () => ({ on: false, time: 360, text: '', days: 2, sound: 'Alarm-01.mp3', mode: 'repeat-vibrate', since: 0, last: 0 });
+    // device defaults: 6:00 AM, Monday, Repeat and Vibrate, off. The sound is not the device's Alarm-01: no WM
+    // Alarm file plays unless she picked it (Yukimi, Nov 26 2026, #1321)
+    const ALARM_SOUND = 'Remind-01.mp3';
+    const alarmBlank = () => ({ on: false, time: 360, text: '', days: 2, sound: ALARM_SOUND, soundPicked: false, mode: 'repeat-vibrate', since: 0, last: 0 });
     let alarmTimer = 0;
     let ringing = [];       // alarms on screen: { i, due, text, sound, mode, note }
     let ringSound = null;
@@ -688,6 +690,8 @@
                 a.time = Math.max(0, Math.min(1439, Math.round(Number(a.time)) || 0));
                 a.days = (Number(a.days) || 0) & 127;
                 if (!ALARM_MODES.some(([m]) => m === a.mode)) a.mode = 'repeat-vibrate';
+                // an alarm stored with the old default nobody picked (#1321)
+                if (a.sound === 'Alarm-01.mp3' && a.soundPicked !== true) a.sound = ALARM_SOUND;
                 return a;
             }),
             loud: s.loud === true,
@@ -1081,7 +1085,7 @@
         /** Alarms (6.5.1): Settings > Clock & Alarms > Alarms reads and writes them here. */
         window.wmAlarms = {
             modes: () => ALARM_MODES.map(([value, label]) => ({ value, label })),
-            get: () => { const s = alarmStore(); return { list: s.list.map((a) => ({ on: a.on, time: a.time, text: a.text, days: a.days, sound: a.sound, mode: a.mode })), loud: s.loud }; },
+            get: () => { const s = alarmStore(); return { list: s.list.map((a) => ({ on: a.on, time: a.time, text: a.text, days: a.days, sound: a.sound, soundPicked: a.soundPicked === true, mode: a.mode })), loud: s.loud }; },
             /** Store the three alarms and the "even when silent" switch; an alarm that changed counts from now. */
             set(next) {
                 const s = alarmStore();
@@ -1089,7 +1093,7 @@
                 (next && Array.isArray(next.list) ? next.list : []).slice(0, 3).forEach((n, i) => {
                     const a = s.list[i];
                     const was = JSON.stringify([a.on, a.time, a.days]);
-                    Object.assign(a, { on: !!n.on, time: Math.max(0, Math.min(1439, Math.round(Number(n.time)) || 0)), text: String(n.text || '').slice(0, 63), days: (Number(n.days) || 0) & 127, sound: String(n.sound || ''), mode: n.mode });
+                    Object.assign(a, { on: !!n.on, time: Math.max(0, Math.min(1439, Math.round(Number(n.time)) || 0)), text: String(n.text || '').slice(0, 63), days: (Number(n.days) || 0) & 127, sound: String(n.sound || ''), soundPicked: n.soundPicked === true, mode: n.mode });
                     if (JSON.stringify([a.on, a.time, a.days]) !== was) { a.since = now; s.snoozed = s.snoozed.filter((z) => z.i !== i); }
                 });
                 if (next && typeof next.loud === 'boolean') s.loud = next.loud;

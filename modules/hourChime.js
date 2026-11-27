@@ -12,19 +12,27 @@
 
 const KEY = 'chime';
 const MODES = ['off', 'hour', 'half'];
-const DEFAULTS = { mode: 'off', hourSound: 'Alarm-01', halfSound: 'Remind-01', strike: false };
+// no default is a WM Alarm file: one chimes only where she picked it (Yukimi, Nov 26 2026, #1321)
+const DEFAULTS = { mode: 'off', hourSound: 'Remind-02', halfSound: 'Remind-01', strike: false };
+const SOUND_KEYS = ['hourSound', 'halfSound'];
+const ALARM_FILE = /^alarm-?\d/i;
 
 function inbox() { return require('./notificationInbox'); }
 
 function clean(c) {
     const o = c && typeof c === 'object' ? c : {};
     const sound = (v, d) => (/^[A-Za-z0-9._ -]{1,40}$/.test(String(v || '')) ? String(v) : d);
-    return {
+    const out = {
         mode: MODES.includes(o.mode) ? o.mode : DEFAULTS.mode,
         hourSound: sound(o.hourSound, DEFAULTS.hourSound),
         halfSound: sound(o.halfSound, DEFAULTS.halfSound),
         strike: !!o.strike
     };
+    // picked: the sounds she chose herself; a stored Alarm file she never chose (the old default) is the new default
+    const picked = SOUND_KEYS.filter((k) => Array.isArray(o.picked) && o.picked.includes(k));
+    for (const k of SOUND_KEYS) if (ALARM_FILE.test(out[k]) && !picked.includes(k)) out[k] = DEFAULTS[k];
+    if (picked.length) out.picked = picked;
+    return out;
 }
 
 function get(user = 'admin') {
@@ -35,9 +43,15 @@ function get(user = 'admin') {
 
 /** Merge the given fields over the saved choice; returns the saved choice. */
 function set(user, patch) {
-    const next = clean(Object.assign({}, get(user), patch || {}));
+    const was = get(user);
+    const p = patch || {};
+    // a sound that changes here was picked on Settings > Sounds & Notifications
+    const picked = SOUND_KEYS.filter((k) => (was.picked || []).includes(k) || (p[k] !== undefined && p[k] !== was[k]));
+    const next = clean(Object.assign({}, was, p, { picked }));
     inbox().setPref(user, KEY, JSON.stringify(next));
     return next;
 }
 
 module.exports = { get, set, clean, MODES, DEFAULTS };
+
+require('./hotReload').mark(module); // stateless (docs/server/hot-reload.md)

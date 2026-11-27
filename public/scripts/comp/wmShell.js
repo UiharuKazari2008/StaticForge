@@ -10109,26 +10109,26 @@
         { id: 'battery-very-low', label: 'Battery: Main battery very low', kind: 'note', sound: 'BatteryCritical.wav', desktop: 'warning' },
         { id: 'beep', label: 'Default beep', kind: 'event', sound: 'Default.wav', desktop: 'dialog' },
         // shown as shipped (Yukimi, Nov 16: she expects the notification when a turn completes)
-        { id: 'director', label: 'Director: Turn finished', kind: 'note', sound: 'Alarm2.wav', display: true, desktop: 'balloon' },
+        { id: 'director', label: 'Director: Turn finished', kind: 'note', sound: 'Infbeg.wav', display: true, desktop: 'balloon' },
         // #779: Dreamscape Messenger (the chat personas) and Text Messaging notify in classes of their own
         { id: 'chat', label: 'Dreamscape Messenger: New message', kind: 'note', sound: 'online.mp3', desktop: 'balloon' },
-        { id: 'error', label: 'Errors', kind: 'event', sound: 'Alarm2.wav', desktop: 'critical-stop' },
+        { id: 'error', label: 'Errors', kind: 'event', sound: 'Default.wav', desktop: 'critical-stop' },
         // (info and question message boxes ship silent: a box answering her own tap is no event to beep for - N7, #1299)
-        { id: 'info', label: 'Information', kind: 'event', sound: 'Alarm2.wav', play: false, desktop: 'dialog' },
+        { id: 'info', label: 'Information', kind: 'event', sound: 'Default.wav', play: false, desktop: 'dialog' },
         { id: 'menu', label: 'Menu pop-up', kind: 'event', sound: 'MenuPop.wav', play: false, desktop: 'dialog' },
-        { id: 'mail', label: 'Messaging: New e-mail message', kind: 'note', sound: 'Alarm1.mp3', desktop: 'notify', dovecote: true },
-        { id: 'notification', label: 'Other notifications', kind: 'note', sound: 'Alarm2.wav', repeatable: true, desktop: 'balloon' },
+        { id: 'mail', label: 'Messaging: New e-mail message', kind: 'note', sound: 'Infbeg.wav', desktop: 'notify', dovecote: true },
+        { id: 'notification', label: 'Other notifications', kind: 'note', sound: 'Infbeg.wav', repeatable: true, desktop: 'balloon' },
         // (Fleet's notices have no sound event of their own: they sound as "Other notifications", the sound she chose for it - #1291,
         // Yukimi Nov 26 2026: a default she never chose played)
-        { id: 'question', label: 'Questions', kind: 'event', sound: 'Alarm2.wav', play: false, desktop: 'dialog' },
+        { id: 'question', label: 'Questions', kind: 'event', sound: 'Default.wav', play: false, desktop: 'dialog' },
         { id: 'reminder', label: 'Reminders', kind: 'note', sound: 'notify.mp3', repeatable: true, repeat: true, desktop: 'balloon' },
         // #848: the update icon's notification (updates downloaded and ready, applied, available)
         { id: 'update', label: 'Software update', kind: 'note', sound: 'SoftwareUpdate.wav', play: false, desktop: 'balloon' },
         // no 'startup' class (gwes' SystemStart): Melaton Mobile boots silent, always, and offers no
         // Start up row, so there is no switch that plays nothing (Yukimi, Nov 26 2026, #1299 N8)
         // no 'print' (Print finished) class: a finished print is no notification on the phone (#1040)
-        { id: 'print-error', label: 'Studio: Print failed', kind: 'note', sound: 'Alarm2.wav', desktop: 'print-error' },
-        { id: 'sms', label: 'Text Messaging: New text message', kind: 'note', sound: 'Alarm3.mp3', desktop: 'balloon' },
+        { id: 'print-error', label: 'Studio: Print failed', kind: 'note', sound: 'Default.wav', desktop: 'print-error' },
+        { id: 'sms', label: 'Text Messaging: New text message', kind: 'note', sound: 'online.mp3', desktop: 'balloon' },
         // #810: a speed or red light camera 1 mi ahead on the commute, with its own sound
         { id: 'traffic-camera', label: 'Traffic: Speed camera', kind: 'note', sound: 'TrafficCamera.wav', desktop: 'warning' },
         // #835: a remote start on its timer has 5, 3, 2 or 1 minutes left
@@ -10136,7 +10136,7 @@
         // #848: the car was left unlocked; the car reports an issue (a warning light, a recall, a failed check)
         { id: 'lapis-unlocked', label: 'Lapis Remote: Car left unlocked', kind: 'note', sound: 'LapisUnlocked.wav', desktop: 'warning' },
         { id: 'lapis-issue', label: 'Lapis Remote: Issue detected', kind: 'note', sound: 'LapisIssue.wav', desktop: 'warning' },
-        { id: 'warning', label: 'Warnings', kind: 'event', sound: 'Alarm2.wav', desktop: 'warning' },
+        { id: 'warning', label: 'Warnings', kind: 'event', sound: 'Default.wav', desktop: 'warning' },
         // Weather (#792): alerts for Home / Work, severe and extreme ones keep sounding until seen; the rain alarm
         { id: 'weather-alert', label: 'Weather: Alert', kind: 'note', sound: 'WeatherAlert.wav', desktop: 'balloon' },
         { id: 'weather-severe', label: 'Weather: Severe alert', kind: 'note', sound: 'WeatherSevere.wav', repeatable: true, repeat: true, desktop: 'warning' },
@@ -10152,6 +10152,8 @@
         SND_EVENTS.find((e) => e.id === 'reminder').sound = 'Remind-01.mp3';
     }
     const SND_EVENT = new Map(SND_EVENTS.map((e) => [e.id, e]));
+    // No event's default is one of WM's Alarm files (Yukimi, Nov 26 2026, #1321): one plays only where she picked it on
+    // Settings > Sounds & Notifications (scripts/test-wm-sound-defaults.js holds this).
     // the gwes / PlaySound names callers use, as phone events
     const SND_ALIAS = {
         SystemAsterisk: 'info', SystemQuestion: 'question', SystemExclamation: 'warning', SystemHand: 'error',
@@ -10212,7 +10214,7 @@
     /**
      * Every notification event's sound choices for the Android app (#907, AndroidBars.noteSounds): the app shows a
      * notice that arrives with the page asleep as a WM popup over the program in front, with the event's sound and
-     * vibration (rule cafeready-background). { <event id>: { sound: url | '', vibrate, display, repeat, label } },
+     * vibration (rule cafeready-background). { <event id>: { sound: url | '', own, vibrate, display, repeat, label } },
      * the URL versioned as avPlay's (the app keeps each sound by its URL). Sent at start and when Sounds &
      * Notifications changes; only when it changed.
      */
@@ -10233,7 +10235,8 @@
                 try { v = await sndVersion(path); } catch (_) { v = ''; }
                 url = location.origin + path + (v ? `?v=${v}` : '');
             }
-            out[e.id] = { sound: url, vibrate: !!p.vibrate, display: !!p.display, repeat: !!p.repeat, label: e.label };
+            // own: she picked this sound herself; the app plays a WM Alarm-family file only then (#1321)
+            out[e.id] = { sound: url, own: !!p.own, vibrate: !!p.vibrate, display: !!p.display, repeat: !!p.repeat, label: e.label };
         }
         const json = JSON.stringify(out);
         if (json === noteSoundsSent) return;
