@@ -1,1 +1,26 @@
-{"note":"Notice source registry (N5). Every emit site carries `// notice: <id>`; the id is registered here with its trigger, its destination (action), whether it sounds, and where the user switches it off. switch \"none\" is called out by the Supervisor.","sources":{}}
+{"note":"Notice source registry (N5). Every emit site carries `// notice: <id>`; the id is registered here with its trigger, its destination (action), whether it sounds, and where the user switches it off. switch \"none\" is called out by the Supervisor.","sources":{
+  "page-download-saved": {
+   "area": "page: toastManager.js 'melaton:download' saved (a file the Android app saved for her): WM notification on the phone, in-page toast on the desktop / DeX",
+   "trigger": "user-action",
+   "action": "Open (window.AndroidNotification.openDownload: the only way from here to the saved file)",
+   "sound": false,
+   "switch": "phone: Settings > Sounds & Notifications > Other notifications > Display message on screen; desktop / DeX: none (it only follows her own Save)",
+   "note": "#1321: replaces the app's Android download notification. Silent. One at a time, the newest replaces it (N9)."
+  },
+  "page-download-failed": {
+   "area": "page: toastManager.js 'melaton:download' failed, her Save did not happen",
+   "trigger": "user-action",
+   "action": "none: the notice is the failure in words",
+   "sound": "by the toast policy: the desktop message box is silent; the phone's Errors event (its Sounds & Notifications setting)",
+   "switch": "phone: Settings > Sounds & Notifications > Errors; desktop / DeX: none",
+   "note": "#1321: replaces the app's Android 'Save failed' notification. An error that stopped her own action, told once per download id (N6, N10)."
+  },
+  "page-download-open-failed": {
+   "area": "page: toastManager.js, Open on a saved download opened nothing",
+   "trigger": "user-action",
+   "action": "none: the notice is the failure in words",
+   "sound": "by the toast policy: the desktop message box is silent; the phone's Errors event",
+   "switch": "phone: Settings > Sounds & Notifications > Errors; desktop / DeX: none",
+   "note": "#1321. Only after her own tap on Open."
+  }
+}}

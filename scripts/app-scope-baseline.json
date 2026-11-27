@@ -522,7 +522,7 @@
  },
  "public/scripts/comp/modalUtils.js": {
   "owner-less-listener": 7,
-  "page-global": 533
+  "page-global": 531
  },
  "public/scripts/comp/naxVibesApplet.js": {
   "page-global": 14
@@ -737,7 +737,7 @@
   "page-global": 6
  },
  "public/scripts/comp/toastManager.js": {
-  "page-global": 93
+  "page-global": 79
  },
  "public/scripts/comp/trayIndicators.js": {
   "owner-less-listener": 1,

@@ -25,7 +25,6 @@ function mockElement(tagName = 'div') {
 
 // Mock a Minimal Browser Window environment
 global.window = {
-    AndroidNotification: null,
     isDesktop: false,
     localStorage: {
         getItem: () => null,

@@ -42,7 +42,7 @@ const ctx = {
     setTimeout,
     clearTimeout,
     Promise,
-    window: { AndroidNotification: null, isDesktop: true, localStorage: { getItem: () => null, setItem() {} }, requestAnimationFrame: (cb) => cb() },
+    window: { isDesktop: true, localStorage: { getItem: () => null, setItem() {} }, requestAnimationFrame: (cb) => cb() },
     desktopSounds: { playBalloon() {} },
     requestAnimationFrame: (cb) => cb(),
     document: {
@@ -132,7 +132,8 @@ const run = (code) => vm.runInContext(code, ctx);
     await new Promise((r) => setTimeout(r, 5));
     assert.ok(tasks[7].finished);
     run(`showGlassToast('success', 'Saved', 'Saved', false, 5000)`);
-    assert.strictEqual(appended.length, 1, 'that one is a toast');
+    assert.strictEqual(tasks[7].completed, null, 'it is not that dialog\'s result');
+    assert.strictEqual(appended.length, 0, 'and on the desktop a plain confirmation is nothing (the toast policy)');
     // a progress toast with its own timeout: the dialog closes then
     run(`showGlassToast('info', 'Generating...', 'Starting', true, 20)`);
     await new Promise((r) => setTimeout(r, 40));

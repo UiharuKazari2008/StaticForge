@@ -684,12 +684,6 @@ if (window.wsClient) {
     }, 5 * 60 * 1000);
 
     window.wsClient.registerInitStep(100, 'Finalizing', async () => {
-        // Activate the Android notification bridge now that all scripts have loaded.
-        // This must run last so that window.AndroidNotification (injected by the host)
-        // and all toast functions are fully available before we check isReady().
-        if (typeof window.initAndroidNotificationBridge === 'function') {
-            window.initAndroidNotificationBridge();
-        }
         registerAndroidBackgroundNotificationManifest();
     });
 

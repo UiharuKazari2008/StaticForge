@@ -21,10 +21,9 @@
  *                        Programs icon size, "Open the workspace at startup" and what the power
  *                        and lock buttons do
  *   Notification Area    "Notifications": the shortest time a notification stays, and Customize
- *                        Notifications (which notifications to hide; the Notification Bridge
- *                        where an Android host is attached)
+ *                        Notifications (which notifications to hide)
  *   Toolbars             Quick Launch and the Status ticker
- * Server-held settings (the Start button, program pictures, startup, the bridge) are saved with
+ * Server-held settings (the Start button, program pictures, startup) are saved with
  * persistUserGlobalSettingsPatch (modalUtils.js); the rest stay on this computer
  * (taskbarSettings.js, trayRegistry.js). Styles: public/css/taskbar-properties.css.
  */
@@ -80,19 +79,13 @@
     // Monolith helpers are classic-script globals (not window properties): reached by name, guarded
     // with typeof so the file also loads in the node tests.
     /* global readDesktopSettingsStartMenuButtonPreference, readDesktopSettingsAutoLaunchPreference,
-       readDesktopSettingsNotificationBridgeEnabledPreference, readDesktopSettingsBypassNotificationBridgeDesktopPreference,
-       desktopSettingsGlobalState, persistUserGlobalSettingsPatch, isAndroidNotificationBridgeDetected,
+       desktopSettingsGlobalState, persistUserGlobalSettingsPatch,
        getStartMenuButtonPresetGroups, START_MENU_BUTTON_PRESET_META, resolveStartMenuButtonDisplayText,
        startMenuButtonLogoUrl, getStartMenuPlacesAll, trayMinPopupMs, traySetMinPopupMs, trayPopupTimeChoices,
        trayPopupCatalog, trayPopupHidden, traySetPopupHidden, trayIconCatalog, trayIconBehavior, traySetIconBehaviors,
-       trayIconTucked, taskbarSettings, applyNotificationBridgePreferences, desktopSettingsPersistedStartMenuButton,
+       trayIconTucked, taskbarSettings, desktopSettingsPersistedStartMenuButton,
        desktopSettingsPersistedUseApplicationImageIcon, startMenuKit, resolveAppIconPath */
     // ---- state ---------------------------------------------------------------------------------
-
-    function bridgeDetected() {
-        const fn = typeof isAndroidNotificationBridgeDetected !== 'undefined' ? isAndroidNotificationBridgeDetected : null;
-        return typeof fn === 'function' && fn() === true;
-    }
 
     function readState() {
         const core = root.taskbarSettings ? root.taskbarSettings.get() : {};
@@ -106,8 +99,6 @@
         const popups = (typeof trayPopupCatalog !== 'undefined') ? trayPopupCatalog() : [];
         popups.forEach((row) => { hiddenPopups[row.id] = trayPopupHidden(row.id) === true; });
         const autoFn = typeof readDesktopSettingsAutoLaunchPreference !== 'undefined' ? readDesktopSettingsAutoLaunchPreference : null;
-        const bridgeFn = typeof readDesktopSettingsNotificationBridgeEnabledPreference !== 'undefined' ? readDesktopSettingsNotificationBridgeEnabledPreference : null;
-        const bypassFn = typeof readDesktopSettingsBypassNotificationBridgeDesktopPreference !== 'undefined' ? readDesktopSettingsBypassNotificationBridgeDesktopPreference : null;
         return {
             core,
             startButton: { ...startButton },
@@ -115,9 +106,7 @@
             autoLaunch: autoFn ? autoFn() !== false : true,
             trayMinMs: (typeof trayMinPopupMs !== 'undefined') ? trayMinPopupMs() : 8000,
             behaviors,
-            hiddenPopups,
-            bridgeEnabled: bridgeFn ? bridgeFn() !== false : true,
-            bridgeBypass: bypassFn ? bypassFn() === true : false
+            hiddenPopups
         };
     }
 
@@ -467,10 +456,6 @@
         if (JSON.stringify(p.startButton) !== JSON.stringify(s.startButton)) desktop.startMenuButton = { ...p.startButton };
         if (p.useAppImageIcon !== s.useAppImageIcon) desktop.useApplicationImageIcon = p.useAppImageIcon;
         if (p.autoLaunch !== s.autoLaunch) desktop.autoLaunchWorkspace = p.autoLaunch;
-        if (bridgeDetected() && (p.bridgeEnabled !== s.bridgeEnabled || p.bridgeBypass !== s.bridgeBypass)) {
-            desktop.notificationBridgeEnabled = p.bridgeEnabled;
-            desktop.bypassNotificationBridgeInDesktopMode = p.bridgeBypass;
-        }
         dlg.saved = clone(p);
         setDirty(false);
         renderPreviews();
@@ -485,10 +470,6 @@
             }
             if ('useApplicationImageIcon' in desktop) gs.useApplicationImageIcon = p.useAppImageIcon;
             if ('autoLaunchWorkspace' in desktop) gs.autoLaunchWorkspace = p.autoLaunch;
-            if ('notificationBridgeEnabled' in desktop) {
-                gs.notificationBridgeEnabled = p.bridgeEnabled;
-                gs.bypassNotificationBridgeInDesktopMode = p.bridgeBypass;
-            }
         }
         try {
             // persistUserGlobalSettingsPatch applies on this client first, then sends (modalUtils.js)
@@ -912,11 +893,10 @@
         });
     }
 
-    // Customize Notifications (ours, in dialog 7's layout): which notifications to hide, and the bridge
+    // Customize Notifications (ours, in dialog 7's layout): which notifications to hide
     function openCustomizePopups() {
         const popups = (typeof trayPopupCatalog !== 'undefined') ? trayPopupCatalog() : [];
         const hidden = { ...dlg.pending.hiddenPopups };
-        const bridge = bridgeDetected();
         const row = (r) => {
             const b = hidden[r.id] ? 'hide' : 'show';
             return `<div class="tbp-list-row" data-id="${esc(r.id)}" tabindex="-1">
@@ -927,29 +907,18 @@
         };
         const html = `
             ${text(6, 6, 220, 10, 'Click a notification behavior to change it.')}
-            <div class="tbp-ctl tbp-list" style="${dlu(6, 22, 220, bridge ? 130 : 160)}" role="listbox">
+            <div class="tbp-ctl tbp-list" style="${dlu(6, 22, 220, 160)}" role="listbox">
                 <div class="tbp-list-header"><span>Notification</span><span>Behavior</span></div>
                 <div class="tbp-list-body">${popups.map(row).join('')}</div>
             </div>
-            ${bridge ? `
-                ${check('bridge-on', 6, 158, 220, 'Send notifications to the Android <u>N</u>otification Bridge', 'x:bridgeEnabled')}
-                ${check('bridge-bypass', 6, 172, 220, 'On the desktop, show them here <u>i</u>nstead', 'x:bridgeBypass')}` : ''}
             ${button(164, 192, 62, 14, '<u>D</u>efault Settings', 'popups-default')}
             ${okCancel(122, 176, 220)}`;
         const sub = openSub('taskbarPropertiesPopups', 'Customize Notifications', 'tbp-icons', html, (content) => {
             content.querySelectorAll('.tbp-list-row').forEach((r) => {
                 dlg.pending.hiddenPopups[r.dataset.id] = r.querySelector('.tbp-list-select').value === 'hide';
             });
-            const on = content.querySelector('#tbp-bridge-on');
-            const by = content.querySelector('#tbp-bridge-bypass');
-            if (on) dlg.pending.bridgeEnabled = on.checked;
-            if (by) dlg.pending.bridgeBypass = by.checked;
         });
         if (!sub) return;
-        const on = sub.content.querySelector('#tbp-bridge-on');
-        const by = sub.content.querySelector('#tbp-bridge-bypass');
-        if (on) on.checked = dlg.pending.bridgeEnabled;
-        if (by) by.checked = dlg.pending.bridgeBypass;
         const setRow = (r, value) => {
             r.querySelector('.tbp-list-select').value = value;
             r.querySelector('.tbp-list-behavior-text').textContent = value === 'hide' ? 'Hide' : 'Show';

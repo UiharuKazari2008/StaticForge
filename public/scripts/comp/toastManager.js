@@ -223,235 +223,13 @@ function _endProgressDialogEntry(entry, toastId, { type, title, message, buttons
 }
 
 // ============================================================================
-// ANDROID NOTIFICATION BRIDGE
+// DESKTOP TRAY BALLOONS
+// Dreamscape's notices show only in Dreamscape's own UI (Yukimi, Nov 26 2026, #1321): nothing here hands a
+// toast to Android, in the installed app too.
 // ============================================================================
 
-/**
- * True once initAndroidNotificationBridge() confirms the native bridge is
- * present and ready (isReady()). User preferences may still disable routing.
- * @type {boolean}
- */
-let _androidBridgeHostReady = false;
-
-const NOTIFICATION_BRIDGE_ENABLED_KEY = 'notificationBridgeEnabled';
-const BYPASS_NOTIFICATION_BRIDGE_DESKTOP_KEY = 'bypassNotificationBridgeInDesktopMode';
-
-/**
- * True when the host injected window.AndroidNotification with isReady().
- * @returns {boolean}
- */
-function isAndroidNotificationBridgeDetected() {
-    const bridge = window.AndroidNotification;
-    return !!(bridge && typeof bridge.isReady === 'function');
-}
-
-function readNotificationBridgeEnabledPreference() {
-    try {
-        const raw = localStorage.getItem(NOTIFICATION_BRIDGE_ENABLED_KEY);
-        if (raw === null) return true;
-        return raw === 'true';
-    } catch (e) {
-        return true;
-    }
-}
-
-function readBypassNotificationBridgeInDesktopPreference() {
-    try {
-        return localStorage.getItem(BYPASS_NOTIFICATION_BRIDGE_DESKTOP_KEY) === 'true';
-    } catch (e) {
-        return false;
-    }
-}
-
-function applyNotificationBridgePreferences(enabled, bypassInDesktop) {
-    try {
-        localStorage.setItem(NOTIFICATION_BRIDGE_ENABLED_KEY, enabled ? 'true' : 'false');
-        localStorage.setItem(BYPASS_NOTIFICATION_BRIDGE_DESKTOP_KEY, bypassInDesktop ? 'true' : 'false');
-    } catch (e) {
-        /* ignore */
-    }
-}
-
-function _isDesktopModeForNotificationBridge() {
+function _isDesktopModeForToasts() {
     return !!(window.isDesktop || document.body.classList.contains('desktop-mode'));
-}
-
-/** Melaton Mobile (html.ui-mobile, window.uiShell 'mobile'): the phone shell draws every toast itself. */
-function _isMobileShellForNotificationBridge() {
-    return window.uiShell === 'mobile' || document.documentElement.classList.contains('ui-mobile');
-}
-
-function _canUseAndroidNotificationBridge() {
-    if (!_androidBridgeHostReady) return false;
-    // The phone UI shows toasts as Windows Mobile notifications (wmShell reads #toastContainer:
-    // bubble, title-bar icon, tray). A toast sent to the Android bridge gets no DOM node there and
-    // never shows, so on the phone nothing goes to the bridge, buttons and progress included (#723).
-    // The persistent ongoing notification (androidNotificationBridge.js) is separate and stays.
-    if (_isMobileShellForNotificationBridge()) return false;
-    if (!readNotificationBridgeEnabledPreference()) return false;
-    if (readBypassNotificationBridgeInDesktopPreference() && _isDesktopModeForNotificationBridge()) {
-        return false;
-    }
-    return true;
-}
-
-/**
- * Whether this toast may be forwarded to the Android notification bridge.
- * Blocked when bridge prefs disallow it, or desktop popup-wired titles in desktop mode.
- */
-function _shouldRouteToastToNativeBridge(toastId, type, title, showProgress) {
-    if (!_canUseAndroidNotificationBridge()) return false;
-    const stored = toastId ? activeToasts.get(toastId) : null;
-    const resolvedType = type ?? stored?.type;
-    const resolvedTitle = title ?? stored?.title;
-    const resolvedProgress = showProgress ?? stored?.showProgress ?? false;
-    if (stored?.inAppOnly) return false;
-    if (stored?.desktopPopoverAnchor) return false;
-    if (_isDesktopPopupWiredToast(resolvedType, resolvedTitle, resolvedProgress)) return false;
-    return true;
-}
-
-function _isNativeOnlyToast(toastId) {
-    const stored = activeToasts.get(toastId);
-    return !!(stored?.nativeRouted && !document.getElementById(toastId));
-}
-
-window.isAndroidNotificationBridgeDetected = isAndroidNotificationBridgeDetected;
-window.readNotificationBridgeEnabledPreference = readNotificationBridgeEnabledPreference;
-window.readBypassNotificationBridgeInDesktopPreference = readBypassNotificationBridgeInDesktopPreference;
-window.applyNotificationBridgePreferences = applyNotificationBridgePreferences;
-
-/**
- * Called once after the app has fully initialised. Checks whether the
- * window.AndroidNotification bridge is present and reports itself ready via
- * isReady(). If so, sets _androidBridgeHostReady = true and wires the onAction
- * callback so native button taps route back into handleToastButtonClick.
- *
- * Must be called AFTER all scripts have loaded (i.e. from the final
- * registerInitStep 'Finalizing' block in app.js).
- */
-function initAndroidNotificationBridge() {
-    const bridge = window.AndroidNotification;
-    if (!bridge) return;
-
-    // isReady() is the authoritative way for the native host to signal that it
-    // can fully handle notifications and the in-app toast UI should be hidden.
-    if (typeof bridge.isReady !== 'function' || !bridge.isReady()) return;
-
-    // Do not bulk-dismiss existing in-app toasts here. Finalizing runs at the end of
-    // startup (including desktop mode) and users may still have valid toasts open
-    // (subscription warnings, update notices, etc.). Routing follows user preferences
-    // via _canUseAndroidNotificationBridge().
-
-    _androidBridgeHostReady = true;
-    if (_canUseAndroidNotificationBridge()) {
-        console.log('📱 AndroidNotification bridge active – native notification routing enabled');
-    } else {
-        console.log('📱 AndroidNotification bridge ready – in-app toasts (preferences or desktop bypass)');
-    }
-
-    // Wire native button-tap callback exactly once.
-    if (!bridge._onActionRegistered) {
-        bridge.onAction = function (id, actionKey) {
-            handleToastButtonClick(Number(actionKey));
-        };
-        bridge._onActionRegistered = true;
-    }
-}
-
-/**
- * Expose initAndroidNotificationBridge so app.js can call it after init.
- */
-window.initAndroidNotificationBridge = initAndroidNotificationBridge;
-
-/**
- * Fire-and-forget helper that calls a method on window.AndroidNotification.
- *
- * Only fires once the bridge has been fully initialised and confirmed ready
- * via initAndroidNotificationBridge() when _canUseAndroidNotificationBridge() is true.
- * This ensures no bridge calls are made during early application init steps,
- * before isReady() has been checked and the app has completely loaded.
- *
- * @param {string} method - Name of the AndroidNotification method to call
- * @param {...*} args - Arguments forwarded verbatim to the native method
- */
-function _androidNotify(method, ...args) {
-    // Do not forward any calls until the bridge has been confirmed ready
-    // initAndroidNotificationBridge sets _androidBridgeHostReady after isReady().
-    if (!_canUseAndroidNotificationBridge()) return;
-
-    if (window.AndroidNotification && typeof window.AndroidNotification[method] === 'function') {
-        try {
-            window.AndroidNotification[method](...args);
-        } catch (e) {
-            console.warn(`📱 AndroidNotification.${method} failed:`, e);
-        }
-    }
-}
-
-/**
- * Registers window.AndroidNotification.onAction exactly once.
- * When the native side fires onAction(id, actionKey), we route it to
- * handleToastButtonClick so the JS onClick callbacks and closeOnClick
- * behaviour are honoured identically to a DOM button click.
- * @deprecated Prefer initAndroidNotificationBridge() – kept for safety.
- */
-function _androidSetupOnAction() {
-    if (!window.AndroidNotification || window.AndroidNotification._onActionRegistered) return;
-    window.AndroidNotification.onAction = function (id, actionKey) {
-        handleToastButtonClick(Number(actionKey));
-    };
-    window.AndroidNotification._onActionRegistered = true;
-}
-
-/**
- * Serialise the action buttons currently registered for a toast into the
- * JSON array format expected by the native bridge, or null if there are none.
- *
- * Native format: [{label: string, action: string}, ...]
- * The action value is the numeric buttonId (stored as a string) so that
- * onAction can look it up in buttonHandlers via handleToastButtonClick.
- *
- * @param {string} toastId - The toast whose buttons to serialise
- * @returns {string|null} JSON string, or null when there are no buttons
- */
-function _getAndroidActionsJson(toastId) {
-    const actions = [];
-    for (const [buttonId, handler] of buttonHandlers.entries()) {
-        if (handler.toastId === toastId) {
-            actions.push({ label: handler.text ?? '', action: String(buttonId) });
-        }
-    }
-    return actions.length ? JSON.stringify(actions) : null;
-}
-
-/**
- * Numeric id for the Android bridge (showNotification/completeNotification and all
- * update/dismiss methods must use the same id so the native side matches one notification).
- */
-function _toastNumericId(toastId) {
-    return parseInt(String(toastId).replace(/^toast-/, ''), 10) || 0;
-}
-
-/**
- * Toasts marked inAppOnly render in the WebView when the Android notification bridge
- * is active; all other toasts are mirrored only to native notifications.
- */
-function _isInAppOnlyToast(toastId) {
-    return !!activeToasts.get(toastId)?.inAppOnly;
-}
-
-/**
- * Decide whether a toast must stay in the in-app glass UI (not native-only).
- * Action buttons and a few high-visibility titles always use the DOM path.
- */
-function _shouldUseInAppToast(type, title, _message, buttons) {
-    if (buttons && Array.isArray(buttons) && buttons.length > 0) return true;
-    if (title === 'Critical Error' || title === 'User Data Error' || title === 'Read-Only Mode') return true;
-    if (title === 'Extended Free Usage') return true;
-    if (type === 'warning' && title === 'Queue Blocked') return true;
-    if (title === 'Disconnected' || title === 'Reconnecting') return true;
-    return false;
 }
 
 /** Titles wired to desktop taskbar/tray popovers (showPopover call sites). popupId is the tray registry key. */
@@ -482,11 +260,11 @@ const DESKTOP_POPUP_TOAST_TITLES = new Set([
 ]);
 
 /**
- * Desktop notifications anchored to taskbar indicators as popovers — never native bridge.
+ * Desktop notifications anchored to taskbar indicators as popovers.
  * Matches showPopover wiring in app.js / websocket.js.
  */
 function _isDesktopPopupWiredToast(type, title, showProgress = false) {
-    if (!_isDesktopModeForNotificationBridge()) return false;
+    if (!_isDesktopModeForToasts()) return false;
     if (showProgress) return false;
     return !!(title && DESKTOP_POPUP_TOAST_TITLES.has(title));
 }
@@ -500,17 +278,6 @@ function _getDesktopPopupAnchorForTitle(title) {
         return document.getElementById('walletTrayIcon');
     }
     return null;
-}
-
-function _dismissNativeToastNotification(toastId) {
-    if (!window.AndroidNotification || typeof window.AndroidNotification.dismissNotification !== 'function') {
-        return;
-    }
-    try {
-        window.AndroidNotification.dismissNotification(_toastNumericId(toastId));
-    } catch (e) {
-        console.warn('📱 AndroidNotification.dismissNotification failed:', e);
-    }
 }
 
 /**
@@ -635,8 +402,6 @@ function _showDesktopPopupForToast(toastId, type, title, message, timeout, custo
 
     const stored = activeToasts.get(toastId);
     if (stored) {
-        stored.inAppOnly = true;
-        stored.nativeRouted = false;
         stored.desktopPopoverAnchor = anchor;
         activeToasts.set(toastId, stored);
     }
@@ -652,10 +417,6 @@ function _promoteToastToDesktopPopupIfWired(toastId, type, title, message, showP
     if (stored?.buttons && stored.buttons.length > 0) {
         return false;
     }
-    if (stored?.nativeRouted) {
-        _dismissNativeToastNotification(toastId);
-    }
-
     const toastEl = document.getElementById(toastId);
     if (toastEl?.parentNode) {
         toastEl.parentNode.removeChild(toastEl);
@@ -665,51 +426,9 @@ function _promoteToastToDesktopPopupIfWired(toastId, type, title, message, showP
 }
 
 /**
- * Forward to AndroidNotification only when the bridge is active and this toast
- * is not forced to in-app display.
+ * Create and insert the glass toast DOM.
  */
-function _androidNotifyToast(toastId, method, ...args) {
-    if (!_shouldRouteToastToNativeBridge(toastId)) return;
-    _androidNotify(method, ...args);
-}
-
-/**
- * Dismiss the native notification for a bridge-only toast, mark it in-app, and insert DOM.
- * @param {HTMLElement|null} prebuiltButtonsEl - If set, use this (already wired by generateButtonsHtml); do not regenerate IDs.
- */
-function _materializeGlassToastDomIfNeeded(toastId, prebuiltButtonsEl = null) {
-    if (document.getElementById(toastId)) return;
-    const stored = activeToasts.get(toastId);
-    if (!stored) return;
-
-    if (stored.nativeRouted && window.AndroidNotification && typeof window.AndroidNotification.dismissNotification === 'function') {
-        try {
-            window.AndroidNotification.dismissNotification(_toastNumericId(toastId));
-        } catch (e) {
-            console.warn('📱 AndroidNotification.dismissNotification failed:', e);
-        }
-    }
-    stored.inAppOnly = true;
-    stored.nativeRouted = false;
-    activeToasts.set(toastId, stored);
-    _appendGlassToastDom(
-        toastId,
-        stored.type,
-        stored.title,
-        stored.message,
-        stored.showProgress,
-        stored.timeout !== undefined ? stored.timeout : 5000,
-        stored.customIcon,
-        stored.buttons,
-        prebuiltButtonsEl
-    );
-}
-
-/**
- * Create and insert the glass toast DOM (shared by showGlassToast and materialize).
- * @param {HTMLElement|null} prebuiltButtonsEl - Optional pre-built .toast-buttons node (preserves button handler IDs).
- */
-function _appendGlassToastDom(toastId, type, title, message, showProgress, timeout, customIcon, buttons, prebuiltButtonsEl = null) {
+function _appendGlassToastDom(toastId, type, title, message, showProgress, timeout, customIcon, buttons) {
     const toastContainer = document.getElementById('toastContainer') || createToastContainer();
 
     const toast = document.createElement('div');
@@ -718,7 +437,7 @@ function _appendGlassToastDom(toastId, type, title, message, showProgress, timeo
     toast.id = toastId;
 
     const icon = customIcon || getToastIcon(type, showProgress);
-    const buttonsElement = prebuiltButtonsEl || (buttons ? generateButtonsHtml(buttons, toastId) : null);
+    const buttonsElement = buttons ? generateButtonsHtml(buttons, toastId) : null;
 
     if (title && message) {
         const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="fa-regular fa-xmark-large"></i></button>';
@@ -817,7 +536,7 @@ function _toastPolicyRoute(type, title, message, showProgress, buttons) {
     const t = _toastPlain(title);
     const m = _toastPlain(message);
     const both = `${t} ${m}`;
-    const desktop = _isDesktopModeForNotificationBridge();
+    const desktop = _isDesktopModeForToasts();
     const phone = typeof window !== 'undefined' && window.uiShell === 'mobile';
     const hasButtons = Array.isArray(buttons) && buttons.length > 0;
     if (TOAST_NOISE_TITLE.test(t) || TOAST_NOISE_MESSAGE.test(m)) return { kind: 'drop' };
@@ -930,7 +649,7 @@ function _showPolicyBalloon(toastId, route, type, title, message, timeout, custo
     });
     if (typeof startPopoverAutoHideTimer === 'function') startPopoverAutoHideTimer(anchor);
     const stored = activeToasts.get(toastId);
-    if (stored) { stored.inAppOnly = true; stored.desktopPopoverAnchor = anchor; }
+    if (stored) stored.desktopPopoverAnchor = anchor;
     return true;
 }
 
@@ -948,7 +667,8 @@ function _showPolicyBalloon(toastId, route, type, title, message, timeout, custo
  * @param {string|null} customIcon - Custom icon HTML string
  * @param {Array|null} buttons - Array of button configuration objects
  * @param {Object|null} options - For a desktop message box: { appIcon } the raising program's caption icon (an
- *   app_icons reference; without one a box nobody's click raised has no caption icon), { position: 'bottom-right' }
+ *   app_icons reference; without one a box nobody's click raised has no caption icon), { position: 'bottom-right' }.
+ *   { inPage: true } draws the toast itself, past the toast policy (a delivery the policy would turn into a box)
  * @returns {string} Unique toast ID
  *
  * @example
@@ -964,9 +684,6 @@ function _showPolicyBalloon(toastId, route, type, title, message, timeout, custo
 function showGlassToast(type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null, options = null) {
     const toastId = `toast-${++toastCounter}`;
     const resolvedTimeout = timeout === false ? false : (timeout ?? 5000);
-    const inAppOnly = _shouldUseInAppToast(type, title, message, buttons)
-        || _isDesktopPopupWiredToast(type, title, showProgress);
-
     activeToasts.set(toastId, {
         type,
         title,
@@ -975,9 +692,7 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         customIcon,
         buttons,
         createdAt: Date.now(),
-        inAppOnly,
         timeout: resolvedTimeout,
-        nativeRouted: false,
         desktopPopoverAnchor: null,
         timeoutId: null
     });
@@ -1004,7 +719,7 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
     }
 
     // the toast policy: a balloon, a message box or nothing in place of a toast
-    const route = _toastPolicyRoute(type, title, message, showProgress, buttons);
+    const route = options && options.inPage ? { kind: 'pass' } : _toastPolicyRoute(type, title, message, showProgress, buttons);
     if (route.kind === 'drop') {
         activeToasts.delete(toastId);
         if (policyDroppedToasts.size > 200) policyDroppedToasts.clear();
@@ -1027,22 +742,7 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         return toastId;
     }
 
-    // ── Android bridge path (native-only toasts) ─────────────────────────────
-    if (_shouldRouteToastToNativeBridge(toastId, type, title, showProgress)) {
-        if (buttons) generateButtonsHtml(buttons, toastId);
-        const numericId = _toastNumericId(toastId);
-        activeToasts.get(toastId).nativeRouted = true;
-        _androidNotifyToast(toastId, 'showNotification', numericId, type, title ?? '', message ?? '', showProgress, resolvedTimeout === false ? -1 : resolvedTimeout);
-        if (buttons) _androidNotifyToast(toastId, 'updateNotificationActions', numericId, _getAndroidActionsJson(toastId));
-
-        if (resolvedTimeout !== false && !showProgress) {
-            _setToastDismissTimer(toastId, resolvedTimeout);
-        }
-
-        return toastId;
-    }
-
-    // ── In-app glass UI (no bridge, or forced in-app) ────────────────────────
+    // ── In-page glass UI ─────────────────────────────────────────────────────
     _appendGlassToastDom(toastId, type, title, message, showProgress, resolvedTimeout, customIcon, buttons);
     return toastId;
 }
@@ -1076,7 +776,7 @@ function updateGlassToast(toastId, type, title, message, customIcon = null) {
         }
         return;
     }
-    // Update stored data regardless of render path
+    // Update stored data
     const stored = activeToasts.get(toastId);
     if (stored) {
         stored.type = type;
@@ -1086,10 +786,7 @@ function updateGlassToast(toastId, type, title, message, customIcon = null) {
         activeToasts.set(toastId, stored);
     }
 
-    _androidNotifyToast(toastId, 'updateNotification', _toastNumericId(toastId), title ?? '', message ?? '', type);
-
     const toast = document.getElementById(toastId);
-    if (_isNativeOnlyToast(toastId)) return;
     if (!toast) return;
 
     const icon = customIcon || getToastIcon(type);
@@ -1138,9 +835,6 @@ function updateGlassToast(toastId, type, title, message, customIcon = null) {
     }
 }
 
-/** Minimum time (ms) a toast must exist before dismiss when on Android bridge, so the native notification can be shown. */
-const ANDROID_DISMISS_DEFER_MS = 400;
-
 /**
  * Remove a toast notification with animation
  * @param {string} toastId - Unique toast ID to remove
@@ -1181,13 +875,6 @@ function removeGlassToast(toastId) {
         progressDialogEnding = ending;
     }
     const stored = activeToasts.get(toastId);
-    if (stored?.nativeRouted && !_isInAppOnlyToast(toastId)) {
-        const elapsed = Date.now() - (stored.createdAt || 0);
-        if (elapsed < ANDROID_DISMISS_DEFER_MS) {
-            _setToastDismissTimer(toastId, ANDROID_DISMISS_DEFER_MS - elapsed);
-            return;
-        }
-    }
     _clearToastDismissTimer(stored);
 
     const vibeInterval = vibeEncodingProgressIntervals.get(toastId);
@@ -1203,8 +890,6 @@ function removeGlassToast(toastId) {
         }
     }
 
-    const mirrorDismissToNative = stored?.nativeRouted && !stored.inAppOnly;
-    const wasNativeOnly = !!(stored?.nativeRouted && !document.getElementById(toastId));
     const popoverAnchor = stored?.desktopPopoverAnchor;
     activeToasts.delete(toastId);
 
@@ -1212,20 +897,10 @@ function removeGlassToast(toastId) {
         PopoverManager.hide(popoverAnchor);
     }
 
-    if (mirrorDismissToNative) {
-        if (window.AndroidNotification && typeof window.AndroidNotification.dismissNotification === 'function') {
-            try {
-                window.AndroidNotification.dismissNotification(_toastNumericId(toastId));
-            } catch (e) {
-                console.warn('📱 AndroidNotification.dismissNotification failed:', e);
-            }
-        }
-    }
-
     clearGlassToastImagePreview(toastId);
 
     const toast = document.getElementById(toastId);
-    if (wasNativeOnly || !toast) return;
+    if (!toast) return;
 
     toast.classList.add('removing');
 
@@ -1292,12 +967,7 @@ function updateGlassToastProgress(toastId, progress) {
         return;
     }
     const clampedProgress = Math.min(progress, 100);
-    const stored = activeToasts.get(toastId);
-
-    _androidNotifyToast(toastId, 'updateNotificationProgress', _toastNumericId(toastId), stored?.title ?? '', stored?.message ?? '', clampedProgress, 100, stored?.type);
-
     const toast = document.getElementById(toastId);
-    if (_isNativeOnlyToast(toastId)) return;
     if (!toast) return;
 
     const progressBar = toast.querySelector('.toast-progress-bar');
@@ -1326,16 +996,13 @@ function updateGlassToastMessage(toastId, message) {
     }
     const stored = activeToasts.get(toastId);
 
-    // Persist the updated message so subsequent reads (e.g. _getAndroidActionsJson) are fresh
+    // Persist the updated message so later reads (updateGlassToastComplete) are fresh
     if (stored) {
         stored.message = message;
         activeToasts.set(toastId, stored);
     }
 
-    _androidNotifyToast(toastId, 'updateNotificationMessage', _toastNumericId(toastId), stored?.title ?? '', message, stored?.type);
-
     const toast = document.getElementById(toastId);
-    if (_isNativeOnlyToast(toastId)) return;
     if (!toast) return;
 
     const messageElement = toast.querySelector('.toast-message');
@@ -1538,10 +1205,7 @@ function updateGlassToastReasoning(toastId, reasoning, toolName = null, phase = 
     if (progressDialogToasts.has(toastId)) return;
     const toolState = window._lastToolState || 'completed';
 
-    _androidNotifyToast(toastId, 'updateNotificationReasoning', _toastNumericId(toastId), toolName ?? '', reasoning ?? '', toolState);
-
     const toast = document.getElementById(toastId);
-    if (_isNativeOnlyToast(toastId)) return;
     if (!toast) return;
 
     // Find or create reasoning element
@@ -1634,10 +1298,7 @@ function updateGlassToastImagePreview(toastId, imageData) {
         if (typeof dialog.op.setPreview === 'function') dialog.op.setPreview(imageData);
         return;
     }
-    _androidNotifyToast(toastId, 'updateNotificationImagePreview', _toastNumericId(toastId), imageData ?? '');
-
     const toast = document.getElementById(toastId);
-    if (_isNativeOnlyToast(toastId)) return;
     if (!toast) return;
 
     // Find or create image preview element
@@ -1661,7 +1322,7 @@ function updateGlassToastImagePreview(toastId, imageData) {
             `;
 
             // Insert before progress bar if it exists, otherwise at the end
-            const progressBar = toast.querySelector('.toast-progress-container');
+            const progressBar = toast.querySelector('.toast-progress');
             if (progressBar) {
                 toastContent.insertBefore(imageElement, progressBar);
             } else {
@@ -1705,10 +1366,7 @@ function updateGlassToastImagePreview(toastId, imageData) {
  */
 function clearGlassToastImagePreview(toastId) {
     if (!toastId || progressDialogToasts.has(toastId)) return;
-    _androidNotifyToast(toastId, 'updateNotificationImagePreview', _toastNumericId(toastId), '');
-
     const toast = document.getElementById(toastId);
-    if (_isNativeOnlyToast(toastId)) return;
     if (!toast) return;
 
     const imageElement = toast.querySelector('.toast-image-preview');
@@ -1750,12 +1408,11 @@ function generateButtonsHtml(buttons, toastId) {
             // Generate unique button ID
             const buttonId = nextButtonId++;
 
-            // Store the button handler (text is kept so _getAndroidActionsJson can serialise it)
+            // Store the button handler
             buttonHandlers.set(buttonId, {
                 onClick: clickHandler,
                 toastId: toastId,
-                closeOnClick: button.closeOnClick,
-                text: button.text ?? ''
+                closeOnClick: button.closeOnClick
             });
 
             // Set onclick attribute to call global handler
@@ -1795,46 +1452,28 @@ function updateGlassToastButtons(toastId, buttons) {
     const stored = activeToasts.get(toastId);
     if (stored) {
         stored.buttons = buttons;
-        if (buttons && Array.isArray(buttons) && buttons.length > 0) {
-            stored.inAppOnly = true;
-        }
         activeToasts.set(toastId, stored);
     }
 
+    let buttonsElement = null;
     if (buttons && Array.isArray(buttons)) {
         for (const [buttonId, handler] of buttonHandlers.entries()) {
             if (handler.toastId === toastId) {
                 buttonHandlers.delete(buttonId);
             }
         }
-        const buttonsElement = generateButtonsHtml(buttons, toastId);
+        buttonsElement = generateButtonsHtml(buttons, toastId);
+    }
 
-        _androidNotifyToast(toastId, 'updateNotificationActions', _toastNumericId(toastId), _getAndroidActionsJson(toastId));
+    const toast = document.getElementById(toastId);
+    if (!toast) return;
 
-        let toast = document.getElementById(toastId);
-        if (!toast && _canUseAndroidNotificationBridge() && buttons.length > 0) {
-            _materializeGlassToastDomIfNeeded(toastId, buttonsElement);
-            return;
-        }
-        if (_isNativeOnlyToast(toastId)) return;
-        if (!toast) return;
+    const existingButtons = toast.querySelector('.toast-buttons');
+    if (existingButtons) existingButtons.remove();
 
-        const existingButtons = toast.querySelector('.toast-buttons');
-        if (existingButtons) existingButtons.remove();
-
-        const content = toast.querySelector('.toast-content');
-        if (content && buttonsElement) {
-            content.appendChild(buttonsElement);
-        }
-    } else {
-        _androidNotifyToast(toastId, 'updateNotificationActions', _toastNumericId(toastId), null);
-
-        const toast = document.getElementById(toastId);
-        if (_isNativeOnlyToast(toastId)) return;
-        if (!toast) return;
-
-        const existingButtons = toast.querySelector('.toast-buttons');
-        if (existingButtons) existingButtons.remove();
+    const content = toast.querySelector('.toast-content');
+    if (content && buttonsElement) {
+        content.appendChild(buttonsElement);
     }
 }
 
@@ -1915,18 +1554,10 @@ function updateGlassToastComplete(toastId, options = {}) {
         if (message) storedBefore.message = message;
         if (customIcon !== undefined) storedBefore.customIcon = customIcon;
         if (showProgress !== null) storedBefore.showProgress = showProgress;
-        if (buttons && Array.isArray(buttons) && buttons.length > 0) {
-            storedBefore.inAppOnly = true;
-        }
         activeToasts.set(toastId, storedBefore);
     }
 
     if (_isDesktopPopupWiredToast(resolvedType, resolvedTitle, resolvedShowProgress)) {
-        const st = activeToasts.get(toastId);
-        if (st) {
-            st.inAppOnly = true;
-            activeToasts.set(toastId, st);
-        }
         if (_promoteToastToDesktopPopupIfWired(
             toastId,
             resolvedType,
@@ -1942,30 +1573,17 @@ function updateGlassToastComplete(toastId, options = {}) {
         }
     }
 
-    // Update basic content (also fires updateNotification bridge call and updates activeToasts)
+    // Update basic content (also updates activeToasts)
     if (type || title || message || customIcon) {
         updateGlassToast(toastId, type, title, message, customIcon);
     }
 
-    // Update buttons (also fires updateNotificationActions bridge call)
+    // Update buttons
     if (buttons !== undefined) {
         updateGlassToastButtons(toastId, buttons);
     }
 
-    _androidNotifyToast(toastId, 'completeNotification', _toastNumericId(toastId), type ?? '', title ?? '', message ?? '');
-
-    if (_shouldRouteToastToNativeBridge(toastId)) {
-        if (timeout !== null && timeout !== false) {
-            _setToastDismissTimer(toastId, timeout);
-        } else if (showProgress === false) {
-            _setToastDismissTimer(toastId, 5000);
-        }
-    }
-
-    // ── DOM path ─────────────────────────────────────────────────────────────
     const toast = document.getElementById(toastId);
-    // Skip DOM work when the bridge owns the display AND no DOM element exists
-    if (_isNativeOnlyToast(toastId)) return;
     if (!toast) return;
 
     // Update progress state if provided
@@ -2134,4 +1752,99 @@ function handleToastButtonClick(buttonId) {
 
 if (typeof window !== 'undefined') {
     window.handleToastButtonClick = handleToastButtonClick;
+}
+
+// ============================================================================
+// DOWNLOADS THE ANDROID APP SAVES (#1321)
+// The app posts no Android notification for a download: it tells the page ('melaton:download', detail
+// { state: 'saved' | 'failed' | 'nofolder', id, name, message }) and opens a saved file when asked
+// (window.AndroidNotification.openDownload(id) -> boolean).
+// ============================================================================
+
+let savedDownloadNotice = null; // { close() }: one at a time, the newest download in its place (N9)
+let savedDownloadId = null;
+const failedDownloadToasts = new Map(); // download id -> its error toast, while that one is up (N6)
+
+// names and messages are data, and a toast's title and message are markup
+function _escapeDownloadText(v) {
+    return String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function _canOpenDownload() {
+    return !!(window.AndroidNotification && typeof window.AndroidNotification.openDownload === 'function');
+}
+
+function _openSavedDownload(id, name) {
+    let opened = false;
+    try {
+        // one call from her own tap, never from a timer or a render
+        opened = _canOpenDownload() && window.AndroidNotification.openDownload(id) === true;
+    } catch (error) {
+        console.warn('[toast] openDownload failed:', error);
+    }
+    if (!opened) {
+        // notice: page-download-open-failed
+        showGlassToast('error', 'Download', _escapeDownloadText(`Cannot open '${name}'.`));
+    }
+}
+
+/** The saved file and its Open button, silent. */
+function _showSavedDownload(id, name) {
+    if (savedDownloadNotice) {
+        if (savedDownloadId === id && savedDownloadNotice.up()) return;
+        savedDownloadNotice.close();
+        savedDownloadNotice = null;
+    }
+    savedDownloadId = id;
+    const canOpen = _canOpenDownload();
+    const shell = window.uiShell === 'mobile' ? window.wmShell : null;
+    if (shell && typeof shell.appNote === 'function') {
+        // Melaton Mobile: the shell's notification, without the sound a bare toast would get there
+        let note = null;
+        const close = () => { if (note) note.close(); };
+        // notice: page-download-saved
+        note = shell.appNote({
+            title: 'Download Complete',
+            html: _escapeDownloadText(name),
+            silent: true,
+            actions: canOpen ? [{ text: 'Open', action: () => { close(); _openSavedDownload(id, name); } }] : null
+        });
+        if (note) {
+            savedDownloadNotice = { close, up: () => !!document.getElementById(note.id) };
+            return;
+        }
+    }
+    // the desktop and DeX: a toast in the page. The toast policy would make a success with a button a message box
+    // (a box per saved file, one waiting behind the other), and drop one without a button
+    // notice: page-download-saved
+    const toastId = showGlassToast('success', 'Download Complete', _escapeDownloadText(name), false, 15000, null,
+        canOpen ? [{ text: 'Open', type: 'primary', onClick: () => _openSavedDownload(id, name) }] : null,
+        { inPage: true });
+    savedDownloadNotice = { close: () => removeGlassToast(toastId), up: () => activeToasts.has(toastId) };
+}
+
+function _onMelatonDownload(event) {
+    const detail = event && event.detail;
+    if (!detail) return;
+    const name = String(detail.name || '') || 'the file';
+    if (detail.state === 'saved') {
+        _showSavedDownload(detail.id, name);
+    } else if (detail.state === 'failed') {
+        const known = failedDownloadToasts.get(detail.id);
+        if (known && activeToasts.has(known)) return;
+        for (const [id, toastId] of failedDownloadToasts) {
+            if (!activeToasts.has(toastId)) failedDownloadToasts.delete(id);
+        }
+        const why = String(detail.message || '');
+        const text = !why ? `Cannot save '${name}'.` : (why.includes(name) ? why : `${name}: ${why}`);
+        // notice: page-download-failed
+        failedDownloadToasts.set(detail.id, showGlassToast('error', 'Download Failed', _escapeDownloadText(text)));
+    }
+    // 'nofolder': nothing here. The app opens Android's folder picker at the same moment (N10)
+}
+
+// once for the page's life (this script runs once): the shell's own listener, whichever program started the download
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    const toastShellLife = new AbortController();
+    window.addEventListener('melaton:download', _onMelatonDownload, { signal: toastShellLife.signal });
 }

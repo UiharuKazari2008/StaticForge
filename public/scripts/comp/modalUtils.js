@@ -10345,20 +10345,6 @@ let desktopSettingsGlobalState = {
             return false;
         }
     })(),
-    notificationBridgeEnabled: (() => {
-        // readNotificationBridgeEnabledPreference — public/scripts/comp/toastManager.js
-        if (typeof readNotificationBridgeEnabledPreference === 'function') {
-            return readNotificationBridgeEnabledPreference();
-        }
-        return true;
-    })(),
-    bypassNotificationBridgeInDesktopMode: (() => {
-        // readBypassNotificationBridgeInDesktopPreference — public/scripts/comp/toastManager.js
-        if (typeof readBypassNotificationBridgeInDesktopPreference === 'function') {
-            return readBypassNotificationBridgeInDesktopPreference();
-        }
-        return false;
-    })(),
     startMenuButtonPreset: 'start-ja',
     startMenuButtonCustomText: '',
     startMenuButtonStyle: 'workspace',
@@ -10681,22 +10667,6 @@ function readDesktopSettingsVirtualKeyboardPreference() {
     }
 }
 
-function readDesktopSettingsNotificationBridgeEnabledPreference() {
-    // readNotificationBridgeEnabledPreference — public/scripts/comp/toastManager.js
-    if (typeof readNotificationBridgeEnabledPreference === 'function') {
-        return readNotificationBridgeEnabledPreference();
-    }
-    return true;
-}
-
-function readDesktopSettingsBypassNotificationBridgeDesktopPreference() {
-    // readBypassNotificationBridgeInDesktopPreference — public/scripts/comp/toastManager.js
-    if (typeof readBypassNotificationBridgeInDesktopPreference === 'function') {
-        return readBypassNotificationBridgeInDesktopPreference();
-    }
-    return false;
-}
-
 function shouldExitDesktopOnWorkspaceMaximise() {
     // Maximizing the workspace window stays in desktop mode so it keeps behaving like a window
     // (Yukimi, #403). Leaving desktop mode is the explicit Melaton Desktop toggle only.
@@ -10973,8 +10943,6 @@ function buildUserGlobalSettingsSnapshotFromClient() {
             autoLaunchWorkspace: readDesktopSettingsAutoLaunchPreference(),
             liveWindowRepositioning: readDesktopSettingsLiveWindowRepositioningPreference(),
             exitDesktopOnWorkspaceMaximise: readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference(),
-            notificationBridgeEnabled: readDesktopSettingsNotificationBridgeEnabledPreference(),
-            bypassNotificationBridgeInDesktopMode: readDesktopSettingsBypassNotificationBridgeDesktopPreference(),
             useApplicationImageIcon: desktopSettingsGlobalState.useApplicationImageIcon === true,
             startMenuButton,
             domainName: melatonDomainName(),
@@ -11048,18 +11016,6 @@ function applyUserGlobalSettingsToClient(settings) {
                 /* */
             }
             updateGalleryMaximizeButtonIcon();
-        }
-        if (typeof desktop.notificationBridgeEnabled === 'boolean') {
-            desktopSettingsGlobalState.notificationBridgeEnabled = desktop.notificationBridgeEnabled;
-        }
-        if (typeof desktop.bypassNotificationBridgeInDesktopMode === 'boolean') {
-            desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode = desktop.bypassNotificationBridgeInDesktopMode;
-        }
-        if (typeof applyNotificationBridgePreferences === 'function') {
-            applyNotificationBridgePreferences(
-                desktopSettingsGlobalState.notificationBridgeEnabled !== false,
-                desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode === true
-            );
         }
         if (typeof desktop.domainName === 'string' && desktop.domainName.trim()) {
             desktopSettingsGlobalState.domainName = desktop.domainName.trim().slice(0, 64);
