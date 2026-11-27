@@ -34,10 +34,10 @@ Everything that reaches the user without being asked for. The list to work from,
    Nightshade balloon / latency popup), `bootMessageBox.js`, `confirmationDialog.js`.
 2. **WM / mobile emitters** - `wmShell.notify` / `messageBox` / `appNote` / `confirmationNotice` /
    `window.alert` routing, battery low, "Text messages stopped", weather alerts, chat arrival, the inbox.
-3. **Native phone notices** - every Android notification channel and the app's own posters
-   (`MainActivity` `NOTIF_CHANNEL`, `MelatonMiniport`, the widget services, CaféReady task notices,
-   `TextMessageNotifier.kt`, `DriveWatch.kt`, `SocialNotifications.kt`), including which channel has a sound
-   and which is silent.
+3. **Native phone notices** - the WM notices the app draws itself (`InboxNotifier.kt`, camera, battery, CaféReady task
+   notices). A Dreamscape notice is never an Android notification (#1321, `design-decisions.md`): a new
+   `NotificationCompat.Builder` or `NotificationChannel` fails the audit unless it is one of the kept entries listed there
+   (foreground services, media controls, the ringing alarm clock).
 4. **Sounds** - `desktopSounds.play` (boot, balloon, im-message, critical-stop, prints, recycle), the WM
    `SND_EVENTS` table and every `playSystemSound` call, and Android's channel sounds and vibrations.
 5. **Status icons** - every role in `public/scripts/tasks/status-order.js`, plus the app's native roles: does

@@ -4,7 +4,7 @@ const reminders = require('../../reminderScheduler');
 
 // Notification inbox (Yozora #845): the durable store of notices (modules/notificationInbox.js), so
 // the shell shows on resume what was not cleared or acted on elsewhere, and the DSApp foreground
-// service can post them as Android notifications while the WebView is paused. admin / dev_admin only;
+// service draws them as its own WM notices while the WebView is paused (#1321). admin / dev_admin only;
 // each userType has its own queue.
 //
 //   inbox_list   { since?, includeCleared? }   -> { notices, total } (newest first, not expired); since (ms):

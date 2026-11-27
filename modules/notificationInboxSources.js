@@ -3,7 +3,7 @@
 /**
  * Notification inbox sources (Yozora #876): the server raises the phone's notifications itself, at the
  * point it learns of the event, so they reach the phone when Melaton Mobile's page is not running
- * (notificationInbox.publish -> activeSync inbox.notice -> the app posts an Android notification).
+ * (notificationInbox.publish -> activeSync inbox.notice -> the app draws its own WM notice; never an Android one, #1321).
  *
  * The page keeps raising its own live WM notification as before; both use the same id per thing, so
  * the inbox copy of a live one is only marked seen (wmNotificationInbox), the catch-up after a cold
@@ -569,7 +569,7 @@ const printsTold = new Set();
 /**
  * A FIFO job changed (generationJobQueue.onChange): a phone's print that failed notifies. A print that
  * finished is no notice (Yukimi, Nov 22 2026, #1040: no "Your print is ready" on the phone - no inbox
- * entry, so no Android notification, status icon or sound either); the prints icon still shows while
+ * entry, so no notice, status icon or sound either); the prints icon still shows while
  * the phone's prints are queued or running (status-bar task).
  */
 function onPrintJob(job) {

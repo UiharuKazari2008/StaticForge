@@ -1453,7 +1453,7 @@ function pushCredits(globalResources, wsServer, onlyInfo) {
  * A notice from the notification inbox (#845) to every partnered phone's background link (Melaton Bars
  * #876 D, Yukimi Nov 16: Dreamscape notifications still arrive when the app's page is not running -
  * "it's always ready"). pageConnected says whether a Melaton page of that phone is on its link now (it
- * shows the notice itself); without one the app posts it as an Android notification. Returns how many
+ * shows the notice itself); without one the app draws its own WM notice (never an Android one, #1321). Returns how many
  * phones it went to.
  */
 function sendInboxNotice(globalResources, wsServer, notice, opts = {}) {
@@ -1482,7 +1482,7 @@ function sendInboxNotice(globalResources, wsServer, notice, opts = {}) {
 
 /**
  * A notice is done with (read, dismissed or used anywhere, or expired; #876): as_event 'inbox.cleared'
- * { id } to every partnered phone's background link, so the app cancels its Android notification.
+ * { id } to every partnered phone's background link, so the app takes its own notice away.
  */
 function sendInboxCleared(globalResources, wsServer, notice) {
     const server = wsServerOf(globalResources, wsServer);
