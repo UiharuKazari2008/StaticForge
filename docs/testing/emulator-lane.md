@@ -6,10 +6,14 @@ test-device id and a golden snapshot. One agent holds one instance at a time, th
 
 Driver: `scripts/aemu-lane/lane.sh`. One command per action. Answers are JSON.
 
-**Status (Nov 26 2026, first version):** proven on `aemu-fold-1`: create / up / provision / golden / status / shot /
-Shizuku as shell / 5555 / partner / fence. Rows marked (todo) below are written but not yet proven or not built
-yet: `display add-external`, `keep`, the closed-posture shot, `sound` end to end, `reset`, `reboot` facts, the
-A53 shape, the `-2` instances. This page is updated as each is proven.
+**Status (Nov 26 2026, night):** proven on real instances: create / up / down / provision / golden / status / shot (inner, cover,
+external) / the Android shade shot / `notice` (one device) + `notifs` + `sound` / Shizuku as the shell user / the permission dialog
+tap / partner + fence / `display add-external` (a freeform window on a second display) / `reboot` (clean shutdown + cold boot) /
+the memory and CPU guards and the provision lock / `reap`. **Not proven yet:** `reset` from `golden` (the snapshot is saved, a
+restore has not been run), `posture half`, the closed-posture shot (logical display 0 comes out black, see Gotchas), the fold
+shade and external display shots, a 2 GB A53 guest (a53-3: the first-start download of the app's ~211 MB pack failed
+three times while Ruiko was at 100 % CPU, so the app never reached its page), real audio capture (not possible with
+`-no-audio`), `aemu-fold-3/4` and `aemu-a53-4` (not created by me; other agents created some of them with this script).
 
 ## Rules of the lane (HARD)
 
@@ -241,6 +245,14 @@ sound are told apart by the four log sources above.
 
 ## Gotchas
 
+- **A first provision needs the app's ~211 MB page pack and fails while Ruiko is saturated.** At 100 % CPU the guest
+  pings its host at 300-500 ms and the download crawls (35 KB/s) or ends in "Couldn't download updates"; the server also
+  rebuilds the pack on every publish. `provision` presses RETRY by itself and waits up to 25 minutes; when it still fails,
+  stop other instances and run `lane.sh <id> provision` again (it is resumable, nothing is installed twice).
+  `create` saves `golden` only after a provision that succeeded.
+- **Closed posture shot is black.** After `posture closed` the capture of display 0 (resized to 1080x2520 with `wm size`)
+  is black on `aemu-fold-1`; the cover display (`shot out.png cover`) shows only the secondary launcher, not the app.
+  Not solved: part of the open "fold" shim (see the plan for a debug-build shim).
 - First start of the app downloads and installs about 8,000 files. It takes 5-10 minutes on the emulator.
   "Software updated 100%" can sit for a minute or two (the page tops up files published meanwhile).
 - `adb forward` goes to Ruiko's shared server: `lane.sh` forwards only its own CDP port.

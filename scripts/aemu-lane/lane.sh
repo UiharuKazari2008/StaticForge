@@ -37,7 +37,7 @@ IDLE_MIN=${LANE_IDLE_MIN:-30}
 MAX_RUNNING=${LANE_MAX_RUNNING:-8}   # hard ceiling; the real limit is Ruiko's free memory (mem_guard)
 # what one more running instance takes (observed qemu working set): fold 4.1-4.9 GB (3 GB guest); a53 with a 2 GB guest: see the docs
 instance_gb() { case "${SHAPE:-fold}" in a53) echo "${LANE_A53_GB:-3.3}";; *) echo "${LANE_FOLD_GB:-4.6}";; esac; }
-KEEP_FREE_GB=3                 # Ruiko keeps at least this free after one more instance starts
+KEEP_FREE_GB=${LANE_KEEP_FREE_GB:-3}                 # Ruiko keeps at least this free after one more instance starts
 # The emulator's guest adbd ALWAYS listens on *:5555 (even with service.adb.tcp.port empty after a boot): that is the listener the
 # host adb link uses, and moving it (`adb tcpip 5556`) takes the instance offline. So "5555 is back after a reboot" is true on the
 # lane whatever the app does; it proves nothing about a phone. `adbd gate on|off` is a manual shim (see the docs).
@@ -274,9 +274,9 @@ mem_guard() { # refuses when Ruiko cannot take one more instance: exit 4 = memor
 
 # only ONE create / provision runs at a time (they download ~200 MB and install ~8,000 files each): a lock file
 provision_lock() {
-  exec 9>"$STATE/provision.lock"
+  exec 9<>"$STATE/provision.lock"
   if ! flock -n 9; then die "another create/provision is running ($(cat "$STATE/provision.lock" 2>/dev/null | head -1)): wait for it, they share Ruiko's CPU and the server's pack (exit 6)" 6; fi
-  printf '%s pid %s since %s\n' "$ID" "$$" "$(date +%H:%M:%S)" > "$STATE/provision.lock"
+  : > "$STATE/provision.lock"; printf '%s pid %s since %s\n' "$ID" "$$" "$(date +%H:%M:%S)" >&9
 }
 
 start_emulator() { # start_emulator <extra emulator args>
