@@ -65,7 +65,8 @@
     function gate() {
         if (state && state.installer === 'silent') return { ok: true, why: '' };
         const have = state && state.installed ? Number(state.installed.versionCode) || 0 : 0;
-        if (have < FIRST_SILENT_BUILD) return { ok: false, why: 'This build of the app cannot install updates silently yet' };
+        // an old build never installs it by itself (Shizuku up or not): say that, not "waiting for Shizuku" (#1309, Yukimi's Fold, Nov 26)
+        if (have < FIRST_SILENT_BUILD) return { ok: false, old: true, why: '' };
         const a = adbStatus();
         if (!a) return { ok: false, why: 'Shizuku and ADB could not be read' };
         const set = a.settings && typeof a.settings === 'object' ? a.settings : {};
@@ -92,7 +93,10 @@
         let html = `${label(s)} is ready to install. Melaton restarts to install it.`;
         let keys = true;
         if (w) { html = `${label(s)} is waiting: ${w.why || 'no silent install route is up'}. It installs by itself once Shizuku or ADB is back.`; keys = false; }
-        else if (!g.ok) {
+        else if (!g.ok && g.old) {
+            html = 'This version of Melaton cannot install its own updates. The next update is installed for you; after that they install by themselves.';
+            keys = false;
+        } else if (!g.ok) {
             html = asked ? `${label(s)} is waiting: ${g.why}. It installs by itself once Shizuku or ADB is up.` : `${label(s)} is ready. ${g.why}; it installs once Shizuku or ADB is up.`;
             keys = !asked;
         }
