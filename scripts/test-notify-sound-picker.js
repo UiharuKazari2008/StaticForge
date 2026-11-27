@@ -3,13 +3,15 @@
  * The Notification sound picker (StaticForge #1298, public/scripts/comp/wmNotifySound.js) against a fake phone page and a
  * fake AndroidSounds bridge (3 categories, 120 sounds in one). Runs the real script; no sound is played.
  *
- *   node scripts/test-notify-sound-picker.js
+ *   node scripts/test-notify-sound-picker.js [path/to/wmNotifySound.js]
  *
  * Covers: the row only where the bridge exists; level 1 lists the two defaults and the categories, never a sound; a
  * category shows 50 + Show more and pages on; search goes through the bridge, debounced; Select writes
  * AndroidSounds.set('sound', id, title, category) on commit; None and Event sounds map to their modes; Back goes up a
  * level and then leaves; a preview starts only from a tap and stops when the picker or the page is left; the Play / Stop
- * button follows the androidsoundpreview event; the settings hooks (viewDepth, softKeys, back, viewOk) the shell uses.
+ * button follows the androidsoundpreview event; the settings hooks (viewDepth, softKeys, back, viewOk) the shell uses;
+ * the screen off / page hidden / behind an Android program end the preview only; the sound in use is pinned as the first
+ * row of its category; opening the picker stops the Notifications tab's preview; every way out sends stop to the app.
  */
 'use strict';
 
@@ -18,7 +20,8 @@ const path = require('path');
 const vm = require('vm');
 const assert = require('assert');
 
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/wmNotifySound.js'), 'utf8');
+// an optional path argument runs the same checks on another copy of the file (to prove they can fail)
+const SRC = fs.readFileSync(process.argv[2] || path.join(__dirname, '..', 'public/scripts/comp/wmNotifySound.js'), 'utf8');
 
 // ---------------------------------------------------------------- the fake bridge
 function makeBridge(opts = {}) {
@@ -50,12 +53,13 @@ function makeBridge(opts = {}) {
 
 // ---------------------------------------------------------------- the fake page
 function makePage(bridge) {
-    const listeners = new Map(); // event -> [{ fn, signal }]
+    const listeners = new Map(); // event -> [{ fn, signal, who }]
     const timers = [];
     let seq = 0;
-    const add = (type, fn, o) => { (listeners.get(type) || listeners.set(type, []).get(type)).push({ fn, signal: o && o.signal }); };
+    const addOn = (who) => (type, fn, o) => { (listeners.get(type) || listeners.set(type, []).get(type)).push({ fn, signal: o && o.signal, who }); };
+    const add = addOn('window');
     const fire = (type, detail) => (listeners.get(type) || []).filter((l) => !(l.signal && l.signal.aborted)).forEach((l) => l.fn({ type, detail }));
-    const live = (type) => (listeners.get(type) || []).filter((l) => !(l.signal && l.signal.aborted)).length;
+    const live = (type, who) => (listeners.get(type) || []).filter((l) => !(l.signal && l.signal.aborted) && (!who || l.who === who)).length;
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const ui = {
         esc,
@@ -88,10 +92,12 @@ function makePage(bridge) {
         uiShell: 'mobile',
         addEventListener: add,
         wmSettings: { ui },
-        wmShell: { refreshSoftKeys: () => { sk.refreshed += 1; } },
+        wmShell: { refreshSoftKeys: () => { sk.refreshed += 1; }, sounds: { stop: () => { sk.wmStopped += 1; } } },
         AndroidSounds: bridge
     };
-    const document = { addEventListener: add };
+    sk.wmStopped = 0;
+    // hidden / documentElement.dataset are what the page reads for "not seen" (the screen off, behind an Android program)
+    const document = { addEventListener: addOn('document'), hidden: false, documentElement: { dataset: {} } };
     const ctx = {
         window, document, console, Promise, JSON, Map, Set, String, Number, Array, Object, Math, Date, AbortController,
         setTimeout: (fn, ms) => { const t = { id: ++seq, fn, ms }; timers.push(t); return t.id; },
@@ -100,7 +106,7 @@ function makePage(bridge) {
     vm.createContext(ctx);
     vm.runInContext(SRC, ctx, { filename: 'wmNotifySound.js' });
     const page = {
-        window, root, list, input, playButton, timers, sk,
+        window, document, root, list, input, playButton, timers, sk,
         ns: window.wmNotifySound,
         rerenders: 0,
         // the Settings page: an api whose rerender draws the picker (or the row) again, as renderPage does
@@ -399,6 +405,185 @@ async function main() {
         assert.strictEqual(names(b, 'preview').length, 0, 'opening the picker on a chosen sound plays nothing');
         assert(!/toast|messageBox|appNote|notify\(|new Audio/.test(SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')), 'the picker raises no notice itself');
         ok('opening the picker plays nothing; the sound in use is highlighted and ticked; no notice sites in the file');
+    }
+
+    // ---------------------------------------------------------------- 12. the screen off, the page hidden or an Android program in front end the preview only
+    {
+        const { p, d, b } = fresh({}, {});
+        d.nsoundUi.host = p.api;
+        d.nsoundUi.open(); p.draw(d);
+        p.tap('cat:melaton'); p.tap('cat:melaton'); p.draw(d);
+        assert.strictEqual(p.live('melatonscreen', 'window'), 1, 'melatonscreen is heard on window');
+        assert.strictEqual(p.live('visibilitychange', 'document'), 1, 'visibilitychange on document');
+        assert.strictEqual(p.live('wmBehind', 'document'), 1, 'wmBehind on document');
+        const stops = () => names(b, 'stop').length;
+        const way = (label, go) => {
+            if (!p.list.innerHTML.includes('is-selected')) p.tap('s:m0');
+            else if (!p.playButton.classes.has('is-playing')) p.tapPlay();
+            p.fire('androidsoundpreview', { id: 'm0', state: 'playing' });
+            assert(p.playButton.classes.has('is-playing'), `${label}: sounding`);
+            const before = stops(); const renders = p.rerenders; const html = p.list.innerHTML; const depth = p.ns.viewDepth(d);
+            go();
+            assert.strictEqual(stops(), before + 1, `${label}: the preview is stopped`);
+            assert.strictEqual(p.ns.viewDepth(d), depth, `${label}: the picker stays open where it was`);
+            assert.strictEqual(p.rerenders, renders, `${label}: nothing is redrawn`);
+            assert.strictEqual(p.list.innerHTML, html, `${label}: the list is as it was`);
+            assert(!p.playButton.classes.has('is-playing') && p.playButton.attrs['aria-label'] === 'Play', `${label}: the button is Play again`);
+            assert(/is-selected[^>]*data-key="s:m0"/.test(p.list.innerHTML), `${label}: the row is still highlighted`);
+        };
+        p.tap('s:m0');
+        // not away: nothing stops
+        p.fire('androidsoundpreview', { id: 'm0', state: 'playing' });
+        const base = stops();
+        p.fire('visibilitychange', {}); p.fire('melatonscreen', { on: true }); p.fire('wmBehind', { on: false });
+        assert.strictEqual(stops(), base, 'visible, screen on, not behind: the preview goes on');
+        p.document.hidden = true;
+        way('hidden', () => p.fire('visibilitychange', {}));
+        p.document.hidden = false;
+        way('screen off (event)', () => p.fire('melatonscreen', { on: false }));
+        way('behind an Android program (event)', () => p.fire('wmBehind', { on: true }));
+        p.document.documentElement.dataset.screenOff = '';
+        way('screen off (html[data-screen-off])', () => p.fire('melatonscreen', {}));
+        delete p.document.documentElement.dataset.screenOff;
+        p.document.documentElement.dataset.wmBehind = '';
+        way('behind (html[data-wm-behind])', () => p.fire('wmBehind', {}));
+        delete p.document.documentElement.dataset.wmBehind;
+        assert.strictEqual(p.ns.viewDepth(d), 2, 'the picker is still open');
+        // the listeners go with the picker
+        p.ns.back(d); p.ns.back(d);
+        assert.strictEqual(p.ns.viewDepth(d), 0);
+        for (const t of ['melatonscreen', 'visibilitychange', 'wmBehind', 'wmAppChange', 'androidsoundpreview']) assert.strictEqual(p.live(t), 0, `${t}: no listener after the picker closed`);
+        const after = stops();
+        p.document.hidden = true; p.fire('visibilitychange', {}); p.fire('melatonscreen', { on: false }); p.fire('wmBehind', { on: true });
+        assert.strictEqual(stops(), after, 'a closed picker stops nothing');
+        ok('screen off, page hidden and behind an Android program each stop the preview only (picker, row and list untouched, button back to Play); not-away events do nothing; every listener is gone after the picker closes');
+    }
+
+    // ---------------------------------------------------------------- 13. the sound in use is the first row of its category
+    {
+        const cur = { mode: 'sound', id: 'n104', title: 'Notify 104', category: 'notification' }; // on page 3 of 120
+        const open = (current) => {
+            const w = fresh({}, { current });
+            w.d.nsoundUi.host = w.p.api;
+            w.d.nsoundUi.open(); w.p.draw(w.d);
+            return w;
+        };
+        const soundKeys = (p) => keys(p.list.innerHTML).filter((k) => k.startsWith('s:'));
+        const { p, d, b } = open(cur);
+        p.tap('cat:notification'); p.draw(d); // the category holding the sound is highlighted: this tap opens it
+        assert.strictEqual(p.ns.viewDepth(d), 2);
+        let sk2 = soundKeys(p);
+        assert.strictEqual(sk2.length, 51, '50 loaded + the sound in use');
+        assert.strictEqual(sk2[0], 's:n104', 'first row');
+        assert(/is-selected is-chosen"[^>]*data-key="s:n104"[^>]*>(?:(?!data-key)[\s\S])*Notify 104/.test(p.list.innerHTML), 'it is ticked, highlighted and titled from the choice');
+        assert.strictEqual(sk2.filter((k) => k === 's:n104').length, 1);
+        assert.strictEqual(names(b, 'preview').length, 0, 'opening the category plays nothing');
+        assert(!p.ns.softKeys(d).left.disabled, 'Select is on (the sound in use is highlighted)');
+        p.tap('more'); p.tap('more');
+        sk2 = soundKeys(p);
+        assert.strictEqual(sk2.length, 120, 'all 120 once');
+        assert.strictEqual(sk2.filter((k) => k === 's:n104').length, 1, 'it appears once');
+        assert.strictEqual(sk2[0], 's:n104', 'the first row stays');
+        assert(!keys(p.list.innerHTML).includes('more'));
+        // it plays and selects like any sound row
+        p.tap('s:n3');
+        p.tap('s:n104');
+        assert.deepStrictEqual(names(b, 'preview').pop(), ['preview', 'n104'], 'a tap plays the pinned row');
+        p.ns.softKeys(d).left.action();
+        assert.deepStrictEqual(plain(d.nsound), cur, 'Select on it keeps the choice');
+        assert.strictEqual(p.ns.changed(d), false, 'and it is no change to save');
+        // with a search text: exactly what the bridge answers
+        d.nsoundUi.open(); p.draw(d);
+        p.tap('cat:notification'); p.draw(d);
+        assert.strictEqual(soundKeys(p)[0], 's:n104');
+        p.type('chime'); p.flush();
+        sk2 = soundKeys(p);
+        assert.strictEqual(sk2.length, 12, 'a search lists only what matches');
+        assert(!sk2.includes('s:n104'), 'no pinned row with a search text');
+        assert(!/is-selected/.test(p.list.innerHTML), 'the highlight went with the row that is not listed');
+        p.type(''); p.flush();
+        assert.strictEqual(soundKeys(p).length, 51, 'search cleared: the sound in use is pinned again');
+        assert.strictEqual(soundKeys(p)[0], 's:n104');
+        // among the rows loaded: nothing changes
+        const near = open({ mode: 'sound', id: 'n7', title: 'Notify 007 chime', category: 'notification' });
+        near.p.tap('cat:notification'); near.p.draw(near.d);
+        const nk = soundKeys(near.p);
+        assert.strictEqual(nk.length, 50);
+        assert.strictEqual(nk[7], 's:n7', 'in its own place');
+        assert.strictEqual(nk[0], 's:n0');
+        assert(/is-selected is-chosen"[^>]*data-key="s:n7"/.test(near.p.list.innerHTML));
+        // a sound of another category is not pinned here
+        const other = open({ mode: 'sound', id: 'r1', title: 'Chime ring', category: 'ringtone' });
+        other.p.tap('cat:notification'); other.p.tap('cat:notification'); other.p.draw(other.d);
+        assert.strictEqual(other.p.ns.viewDepth(other.d), 2);
+        assert.strictEqual(soundKeys(other.p).length, 50);
+        assert(!soundKeys(other.p).includes('s:r1'), 'not pinned in another category');
+        assert.strictEqual(other.p.list.innerHTML.includes('Chime ring'), false);
+        // the default and None have nothing to pin
+        const dflt = open({ mode: 'default', id: '', title: '', category: '' });
+        dflt.p.tap('cat:notification'); dflt.p.tap('cat:notification'); dflt.p.draw(dflt.d);
+        assert.strictEqual(soundKeys(dflt.p).length, 50);
+        ok('the sound in use further down a category is its first row (ticked, highlighted, plays and selects like any row); once after Show more; not pinned with a search text, in another category, or when already among the rows');
+    }
+
+    // ---------------------------------------------------------------- 14. opening the picker ends the other previews of this page
+    {
+        const { p, d } = fresh({}, {});
+        assert.strictEqual(p.sk.wmStopped, 0);
+        let click;
+        p.ns.bindRow({ querySelector: () => ({ addEventListener: (t, fn) => { click = fn; } }) }, d, p.api);
+        click();
+        assert.strictEqual(p.sk.wmStopped, 1, 'the Windows Mobile sound preview of the Notifications tab is stopped');
+        assert.strictEqual(p.ns.viewDepth(d), 1, 'and the picker is open');
+        p.window.wmShell.sounds.stop = () => { throw new Error('boom'); };
+        d.nsoundUi.shutdown();
+        assert.strictEqual(p.ns.viewDepth(d), 0);
+        click();
+        assert.strictEqual(p.ns.viewDepth(d), 1, 'a failing stop does not keep the picker from opening');
+        delete p.window.wmShell.sounds;
+        click();
+        assert.strictEqual(p.ns.viewDepth(d), 1, 'a shell without sounds is fine');
+        ok('opening the picker stops the Notifications tab\'s preview (guarded: a failing or missing stop never blocks the picker)');
+    }
+
+    // ---------------------------------------------------------------- 15. every way out stops the app's preview, whatever the page thinks is sounding
+    {
+        const { p, d, b } = fresh({}, {});
+        d.nsoundUi.host = p.api;
+        d.nsoundUi.open(); p.draw(d);
+        p.tap('cat:notification'); p.tap('cat:notification'); p.draw(d);
+        p.tap('s:n1'); // preview A
+        p.fire('androidsoundpreview', { id: 'n1', state: 'playing' });
+        p.tap('s:n2'); // preview B (the app has not said anything about it yet)
+        p.fire('androidsoundpreview', { id: 'n1', state: 'stopped' }); // A's stop arrives after B was asked for
+        const lastCall = () => b.calls.map((c) => c[0]).filter((n) => n === 'preview' || n === 'stop').pop();
+        assert.strictEqual(lastCall(), 'preview', 'B was asked for last');
+        assert.strictEqual(p.ns.back(d), true);
+        assert.strictEqual(lastCall(), 'stop', 'Back stops B although the page lost track of it');
+        // Back from level 1, Select, shutdown and the away handlers do the same
+        const before = names(b, 'stop').length;
+        assert.strictEqual(p.ns.back(d), true);
+        assert.strictEqual(names(b, 'stop').length, before + 1, 'leaving level 1 stops too');
+        d.nsoundUi.open(); p.draw(d);
+        p.tap('cat:notification'); p.tap('cat:notification'); p.draw(d);
+        p.tap('s:n1'); p.tap('s:n2');
+        p.fire('androidsoundpreview', { id: 'n1', state: 'stopped' });
+        const b2 = names(b, 'stop').length;
+        p.ns.softKeys(d).left.action(); // Select
+        assert.strictEqual(names(b, 'stop').length, b2 + 1, 'Select stops');
+        d.nsoundUi.open(); p.draw(d);
+        p.tap('cat:notification'); p.tap('cat:notification'); p.draw(d);
+        p.tap('s:n1'); p.fire('androidsoundpreview', { id: 'n1', state: 'stopped' });
+        const b3 = names(b, 'stop').length;
+        p.ns.stop(d); // shutdown
+        assert.strictEqual(names(b, 'stop').length, b3 + 1, 'shutdown stops');
+        d.nsoundUi.open(); p.draw(d);
+        p.tap('cat:notification'); p.tap('cat:notification'); p.draw(d);
+        p.tap('s:n1'); p.fire('androidsoundpreview', { id: 'n1', state: 'stopped' });
+        const b4 = names(b, 'stop').length;
+        p.document.hidden = true; p.fire('visibilitychange', {});
+        assert.strictEqual(names(b, 'stop').length, b4 + 1, 'the away handler stops');
+        ok('previews A then B, A\'s stopped event, then Back: a stop follows the last preview; Back from level 1, Select, shutdown and the away handlers stop once each');
     }
     console.log(`ok: ${step} checks`);
 }

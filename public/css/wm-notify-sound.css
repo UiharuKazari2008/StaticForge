@@ -69,6 +69,19 @@ html.ui-mobile .wm-form .wmns-play {
     margin-left: auto;
 }
 
+/* 6.5.1: wm65.css gives .wmsp-play there a stretching 64.5 x 35 face (a button of the Sounds tab's own row), which is
+   taller than this list's 33-unit row, so highlighting a row made it grow. In the picker the button keeps that
+   rule's frame and face but has a fixed 22-unit width (as on 6.1 and 6.5) and stays 4 units inside the row's height,
+   so a row is the same height highlighted or not */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmns-row .wmns-play {
+    flex: 0 0 auto;
+    width: calc(22 * var(--wm-px));
+    min-width: 0;
+    max-width: none;
+    height: calc(29 * var(--wm-px));
+    margin-left: auto;
+}
+
 html.ui-mobile .wm-form .wmns-play.is-playing::before {
     width: calc(7 * var(--wm-px));
     height: calc(7 * var(--wm-px));

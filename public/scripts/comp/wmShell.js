@@ -10595,6 +10595,24 @@
     }
 
     /**
+     * The app's Notification sound choice for one notification (Settings > Sounds & Notifications > Sounds, #1298). The
+     * app owns the rule (NotifySoundChoice) and applies it when it delivers a notice itself; with the page in front it
+     * stands down, so the page asks: AndroidSounds.note(eventId) answers 'chosen' (the app started the chosen Android
+     * sound: the page plays nothing), 'silent' (the choice is None: nothing plays) or 'event' (the event's own sound: the
+     * page plays it). A missing bridge, an older app without note(), or a failing call is 'event'.
+     */
+    function noteSoundChoice(id) {
+        try {
+            const b = window.AndroidSounds;
+            if (!b || typeof b.note !== 'function') return 'event';
+            const r = b.note(id);
+            return r === 'chosen' || r === 'silent' ? r : 'event';
+        } catch (_) {
+            return 'event';
+        }
+    }
+
+    /**
      * Play one phone sound event (SND_EVENTS ids, or the PlaySound names in SND_ALIAS); resolves
      * true when it started. opts.event: the desktop event whose settings decide instead of the
      * event's own (an error notification follows Program Error). A second sound within 300 ms is
@@ -10635,8 +10653,15 @@
             const ds = window.desktopSounds;
             const vista = (f) => typeof f === 'string' && !!(ds && Array.isArray(ds.FILES) && ds.FILES.includes(f) && typeof ds.playFile === 'function');
             const schemeFile = ds && ds.SCHEME ? ds.SCHEME[event] : undefined;
+            const deskPick = typeof own === 'string' && own !== schemeFile && vista(own);
             // the device's own pick; else a desktop sound picked for the event in this workspace
-            let file = prefs.own ? prefs.sound : (typeof own === 'string' && own !== schemeFile && vista(own) ? own : prefs.sound);
+            let file = prefs.own ? prefs.sound : (deskPick ? own : prefs.sound);
+            // a notification with no pick of hers: the app's Notification sound choice decides (#1298)
+            if (ev.kind === 'note' && !prefs.own && !deskPick) {
+                const answer = noteSoundChoice(id);
+                if (answer === 'chosen') { sndNote(id, event, 'android/chosen', now); return true; }
+                if (answer === 'silent') return false;
+            }
             if (vista(file)) {
                 sndNote(id, event, `vista/${file}`, now);
                 if (avPlay(`/sounds/vista/${encodeURIComponent(file)}`, usage)) return true;

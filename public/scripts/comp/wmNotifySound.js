@@ -97,6 +97,7 @@
             next: 0,
             failed: false,
             hi: '', // the highlighted row's key
+            pin: null, // the sound in use, drawn first when its category opens and it is not on the first page: { id, title }
             playing: '', // the id the app says is sounding (the androidsoundpreview event)
             started: false, // a preview was asked for and not stopped since
             timer: 0,
@@ -111,7 +112,15 @@
             if (c.depth === 1) return n.mode === 'sound' ? `cat:${n.category}` : n.mode;
             return n.mode === 'sound' ? `s:${n.id}` : '';
         };
-        const hiItem = () => (c.hi.startsWith('s:') ? c.items.find((it) => `s:${it.id}` === c.hi) || null : null);
+        const hiItem = () => (c.hi.startsWith('s:') ? (c.pin && `s:${c.pin.id}` === c.hi ? c.pin : c.items.find((it) => `s:${it.id}` === c.hi)) || null : null);
+        // The sound in use stays visible in its category (#1298): the list shows fifty at a time, so one further down would
+        // not be seen when the category opens. With no search text, and when it is not among the rows loaded, it is the first
+        // row (a later page that brings it is not drawn twice); a search shows exactly what the bridge answers.
+        function setPin() {
+            const n = d.nsound;
+            c.pin = !c.q && !c.failed && c.items.length && c.cat && n.mode === 'sound' && n.id && n.category === c.cat.id && !c.items.some((it) => it.id === n.id)
+                ? { id: n.id, title: n.title || n.id } : null;
+        }
 
         // ---- previews: only from a tap of hers (N7)
         function preview(id) {
@@ -119,8 +128,9 @@
             // notice: wm-notify-sound-preview
             c.started = call('preview', id) === true;
         }
+        // Every way out of the picker or of a level asks the app to stop, whatever the page believes is sounding: the app's
+        // `stopped` event of one preview can arrive after the next preview was asked for and clear what the page tracks.
         function stop() {
-            if (!c.started && !c.playing) return;
             c.started = false;
             c.playing = '';
             call('stop');
@@ -135,6 +145,17 @@
         }
         // leaving Settings for another program ends the preview and the picker with it
         function onApp(e) { if (e && e.detail && e.detail.id !== 'settings') c.shutdown(); }
+        // the screen going off, the page hidden or the shell behind an Android program ends the preview only: the picker
+        // stays where it was and only the Play button goes back to Play (the state is read as the other Settings pages do)
+        function onAway(e) {
+            const det = (e && e.detail) || {};
+            const ds = (document.documentElement && document.documentElement.dataset) || {};
+            const away = document.hidden === true || ds.screenOff !== undefined || ds.wmBehind !== undefined
+                || (e && e.type === 'melatonscreen' && det.on === false) || (e && e.type === 'wmBehind' && det.on === true);
+            if (!away) return;
+            stop();
+            syncPlay();
+        }
 
         function attach() {
             if (c.live) return;
@@ -142,6 +163,9 @@
             const signal = c.live.signal;
             window.addEventListener('androidsoundpreview', onPreview, { signal });
             document.addEventListener('wmAppChange', onApp, { signal });
+            window.addEventListener('melatonscreen', onAway, { signal });
+            document.addEventListener('visibilitychange', onAway, { signal });
+            document.addEventListener('wmBehind', onAway, { signal });
         }
         function detach() {
             if (c.live) c.live.abort();
@@ -170,7 +194,7 @@
         function open() {
             const cats = json('categories');
             c.cats = Array.isArray(cats) ? cats.filter((x) => x && x.id).map((x) => ({ id: String(x.id), label: String(x.label || x.id), count: Number(x.count) || 0 })) : [];
-            c.cat = null; c.q = ''; c.items = []; c.next = 0; c.total = 0; c.failed = false;
+            c.cat = null; c.q = ''; c.items = []; c.next = 0; c.total = 0; c.failed = false; c.pin = null;
             c.depth = 1;
             c.hi = chosenKey();
             if (c.hi.startsWith('cat:') && !c.cats.some((x) => `cat:${x.id}` === c.hi)) c.hi = 'default';
@@ -180,15 +204,16 @@
         function openCategory(cat) {
             c.cat = cat; c.q = '';
             loadPage(true);
+            setPin();
             c.depth = 2;
-            c.hi = c.items.some((it) => `s:${it.id}` === chosenKey()) ? chosenKey() : '';
+            c.hi = c.pin || c.items.some((it) => `s:${it.id}` === chosenKey()) ? chosenKey() : '';
             rerender();
         }
         function close() {
             if (c.timer) { clearTimeout(c.timer); c.timer = 0; }
             stop();
             detach();
-            c.depth = 0; c.cat = null; c.q = ''; c.items = []; c.next = 0; c.total = 0; c.hi = '';
+            c.depth = 0; c.cat = null; c.q = ''; c.items = []; c.next = 0; c.total = 0; c.hi = ''; c.pin = null;
         }
         function choose(n) {
             d.nsound = n;
@@ -200,7 +225,7 @@
                 if (c.timer) { clearTimeout(c.timer); c.timer = 0; }
                 stop();
                 const was = c.cat;
-                c.depth = 1; c.cat = null; c.q = ''; c.items = []; c.next = 0; c.total = 0;
+                c.depth = 1; c.cat = null; c.q = ''; c.items = []; c.next = 0; c.total = 0; c.pin = null;
                 c.hi = was ? `cat:${was.id}` : 'default';
                 rerender();
                 return true;
@@ -264,6 +289,7 @@
                 if (q === c.q) return;
                 c.q = q;
                 loadPage(true);
+                setPin();
                 if (c.hi.startsWith('s:') && !hiItem()) c.hi = '';
                 paintList();
                 refreshKeys();
@@ -288,7 +314,8 @@
                     + row('none', 'None', { chosen: n.mode === 'none' })
                     + c.cats.map((x) => row(`cat:${x.id}`, x.label, { chosen: n.mode === 'sound' && n.category === x.id, count: x.count, chevron: true })).join('');
             }
-            const rows = c.items.map((it) => row(`s:${it.id}`, it.title, { chosen: n.mode === 'sound' && n.id === it.id, sound: it.id })).join('');
+            const sound = (it) => row(`s:${it.id}`, it.title, { chosen: n.mode === 'sound' && n.id === it.id, sound: it.id });
+            const rows = (c.pin ? sound(c.pin) : '') + c.items.filter((it) => !c.pin || it.id !== c.pin.id).map(sound).join('');
             const tail = c.failed ? '<div class="wmns-empty">The sounds could not be read.</div>'
                 : !c.items.length ? `<div class="wmns-empty">${c.q ? 'No sound matches.' : 'No sounds.'}</div>`
                 : hasMore() ? `<div class="wm-listbox-row wmns-row wmns-more" role="button" tabindex="0" data-key="more"><span class="wmns-label">Show more</span></div>` : '';
@@ -374,7 +401,13 @@
             const b = el.querySelector('[data-act="nsound"]');
             if (!b || !d.nsoundUi) return;
             // the combo's look, a button's job: it opens the picker (it is not a drop-down)
-            b.addEventListener('click', () => { d.nsoundUi.host = api; d.nsoundUi.open(); });
+            b.addEventListener('click', () => {
+                // another preview of this page (the Notifications tab's Play) ends when the picker opens
+                const s = window.wmShell && window.wmShell.sounds;
+                if (s && typeof s.stop === 'function') { try { s.stop(); } catch (_) { /* nothing was sounding */ } }
+                d.nsoundUi.host = api;
+                d.nsoundUi.open();
+            });
         },
         /** The picker, drawn in place of the page. */
         render(el, d, api) { if (d.nsoundUi) d.nsoundUi.draw(el, api); },
