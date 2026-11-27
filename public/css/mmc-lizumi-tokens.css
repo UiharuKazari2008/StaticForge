@@ -3,5 +3,6 @@
    these are the only literals mmc-lizumi.css uses, scoped to the console window so nothing leaks. */
 #mmcConsole_lizumi {
     --lz-gap: 6px;      /* the space in the segments cell and beside the volume trackbar */
+    --lz-bar-w: 56px;   /* the segments cell's Vista progress bar width */
     --lz-vol-w: 160px;  /* the Live page's Vista trackbar width */
 }

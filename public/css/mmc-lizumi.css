@@ -22,7 +22,15 @@
 }
 
 #mmcConsole_lizumi .lz-seg [role="progressbar"] {
+    flex: 0 0 var(--lz-bar-w);
     max-width: none;
+}
+
+#mmcConsole_lizumi .lz-seg > .mmc-progress > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* the fill's share of the track: the percentage is the cell's own --lz-pct (no width in the script) */

@@ -276,12 +276,12 @@
         let tone = 'ok';
         if (h.stalled > STALL) {
             tone = 'bad';
-            const hold = r.stuckSeq != null ? ` (segment ${r.stuckSeq} is holding it${h.refetches ? `, ${h.refetches} re-tries` : ''})` : (h.refetches ? ` (${h.refetches} re-fetches)` : '');
-            bits.push(`no audio for ${durText(h.stalled)} - recording is stuck${hold}`);
+            bits.push(`no audio written for ${durText(h.stalled)}`);
         }
-        if (h.pastEnd) { tone = 'bad'; bits.push(`past its end time by ${durText((Date.now() - h.until) / 1000)} - it should have stopped`); }
-        if (h.behind) { if (tone === 'ok') tone = 'warn'; bits.push(`behind live by ${durText(h.behindS)}${h.refetches ? ` (${h.refetches} re-fetches)` : ''}`); }
-        if (h.holes > 0) { if (tone === 'ok') tone = 'warn'; bits.push(`${h.holes} unreadable segment${h.holes === 1 ? '' : 's'}${r.stuckSeq != null ? ` (segment ${r.stuckSeq} is holding it)` : ''}`); }
+        if (h.pastEnd) { tone = 'bad'; bits.push(`past its end time by ${durText((Date.now() - h.until) / 1000)}`); }
+        if (r.stuckSeq != null && (h.stalled > STALL || h.holes > 0)) { if (tone === 'ok') tone = 'warn'; bits.push(`segment ${r.stuckSeq} not readable${h.refetches ? ` after ${h.refetches} tries` : ''}`); }
+        if (h.behind) { if (tone === 'ok') tone = 'warn'; bits.push(`behind live by ${durText(h.behindS)}`); }
+        if (h.holes > 0) { if (tone === 'ok') tone = 'warn'; bits.push(`${h.holes} unreadable segment${h.holes === 1 ? '' : 's'}`); }
         else if (h.gaps > 0) { if (tone === 'ok') tone = 'warn'; bits.push(`${h.gaps} gap${h.gaps === 1 ? '' : 's'} (${h.gapS} s of audio missing)`); }
         return bits.length ? { tone, text: bits.join('; ') } : null;
     }
@@ -289,6 +289,7 @@
     /** The list's State cell text: a warn tone only for real trouble. */
     function stateOf(r, h) {
         h = h || health(r);
+        if (h.stalled > STALL) return { text: 'No audio', tone: 'bad' };
         if (h.behind) return { text: 'Behind', tone: 'warn' };
         if (r.state === 'buffering') return { text: 'Buffering', tone: 'info' };
         if (r.state === 'paused-refilling') return { text: 'Paused - refilling', tone: 'info' };
@@ -329,6 +330,15 @@
         return c.state(true, text);
     }
 
+    /** Held recordings: the ones holding segments on disk plus the ones still recording (the Recordings page lists both). */
+    const heldCount = () => ((state.deck && state.deck.held && state.deck.held.n) || 0) + recs().length;
+
+    /** A held recording that failed or is still assembling carries Vista's own state icon, never a plain count. */
+    function heldBad(c) {
+        const h = (state.deck && state.deck.held) || {};
+        return h.failed ? c.state(false, `${h.failed} failed`, false) : h.assembling ? c.state(false, `${h.assembling} assembling`, true) : '';
+    }
+
     /** The counts as Vista's property list (a figure that means a defect carries Vista's icon, never a plain one);
      *  each figure is a link to the page it counts, as the shell draws them. */
     function summaryProps(c) {
@@ -336,18 +346,17 @@
         const recsL = recs();
         const troubled = recsL.filter((r) => health(r).tone !== 'ok').length;
         const q = (d.queue || []).length;
-        const held = d.held || {};
-        const tape = Array.isArray(state.tracks) ? state.tracks.length : 0;
-        const heldN = (held.n || 0) + recsL.length;
+        const tape = Array.isArray(state.tracks) ? String(state.tracks.length) : 'Reading...';
+        const heldN = heldCount();
         const link = (id, label) => `<span class="mmc-link" data-act="nav:${id}">${esc(label)}</span>`;
-        const badHeld = held.failed ? c.state(false, `${held.failed} failed`, false) : held.assembling ? c.state(false, `${held.assembling} assembling`, true) : '';
+        const badHeld = heldBad(c);
         return c.props([
             ['Virtual radios', esc(String(maxSlots()))],
-            ['Recording now', `${esc(String(recsL.length))}${troubled ? ` ${c.state(false, `${troubled} with trouble`, true)}` : ''} ${link('radios', 'Virtual Radios')}`],
+            ['Recording now', `${esc(String(recsL.length))}${troubled ? ` ${c.state(false, `${troubled} with trouble`, true)} ${link('diagnostics', 'Diagnostics')}` : ''}`],
             ['Signed in', `${esc(String(signedIn()))} of ${esc(String(maxSlots()))} ${link('accounts', 'Accounts')}`],
             ['Queue waiting', `${esc(String(q))} ${link('queue', 'Queue')}`],
             ['Held recordings', `${esc(String(heldN))}${badHeld ? ` ${badHeld}` : ''} ${link('recordings', 'Recordings')}`],
-            ['On the tape', `${esc(String(tape))} ${link('recordings', 'Recordings')}`]
+            ['On the tape', `${esc(tape)} ${link('recordings', 'Recordings')}`]
         ]);
     }
 
@@ -368,7 +377,7 @@
         if (h.holes > 0) bits.push(`has ${h.holes} unreadable segment${h.holes === 1 ? '' : 's'}`);
         else if (h.gaps > 0 && !bits.length) bits.push(`has ${h.gaps} gap${h.gaps === 1 ? '' : 's'}`);
         if (!bits.length && h.refetches >= 20) bits.push(`has re-fetched ${h.refetches} times`);
-        return bits.join(' and ');
+        return bits.length > 1 ? `${bits.slice(0, -1).join(', ')} and ${bits[bits.length - 1]}` : bits.join('');
     }
 
     /** The one plain-words line: what is running and what is wrong with it. */
@@ -414,7 +423,7 @@
                 running: span((Date.now() - (r.since || Date.now())) / 1000), back: r.back ? span(r.back) : '0:00',
                 buffer: r.bufferSegs != null ? String(r.bufferSegs) : '-',
                 segsW: h.segsW, segsE: h.segsE, held: h.held, pct: h.pct,
-                segs: (h.segsE || h.segsW) ? `${h.segsW} / ${h.segsE || h.segsW}${h.segsE ? ` (${h.pct}%)` : ''}${h.held ? `, ${h.held} held` : ''}` : 'Not reported',
+                segs: (h.segsE || h.segsW) ? `${h.segsW} / ${h.segsE || h.segsW}${h.segsE ? ` (${h.pct}%)` : ''}` : 'Not reported',
                 gaps: h.gaps, gapS: h.gapS, cuts: splitsOf(r), note: mk ? mk.text : 'Writing audio normally.'
             } });
         }
@@ -439,12 +448,12 @@
             ['On air', esc(d.cut)],
             ['Kind', esc(d.kind)],
             ['Running', esc(d.running)],
-            ['Reached back', esc(d.back)],
+            ['Reach-back', esc(d.back)],
             ['Buffer depth', d.buffer === '-' ? '-' : `${esc(d.buffer)} segments`],
             ['Segments', esc(d.segs)],
             ['Held', esc(String(d.held || 0))],
             ['Gaps', d.gaps > 0 ? stateCell(c, 'warn', `${d.gaps} (${d.gapS} s)`) : 'None'],
-            ['Health', d.tone === 'ok' ? esc(d.note) : c.state(false, d.note, d.tone !== 'bad')]
+            ['Health', d.health === 'ok' ? esc(d.note) : c.state(false, d.note, d.health !== 'bad')]
         ]);
         const cuts = d.cuts || [];
         const splits = cuts.length ? splitsSection(c, cuts, `Splits - will make ${cuts.length} file${cuts.length === 1 ? '' : 's'}`) : '';
@@ -458,16 +467,15 @@
         const first = rows.find((x) => !x.data.idle);
         if (first && (!c.sel || !rows.some((x) => String(x.key) === String(c.sel)))) c.sel = first.key; // a recording's detail shows by default
         const cols = [
-            { t: 'Virtual Radio', w: 116, key: 'slot', text: (x) => x.slot },
-            { t: 'State', w: 100, key: 'state', text: (x) => x.state, html: (x) => stateCell(c, x.tone, x.state) },
-            { t: 'Channel', w: 116, key: 'channel', text: (x) => x.channel },
-            { t: 'On air', w: 150, key: 'cut', text: (x) => x.cut },
-            { t: 'Kind', w: 62, key: 'kind', text: (x) => x.kind },
-            { t: 'Running', w: 74, key: 'running', text: (x) => x.running },
-            { t: 'Reached back', w: 88, key: 'back', text: (x) => x.back },
-            { t: 'Buffer', w: 66, num: true, key: 'buffer', value: (x) => Number(x.buffer) || 0, text: (x) => x.buffer },
-            { t: 'Segments', w: 158, key: 'segs', value: (x) => x.segsW, text: (x) => x.segs, html: segCell },
-            { t: 'Gaps', w: 72, num: true, key: 'gaps', value: (x) => x.gaps, text: (x) => (x.gaps > 0 ? `${x.gaps} (${x.gapS} s)` : 'None'), html: (x) => (x.gaps > 0 ? stateCell(c, 'warn', `${x.gaps} (${x.gapS} s)`) : 'None') }
+            { t: 'Virtual Radio', w: 144, min: 144, key: 'slot', text: (x) => x.slot },
+            { t: 'State', w: 96, min: 84, key: 'state', text: (x) => x.state, html: (x) => stateCell(c, x.tone, x.state) },
+            { t: 'Channel', w: 128, min: 128, key: 'channel', text: (x) => x.channel },
+            { t: 'On air', w: 190, key: 'cut', text: (x) => x.cut },
+            { t: 'Running', w: 60, min: 56, key: 'running', text: (x) => x.running },
+            { t: 'Reach-back', w: 80, min: 76, key: 'back', text: (x) => x.back },
+            { t: 'Buffer', w: 52, min: 46, num: true, key: 'buffer', value: (x) => Number(x.buffer) || 0, text: (x) => x.buffer },
+            { t: 'Segments', w: 136, min: 136, key: 'segs', value: (x) => x.segsW, text: (x) => x.segs, html: segCell },
+            { t: 'Gaps', w: 68, min: 64, num: true, key: 'gaps', value: (x) => x.gaps, text: (x) => (x.gaps > 0 ? `${x.gaps} (${x.gapS} s)` : 'None'), html: (x) => (x.gaps > 0 ? stateCell(c, 'warn', `${x.gaps} (${x.gapS} s)`) : 'None') }
         ];
         const list = c.listView(cols, rows, { sortId: 'lz-radios', fit: true, empty: 'No virtual radios.' });
         const selRow = rows.find((x) => String(x.key) === String(c.sel)) || null;
@@ -513,13 +521,13 @@
         }));
         const cols = [
             { t: 'Order', w: 44, key: 'n', text: (x) => String(x.n), value: (x) => x.n },
-            { t: 'Song', w: 190, key: 'cut', text: (x) => x.cut },
-            { t: 'Kind', w: 66, key: 'kind', text: (x) => x.kind },
-            { t: 'State', w: 78, key: 'qstate', text: (x) => x.qstate, html: (x) => stateCell(c, x.tone, x.qstate) },
-            { t: 'Virtual Radio', w: 112, key: 'radio', text: (x) => x.radio },
-            { t: 'Added', w: 96, key: 'added', text: (x) => x.added, value: (x) => x.addedAt },
-            { t: 'Expires', w: 150, key: 'expires', text: (x) => x.expires, value: (x) => x.expiresAt },
-            { t: 'Why', w: 150, key: 'reason', text: (x) => x.reason }
+            { t: 'Song', w: 220, key: 'cut', text: (x) => x.cut },
+            { t: 'Kind', w: 76, min: 76, key: 'kind', text: (x) => x.kind },
+            { t: 'State', w: 78, min: 72, key: 'qstate', text: (x) => x.qstate, html: (x) => stateCell(c, x.tone, x.qstate) },
+            { t: 'Virtual Radio', w: 130, min: 130, key: 'radio', text: (x) => x.radio },
+            { t: 'Added', w: 96, min: 88, key: 'added', text: (x) => x.added, value: (x) => x.addedAt },
+            { t: 'Expires', w: 170, min: 170, key: 'expires', text: (x) => x.expires, value: (x) => x.expiresAt },
+            { t: 'Why', w: 120, key: 'reason', text: (x) => x.reason }
         ];
         return {
             html: c.page('Queue', '', [
@@ -918,17 +926,17 @@
             };
         });
         const heldList = c.listView([
-            { t: 'Channel', w: 130, key: 'channel', text: (x) => x.channel },
-            { t: 'Kind', w: 74, key: 'kind', text: (x) => x.kind },
-            { t: 'Virtual Radio', w: 112, key: 'radio', text: (x) => x.radio },
-            { t: 'State', w: 96, key: 'state', text: (x) => (x.error ? `${x.state}: ${x.error}` : x.state), html: (x) => stateCell(c, x.tone, x.error ? `${x.state}: ${x.error}` : x.state) },
-            { t: 'Started', w: 96, key: 'started', text: (x) => x.started, value: (x) => x.startedAt },
-            { t: 'Ended', w: 96, key: 'ended', text: (x) => x.ended, value: (x) => x.endedAt },
-            { t: 'Segs', w: 64, key: 'segs', text: (x) => String(x.segs), value: (x) => x.segs },
-            { t: 'Gaps', w: 76, key: 'gaps', text: (x) => (x.gaps > 0 ? `${x.gaps} (${x.gapS}s)` : 'None'), value: (x) => x.gaps },
-            { t: 'Files', w: 64, key: 'files', text: (x) => x.files, value: (x) => x.filesN },
-            { t: 'Keep until', w: 104, key: 'keep', text: (x) => x.keep, value: (x) => x.keepAt }
+            { t: 'Channel', w: 150, min: 150, key: 'channel', text: (x) => x.channel },
+            { t: 'Virtual Radio', w: 144, min: 144, key: 'radio', text: (x) => x.radio },
+            { t: 'State', w: 90, min: 76, key: 'state', text: (x) => (x.error ? `${x.state}: ${x.error}` : x.state), html: (x) => stateCell(c, x.tone, x.error ? `${x.state}: ${x.error}` : x.state) },
+            { t: 'Started', w: 90, min: 84, key: 'started', text: (x) => x.started, value: (x) => x.startedAt },
+            { t: 'Ended', w: 90, min: 84, key: 'ended', text: (x) => x.ended, value: (x) => x.endedAt },
+            { t: 'Segs', w: 48, min: 44, key: 'segs', text: (x) => String(x.segs), value: (x) => x.segs },
+            { t: 'Gaps', w: 76, min: 70, key: 'gaps', text: (x) => (x.gaps > 0 ? `${x.gaps} (${x.gapS}s)` : 'None'), html: (x) => (x.gaps > 0 ? stateCell(c, 'warn', `${x.gaps} (${x.gapS}s)`) : 'None'), value: (x) => x.gaps },
+            { t: 'Files', w: 48, min: 44, key: 'files', text: (x) => x.files, value: (x) => x.filesN },
+            { t: 'Keep until', w: 100, min: 84, key: 'keep', text: (x) => x.keep, value: (x) => x.keepAt }
         ], hrows, { sortId: 'lz-held', fit: true, empty: state.held ? 'No recording holds segments.' : 'Reading the held recordings...' });
+        if (held.length && !heldOf(c.sel) && !String(c.sel || '').startsWith('r:')) c.sel = hrows[0].key; // the first held recording's splits show by default
         const sel = heldOf(c.sel);
         const splits = sel ? heldSplits(c, sel).html : '';
         const hint = !sel && held.length ? '<p class="mmc-note">Select a held recording to see the splits it will be cut into before it is assembled.</p>' : '';
@@ -1058,7 +1066,7 @@
             ['Recorder service', d.offline ? c.state(false, 'Offline: the recorder service is not answering', false) : c.state(true, 'Online')],
             ['Signed-in virtual radios', esc(`${signedIn()} of ${maxSlots()}`)],
             ['Recordings running', esc(String(recsL.length))],
-            ['Held recordings', esc(d.held ? `${d.held.n || 0} (${d.held.assembling || 0} assembling, ${d.held.failed || 0} failed)` : '0')]
+            ['Held recordings', `${esc(String(heldCount()))}${heldBad(c) ? ` ${heldBad(c)}` : ''}`]
         ]);
         const arows = list.map((s2) => ({
             key: `da:${s2.slot}`, icon: `${VI}/account-manager-16.png`,
@@ -1117,11 +1125,12 @@
             const h = health(r);
             const name = `${slotName((r.slot || 1) - 1)} - ${chName(r.channelId) || 'a channel'}`;
             const props = c.props([
+                ['No audio written for', h.stalled > STALL ? c.state(false, durText(h.stalled), false) : esc(h.stalled ? durText(h.stalled) : 'Writing now')],
                 ['Behind live', h.behind ? c.state(false, durText(h.behindS), true) : esc(durText(h.behindS))],
                 ['Segments', esc(`${h.segsW} of ${h.segsE || h.segsW}`)],
                 ['Re-fetches', h.refetches >= 20 ? c.state(false, String(h.refetches), true) : esc(String(h.refetches))],
                 ['Pauses', esc(String(h.pauses))],
-                ['Unreadable segments', h.holes ? c.state(false, String(h.holes), false) : 'None'],
+                ['Unreadable segments', h.holes ? c.state(false, `${h.holes}${r.stuckSeq != null ? ` (segment ${r.stuckSeq})` : ''}`, false) : 'None'],
                 ['Gaps', h.gaps ? c.state(false, `${h.gaps} (${h.gapS} s)`, true) : 'None']
             ]);
             return `<p class="mmc-note">${esc(name)}</p>${props}`;
@@ -1146,7 +1155,7 @@
                 { t: 'Setting', w: 240, key: 'name', text: (x) => x.name },
                 { t: 'Value', w: 80, key: 'value', text: (x) => x.value, value: (x) => Number(x.value) },
                 { t: 'Allowed', w: 120, key: 'range', text: (x) => x.range }
-            ], rows, { sortId: 'lz-settings', empty: EMPTY }),
+            ], rows, { sortId: 'lz-settings', fit: true, empty: EMPTY }),
             list: true
         };
     }
@@ -1303,7 +1312,7 @@
                 ['Channel', esc(chName(r.channelId))],
                 ['On air', esc(cutText(r.cut))],
                 ['Tape running', `<span data-lz="running">${esc(runningText(r))}</span>`],
-                ['Reached back', esc(r.back ? span(r.back) : '0:00')]
+                ['Reach-back', esc(r.back ? span(r.back) : '0:00')]
             ])}${warn}`;
         }
         return {
@@ -1380,7 +1389,7 @@
             taskbarIcon: APP,
             treeWidth: 170,
             // the card grid and the one-line tables fit the pane (fit lists) without scrolling sideways
-            width: 1120,
+            width: 1240,
             height: 640,
             expanded: ['root'],
             about: { version: '1.0', lines: ['Manages the XM Radio recorders, queue, schedules and accounts.'] },
