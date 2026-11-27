@@ -29,7 +29,7 @@ function populateDialogMetadataTable(metadata) {
     if (typeElement && nameElement) {
         if (metadata.request_type) {
             // formatRequestType: websocket.js RequestBannerManager
-            typeElement.textContent = wsClient.bannerManager.formatRequestType(metadata.request_type) || metadata.request_type;
+            typeElement.textContent = wsClient.bannerManager.tickerLabel(metadata.request_type) || 'Image';
 
             // Show/hide name field based on preset_name availability
             const nameCell = nameElement.closest('.metadata-cell');

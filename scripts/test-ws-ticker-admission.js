@@ -121,4 +121,11 @@ assert.strictEqual(bm.tickerLabel('constructor'), null, 'nor does an inherited k
 assert.ok(/ws-names:begin[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*static REQUEST_TYPE_NAMES[\s\S]*?\n\s*static TICKER_OFF_TYPES[\s\S]*?\n\s*\/\/ ws-names:end/.test(src), 'both statics sit inside the generated markers');
 assert.ok(!src.includes('SILENT_TICKER_REQUEST_TYPES'), 'the hand-kept silent list is gone');
 
+// barred means barred from the WebSocket Requests window and the metadata dialog too: one registry decision, no raw identifier (#1350)
+const modalSrc = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/websocketRequestsModal.js'), 'utf8');
+assert.ok(modalSrc.includes('isSilentTickerRequest') && modalSrc.includes('tickerLabel('), 'the requests window filters by the barred set and labels through tickerLabel');
+assert.ok(!/bannerManager\.formatRequestType/.test(modalSrc), 'the requests window never falls back to the raw identifier');
+const metaSrc = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/metadataDialogManager.js'), 'utf8');
+assert.ok(!/bannerManager\.formatRequestType/.test(metaSrc), 'nor does the metadata dialog');
+
 console.log('test-ws-ticker-admission: ok');

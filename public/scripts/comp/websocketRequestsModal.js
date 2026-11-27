@@ -83,8 +83,8 @@ class WebSocketRequestsModal {
         // Get pending requests
         if (window.wsClient && window.wsClient.pendingRequests) {
             for (const [requestId, request] of window.wsClient.pendingRequests) {
-                // Filter out ping requests
-                if (request.type === 'ping') {
+                // Barred from the ticker means barred from websocket tasks too (ping included): #1350
+                if (this.isBarred(request.type)) {
                     continue;
                 }
 
@@ -103,8 +103,7 @@ class WebSocketRequestsModal {
         // Get recently completed requests (completed less than 30 seconds ago)
         if (window.wsClient && window.wsClient.completedRequests) {
             for (const req of window.wsClient.completedRequests) {
-                // Filter out ping requests
-                if (req.type === 'ping') {
+                if (this.isBarred(req.type)) {
                     continue;
                 }
 
@@ -153,7 +152,7 @@ class WebSocketRequestsModal {
         // Return last 10 that are older than 30 seconds
         return window.wsClient.completedRequests
             .filter(req => {
-                if (req.type === 'ping') return false;
+                if (this.isBarred(req.type)) return false;
                 const completedAt = req.completedAt || req.timestamp;
                 // Only include if completed more than 30 seconds ago
                 return completedAt && (now - completedAt) >= RECENT_COMPLETED_THRESHOLD;
@@ -162,11 +161,19 @@ class WebSocketRequestsModal {
             .reverse(); // Most recent first
     }
 
+    // Machinery (ping and the registry's ticker:false types) never appears here, as it never appears in the ticker (#1350)
+    isBarred(type) {
+        return !!window.wsClient && typeof window.wsClient.isSilentTickerRequest === 'function'
+            ? window.wsClient.isSilentTickerRequest(type)
+            : type === 'ping';
+    }
+
+    // The registry's name; never the raw identifier (a type nobody has named is just a request)
     formatRequestType(type) {
         if (!window.wsClient || !window.wsClient.bannerManager) {
-            return type || 'Unknown';
+            return 'Request';
         }
-        return window.wsClient.bannerManager.formatRequestType(type) || type || 'Unknown';
+        return window.wsClient.bannerManager.tickerLabel(type) || 'Request';
     }
 
     getDispatchBadgeHtml(req, fifoQueueIndex) {
