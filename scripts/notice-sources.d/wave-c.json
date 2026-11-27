@@ -128,14 +128,6 @@
    "switch": "none",
    "note": "Wave C: new silent LOW channel activesync_install_quiet (was HIGH with Android's default tone: N7). A last-resort fallback that apk-installs-via-adb says should not be reached; no switch (N5), #1313."
   },
-  "adb-access-note": {
-   "area": "native: activesync/LocalAdb.kt, Android Bridge Advanced Access (ADB 5555 restored / Shizuku started)",
-   "trigger": "boot",
-   "action": "tap opens Dreamscape (added by wave C: it had none)",
-   "sound": false,
-   "switch": "none",
-   "note": "Wave C: new silent LOW channel android_bridge_access_quiet, setSilent, one hour timeout (was DEFAULT with Android's default tone and no tap target: N7, N4). Still a status with no switch (N5), #1313."
-  },
   "instant-hotspot-use": {
    "area": "native: hotspot/InstantHotspot.kt, a computer is using this phone's mobile data",
    "trigger": "user-action",

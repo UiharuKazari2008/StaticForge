@@ -21,6 +21,14 @@
  *   settings(gr, deviceId, patch)          { allow, autoRestore, shizukuAutoStart, shizukuRecover, preferred, features } (Android Bridge / Device Center)
  *     features: the Allowed Features (#820); screenshots off = Device Center shows the wallpapers
  *
+ * Recovery over Wireless debugging (Yozora #1309 / #1312, opt-in per phone: settings tlsRestore, with autoRestore): a phone
+ * whose 5555 is closed after a reboot (nothing answers `adb connect <ip>:5555`) but whose Wireless debugging is on
+ * advertises `_adb-tls-connect._tcp` on the LAN. This adb server's mDNS cache is read (`adb mdns services`, never a list
+ * of every device), only an entry at one of THIS phone's own ActiveSync addresses is dialled, its model must match the
+ * ActiveSync device's, and adbd is asked for `tcpip:5555` (`adb -s <ip>:<tls port> tcpip 5555`: adbd sets its own port
+ * property, which a shell user may not on Android 17). The phone's own app does the same by itself first (DSApp
+ * LocalAdb.restore over the TLS door); this is the server's second chance. Off by default: it dials the phone.
+ *
  * adb: env DREAMSCAPE_ADB, else ~/.local/bin/adb (platform-tools in ~/.local/share), else PATH.
  */
 'use strict';
@@ -114,7 +122,7 @@ function features(e) {
 function settings(globalResources, deviceId, patch) {
     const e = entry(globalResources, deviceId);
     if (patch && typeof patch === 'object') {
-        for (const k of ['allow', 'autoRestore', 'shizukuAutoStart', 'shizukuRecover', 'wifiDebugOff']) if (typeof patch[k] === 'boolean') e[k] = patch[k];
+        for (const k of ['allow', 'autoRestore', 'shizukuAutoStart', 'shizukuRecover', 'wifiDebugOff', 'tlsRestore']) if (typeof patch[k] === 'boolean') e[k] = patch[k];
         if (patch.port != null) { const n = Math.round(Number(patch.port)); if (n >= 1024 && n <= 65535) e.port = n; }
         if (patch.preferred === 'adb' || patch.preferred === 'shizuku') e.preferred = patch.preferred;
         // the older single switch
@@ -136,6 +144,7 @@ function settings(globalResources, deviceId, patch) {
         shizukuAutoStart: !!e.shizukuAutoStart,
         shizukuRecover: !!e.shizukuRecover,
         wifiDebugOff: !!e.wifiDebugOff,
+        tlsRestore: !!e.tlsRestore,
         port: Number.isInteger(e.port) ? e.port : PORT,
         preferred: e.preferred === 'shizuku' ? 'shizuku' : 'adb',
         features: f,
@@ -191,6 +200,45 @@ async function probe(serial, wantModel) {
     return { state: 'ready', model };
 }
 
+// ---------------------------------------------------------------- 5555 back over Wireless debugging (opt-in)
+
+/** `adb mdns services` lines: "<instance>\t_adb-tls-connect._tcp.\t<ip>:<port>" -> [{ name, ip, port }] (TLS connect services only). */
+function parseMdnsServices(text) {
+    const out = [];
+    for (const line of String(text || '').split('\n')) {
+        const m = line.trim().match(/^(\S+)\s+_adb-tls-connect\._tcp\.?\s+(\[?[0-9a-fA-F:.]+\]?):(\d+)$/);
+        if (m) out.push({ name: m[1], ip: m[2].replace(/^\[|\]$/g, ''), port: Number(m[3]) });
+    }
+    return out;
+}
+
+/**
+ * Asks the phone's adbd for tcpip:<port> over its Wireless debugging port. Dials only entries whose address is in [ips] (the
+ * phone's own ActiveSync addresses) and whose model matches [wantModel]. Resolves { tried: [...], done: serial|null, error }.
+ */
+async function restoreOverTls(ips, wantModel, port) {
+    const res = { tried: [], done: null, error: null };
+    let services;
+    try { services = parseMdnsServices((await adb(['mdns', 'services'], { timeout: 8000 })).stdout); } catch (err) { res.error = err.message; return res; }
+    const mine = services.filter((x) => ips.includes(normalizeIp(x.ip)));
+    if (!mine.length) { res.error = 'no Wireless debugging service of this phone on the LAN'; return res; }
+    for (const x of mine) {
+        const tls = x.ip.includes(':') ? `[${x.ip}]:${x.port}` : `${x.ip}:${x.port}`;
+        res.tried.push(tls);
+        try { await adb(['connect', tls], { timeout: CONNECT_TIMEOUT_MS }); } catch (_) { /* get-state says */ }
+        const p = await probe(tls, wantModel);
+        if (p.state !== 'ready') { res.error = p.error || p.state; try { await adb(['disconnect', tls], { timeout: 4000 }); } catch (_) { /* gone */ } continue; }
+        try {
+            const out = (await adb(['-s', tls, 'tcpip', String(port)], { timeout: 10000 })).stdout.toString();
+            console.log(`📱 5555 asked back over Wireless debugging at ${tls}: ${out.trim()}`);
+            res.done = tls;
+        } catch (err) { res.error = err.message; }
+        try { await adb(['disconnect', tls], { timeout: 4000 }); } catch (_) { /* adbd restarts: gone already */ }
+        if (res.done) break;
+    }
+    return res;
+}
+
 async function detectNow(globalResources, wsServer, deviceId) {
     const set = settings(globalResources, deviceId);
     if (!set.allow) { states.set(deviceId, { state: 'off', checkedAt: Date.now() }); return status(globalResources, deviceId); }
@@ -212,6 +260,19 @@ async function detectNow(globalResources, wsServer, deviceId) {
         // unauthorized beats unreachable: the phone is there, it only needs the tap
         if (r.state === 'unauthorized' || (r.state === 'mismatch' && best.state !== 'unauthorized')) best = r;
         else try { await adb(['disconnect', serial], { timeout: 4000 }); } catch (_) { /* gone already */ }
+    }
+    // 5555 is closed but the phone is there and wants it back: its Wireless debugging door, once per detect (opt-in)
+    if (best.state === 'unreachable' && set.autoRestore && set.tlsRestore && list.length) {
+        const r = await restoreOverTls(list, wantModel, set.port);
+        if (r.done) {
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+            for (const ip of list) {
+                const serial = ip.includes(':') ? `[${ip}]:${set.port}` : `${ip}:${set.port}`;
+                try { await adb(['connect', serial], { timeout: CONNECT_TIMEOUT_MS }); } catch (_) { /* get-state says */ }
+                const p = await probe(serial, wantModel);
+                if (p.state === 'ready' || p.state === 'unauthorized') { p.serial = serial; p.address = ip; best = p; break; }
+            }
+        } else best.error = `${best.error || ''} (Wireless debugging: ${r.error || 'nothing to dial'})`.trim();
     }
     best.checkedAt = Date.now();
     best.tried = list;
@@ -799,6 +860,8 @@ module.exports = {
     settings,
     allowed,
     FEATURES,
+    parseMdnsServices,
+    restoreOverTls,
     parseDisplays,
     pickDisplay,
     agentScreenshot,
