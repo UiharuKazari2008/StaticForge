@@ -108,6 +108,19 @@ ok('a failed prerequisite still blocks', () => {
     assert.deepStrictEqual(deps.blockedBy(81), []);
 });
 
+ok('a shared file holds back only while the other item is on its way, never behind a held unstarted one', () => {
+    setState(70, 'held'); setState(71, 'queued');
+    deps.addDep(71, 70, 'both name a.js', 'files');
+    assert.deepStrictEqual(deps.blockedBy(71), []);
+    assert.deepStrictEqual(deps.prerequisites(71), [], 'a held file-sharer is not started first');
+    assert.ok(!deps.orderQueued([{ id: 71, state: 'queued' }])[0].blocked);
+    setState(70, 'running');
+    assert.deepStrictEqual(deps.blockedBy(71), [70]);
+    setState(72, 'held'); setState(73, 'queued');
+    deps.addDep(73, 72, 'needs 72');
+    assert.deepStrictEqual(deps.blockedBy(73), [72], 'explicit still holds');
+});
+
 ok('prerequisites: transitive chain in start order', () => {
     ['held', 'held', 'held', 'done'].forEach((s, i) => setState(90 + i, s));
     deps.addDep(92, 91, 'c'); deps.addDep(91, 90, 'b'); deps.addDep(90, 93, 'done one');

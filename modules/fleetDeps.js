@@ -44,6 +44,10 @@ function db() {
 
 const isBlocking = (e) => !(e.kind === 'explicit' && FOLLOW.test(e.reason || ''));
 const isOpen = (s) => !GONE.includes(s);
+// A shared file or issue only means "not at the same time": it holds an item back while the other one is on its way (queued,
+// starting, running, Sent Back, Input Required), never while the other sits in Waiting unstarted (Yukimi, Nov 26 2026: queued
+// items sat for hours behind held items that nobody started). Explicit dependencies hold always (the prerequisite is started first).
+const holdsBack = (e, s) => isOpen(s) && !((e.kind === 'files' || e.kind === 'issue') && s === 'held');
 
 function states() {
     const m = new Map();
@@ -205,7 +209,7 @@ async function detectWithModel(askJson, items) {
 function blockedBy(id, st) {
     st = st || states();
     return db().prepare('SELECT depends_on, kind, reason FROM supervisor_work_deps WHERE work_id = ?').all(Number(id))
-        .filter((e) => isBlocking(e) && st.has(e.depends_on) && isOpen(st.get(e.depends_on))).map((e) => e.depends_on);
+        .filter((e) => isBlocking(e) && st.has(e.depends_on) && holdsBack(e, st.get(e.depends_on))).map((e) => e.depends_on);
 }
 
 /**
@@ -234,7 +238,7 @@ function orderQueued(rows) {
         left = left.filter((r) => r !== pick);
     }
     return out.map((r) => {
-        const open = (prereq.get(r.id) || []).filter((e) => st.has(e.depends_on) && isOpen(st.get(e.depends_on)));
+        const open = (prereq.get(r.id) || []).filter((e) => st.has(e.depends_on) && holdsBack(e, st.get(e.depends_on)));
         if (!open.length) return r;
         const first = open[0];
         const why = first.reason ? ` (${first.reason})` : '';
@@ -247,11 +251,12 @@ function prerequisites(id) {
     const st = states();
     const edges = allEdges().filter(isBlocking);
     const by = new Map();
-    edges.forEach((e) => { if (!by.has(e.work_id)) by.set(e.work_id, []); by.get(e.work_id).push(e.depends_on); });
+    edges.forEach((e) => { if (!by.has(e.work_id)) by.set(e.work_id, []); by.get(e.work_id).push(e); });
     const out = []; const seen = new Set([Number(id)]);
     const visit = (n) => {
-        (by.get(n) || []).slice().sort((a, b) => a - b).forEach((p) => {
-            if (seen.has(p) || !st.has(p) || !isOpen(st.get(p))) return;
+        (by.get(n) || []).slice().sort((a, b) => a.depends_on - b.depends_on).forEach((e) => {
+            const p = e.depends_on;
+            if (seen.has(p) || !st.has(p) || !holdsBack(e, st.get(p))) return;
             seen.add(p); visit(p); out.push(p);
         });
     };
@@ -288,7 +293,7 @@ function graph(listWork) {
         if (trail.has(id)) return 0;
         trail.add(id);
         let d = 0;
-        edgesAll.filter((e) => e.work_id === id && isBlocking(e) && keep.has(e.depends_on) && isOpen(st.get(e.depends_on) || 'done')).forEach((e) => { d = Math.max(d, depth(e.depends_on, trail) + 1); });
+        edgesAll.filter((e) => e.work_id === id && isBlocking(e) && keep.has(e.depends_on) && holdsBack(e, st.get(e.depends_on) || 'done')).forEach((e) => { d = Math.max(d, depth(e.depends_on, trail) + 1); });
         trail.delete(id);
         lane.set(id, d);
         return d;
@@ -298,7 +303,7 @@ function graph(listWork) {
         id: r.id, title: r.title, state: r.state, account: r.account || '', model: r.model || '', priority: pri.get(r.id) || 0,
         order: queue.indexOf(r.id) >= 0 ? queue.indexOf(r.id) + 1 : null, lane: isOpen(r.state) ? depth(r.id) : 0,
         startedAt: r.startedAt || null, endedAt: r.endedAt || null, issue: r.issue || null, parentId: r.parentId || null,
-        blocked: edgesAll.filter((e) => e.work_id === r.id && isBlocking(e) && isOpen(stAll.get(e.depends_on) || 'done')).map((e) => e.depends_on)
+        blocked: edgesAll.filter((e) => e.work_id === r.id && isBlocking(e) && holdsBack(e, stAll.get(e.depends_on) || 'done')).map((e) => e.depends_on)
     }));
     return {
         nodes, edges, queue,
