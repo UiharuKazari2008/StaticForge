@@ -347,6 +347,15 @@ const INIT_STEPS = [
             });
         },
     },
+    {
+        id: 'gr_hot_reload',
+        label: 'Opening the module reload socket',
+        afterReady: true,
+        sync: true,
+        run: () => {
+            require('../hotReload').serve();
+        },
+    },
 ];
 
 module.exports = {

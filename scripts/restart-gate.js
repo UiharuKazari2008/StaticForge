@@ -33,6 +33,22 @@
  * a notify restarts nothing, clients reload on their own; validation, build gates (hold target hold-client-update),
  * the live sessions' uncommitted client edits and the Supervisor's stale-wait check are the same, with their own
  * wait list (client_gate_asks, Fleet's Client Update Waits). scripts/client-update.sh runs it and notifies only on approved.
+ *
+ * --reload <file,file,...>: the light gate for a server module reload without a restart (#1292, #1293; docs/server/hot-reload.md).
+ * The files are repo-relative server files (modules/...); it may be combined with --why, --json and --notify.
+ * A reload drops no connection and cuts no turn, so there is no PM2 guard and no Director idle check. Then:
+ *   denied   one of exactly the listed files (committed or not) fails node --check / JSON.parse
+ *   wait     a running agent-coord build with target dreamscape-restart (anyone's); a running module-reload build by
+ *            someone else; an open or running gate with target hold-reload. hold-restart and hold-client-update do
+ *            NOT hold a reload.
+ *   ask      only the live sessions whose uncommitted edits (made after the file's last commit) are in the listed files,
+ *            or whose claims cover a listed file that is uncommitted; nobody else, whatever else is dirty in the tree.
+ *            --notify posts the question (from the agent 'reload-gate') to their agent-coord inbox; their own wait list
+ *            is the table reload_gate_asks, so the restart wait lists are not touched.
+ *   --by "<agent name> (<claude-xxxxxxxx>)" (reload mode): who asks when this does not run under that session itself
+ *            (agent-coord's server_reload_module): that agent is not asked about its own edits, its own module-reload
+ *            build does not hold the reload, and the ask rows record it as the asker.
+ * scripts/reload-server-module.js runs it and reloads only on approved.
  */
 
 const fs = require('fs');
@@ -45,12 +61,25 @@ const CLIENT_PATH_RE = /^(public\/|apps\/[^/]+\/(client|assets)\/|apps\/[^/]+\/m
 const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
 const CLIENT = has('--client');
+const RELOAD = has('--reload');
 const PATH_RE = CLIENT ? CLIENT_PATH_RE : SERVER_PATH_RE;
-const ASKS_TABLE = CLIENT ? 'client_gate_asks' : 'gate_asks';
-const HOLD_TARGET = CLIENT ? 'hold-client-update' : 'hold-restart';
-const OWN_TARGET = CLIENT ? 'sw-notify' : 'dreamscape-restart';
-const WHAT = CLIENT ? 'client update' : 'restart';
+const ASKS_TABLE = CLIENT ? 'client_gate_asks' : RELOAD ? 'reload_gate_asks' : 'gate_asks';
+const HOLD_TARGET = CLIENT ? 'hold-client-update' : RELOAD ? 'hold-reload' : 'hold-restart';
+const OWN_TARGET = CLIENT ? 'sw-notify' : RELOAD ? 'module-reload' : 'dreamscape-restart';
+const WHAT = CLIENT ? 'client update' : RELOAD ? 'module reload' : 'restart';
 const valueOf = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : ''; };
+
+/** The --reload value as repo-relative, forward-slash paths (comma separated; './' and absolute paths inside the repo are normalised). */
+function reloadFileList(value) {
+    return String(value || '').split(',').map((x) => x.trim()).filter(Boolean).map((x) => {
+        const abs = path.isAbsolute(x) ? x : path.join(ROOT, x);
+        return path.relative(ROOT, abs).split(path.sep).join('/');
+    }).filter((x, i, a) => a.indexOf(x) === i);
+}
+const RELOAD_FILES = RELOAD ? reloadFileList(valueOf('--reload')) : [];
+let reloadDirty = []; // the listed files that are uncommitted (reload mode)
+/** Reload mode: the agent id inside --by "<name> (<claude-xxxxxxxx>)", else ''. */
+const BY_AGENT = RELOAD ? ((/\((claude-[0-9a-f]{8})\)\s*$/.exec(valueOf('--by') || '') || [])[1] || '') : '';
 
 const findings = []; // { level: denied | wait | ask | note, text, agent? }
 const add = (level, text, extra) => findings.push(Object.assign({ level, text }, extra || {}));
@@ -140,7 +169,7 @@ function checkGates(store) {
     try { gates = store.builds({ repo: 'staticforge' }).concat(store.builds({ repo: '' }).filter((g) => g.build.target === HOLD_TARGET)); } catch (_) { gates = []; }
     const seen = new Set();
     const self = selfSessionId();
-    const mine = self ? `claude-${self.slice(0, 8)}` : '';
+    const mine = BY_AGENT || (self ? `claude-${self.slice(0, 8)}` : '');
     gates.forEach((g) => {
         const b = g.build;
         if (seen.has(b.id)) return;
@@ -148,6 +177,13 @@ function checkGates(store) {
         const who = (store.getAgent(b.requestedBy) || {}).name || b.requestedBy;
         // the caller's own gate for this (opened and begun before the wrapper script, as agent-coord asks) never holds it
         if (b.state === 'running' && b.target === OWN_TARGET && mine && b.requestedBy === mine) return;
+        if (RELOAD) {
+            // a reload waits only for a restart under way, another reload, and a hold-reload; no other build or hold matters
+            if (b.target === HOLD_TARGET && (b.state === 'open' || b.state === 'running')) add('wait', `wait for ${who}: ${HOLD_TARGET}${b.note ? ` (${b.note})` : ''}`, { agent: b.requestedBy });
+            else if (b.state === 'running' && b.target === 'dreamscape-restart') add('wait', `wait for the restart (build ${b.id}) by ${who}`, { agent: b.requestedBy });
+            else if (b.state === 'running' && b.target === 'module-reload') add('wait', `wait for the module reload (build ${b.id}) by ${who}`, { agent: b.requestedBy });
+            return;
+        }
         if (b.target === HOLD_TARGET && (b.state === 'open' || b.state === 'running')) add('wait', `wait for ${who}: ${HOLD_TARGET}${b.note ? ` (${b.note})` : ''}`, { agent: b.requestedBy });
         // the other kind's hold is not this one's business (a hold-restart does not stop a client update, nor the reverse)
         else if (b.target === 'hold-restart' || b.target === 'hold-client-update') return;
@@ -198,6 +234,7 @@ function checkAgents(store, dirty) {
     for (const s of live) {
         if (s.id === self) continue;
         const agentId = `claude-${s.id.slice(0, 8)}`;
+        if (BY_AGENT && agentId === BY_AGENT) continue; // the asker (reload mode) is not asked about its own edits
         if (!store.getAgent(agentId)) store.upsertAgent({ id: agentId, kind: 'claude', name: s.givenName || s.name || s.id.slice(0, 8), sessionId: s.id, cwd: s.cwd, pid: s.pid });
         let r = null;
         try { r = store.inspect(agentId, { limit: 300 }); } catch (_) { r = null; }
@@ -244,7 +281,7 @@ function verifyAsks(store) {
     if (!cols.has('asked_by')) d.exec(`ALTER TABLE ${ASKS_TABLE} ADD COLUMN asked_by TEXT NOT NULL DEFAULT ''`);
     if (!cols.has('files')) d.exec(`ALTER TABLE ${ASKS_TABLE} ADD COLUMN files TEXT NOT NULL DEFAULT ''`);
     const self = selfSessionId();
-    const askedBy = self ? `claude-${self.slice(0, 8)}` : (process.env.USER || '');
+    const askedBy = RELOAD && valueOf('--by') ? valueOf('--by').slice(0, 120) : self ? `claude-${self.slice(0, 8)}` : (process.env.USER || '');
     const why = String(valueOf('--why') || '').slice(0, 300);
     const now = Date.now();
     const asked = findings.filter((f) => f.level === 'ask' && f.agent);
@@ -290,14 +327,20 @@ function verdict() {
 
 function notifyAsk(store) {
     if (!store || !has('--notify')) return 0;
-    const why = valueOf('--why') || (CLIENT ? 'a client change' : 'a server change');
+    const why = valueOf('--why') || (CLIENT ? 'a client change' : RELOAD ? 'a module change' : 'a server change');
     let n = 0;
     try {
         const me = CLIENT
             ? store.upsertAgent({ id: 'client-update-gate', kind: 'other', name: 'Client update gate', task: 'Dreamscape client updates', pid: null })
-            : store.upsertAgent({ id: 'restart-gate', kind: 'other', name: 'Restart gate', task: 'Dreamscape restarts', pid: null });
+            : RELOAD
+                ? store.upsertAgent({ id: 'reload-gate', kind: 'other', name: 'Reload gate', task: 'Dreamscape module reloads', pid: null })
+                : store.upsertAgent({ id: 'restart-gate', kind: 'other', name: 'Restart gate', task: 'Dreamscape restarts', pid: null });
         findings.filter((f) => f.level === 'ask' && f.agent).forEach((f) => {
-            const text = CLIENT
+            const mine = (f.files || []).filter((x) => RELOAD_FILES.includes(x));
+            const named = (mine.length ? mine : reloadDirty).slice(0, 6).join(', ');
+            const text = RELOAD
+                ? `A Dreamscape module reload (not a server restart: no connection drops) is about to load your uncommitted edit of ${named} for ${why}. The running server would take it as it is now. Reply (coord_post to reload-gate, kind reply) "ok" when it is safe, or open a hold with coord_build_request target hold-reload until you are done - do not sit on it.`
+                : CLIENT
                 ? `A client update (service-worker notify) is about to go out for ${why}. Your uncommitted client edits / claims (public/, app packages) would ship to every device as they are now. Commit them (or say they are fine) and reply (coord_post to client-update-gate, kind reply) "ok", or open a hold with coord_build_request target hold-client-update until you are done - do not sit on it.`
                 : `The Dreamscape server is about to restart for ${why}. Your uncommitted server edits / claims would load as they are now. Reply (coord_post to restart-gate, kind reply) "ok" when it is safe, or open a hold with coord_build_request target hold-restart until you are done.`;
             store.post(me.id, f.agent, text, { kind: 'question' });
@@ -308,10 +351,14 @@ function notifyAsk(store) {
 }
 
 function main() {
-    if (!CLIENT) checkPm2();
-    const dirty = dirtyServerFiles();
-    validate(dirty);
-    if (!CLIENT) checkIdle();
+    if (RELOAD && CLIENT) { process.stderr.write('--reload and --client do not combine\n'); process.exit(2); }
+    if (RELOAD && !RELOAD_FILES.length) { process.stderr.write('usage: node scripts/restart-gate.js --reload <file,file,...> [--why "<reason>"] [--json] [--notify]\n'); process.exit(2); }
+    if (!CLIENT && !RELOAD) checkPm2();
+    // reload mode looks at exactly the listed files (validated committed or not); everything else dirty in the tree is not its business
+    const dirty = RELOAD ? dirtyServerFiles().filter((f) => RELOAD_FILES.includes(f.path)) : dirtyServerFiles();
+    reloadDirty = RELOAD ? dirty.map((f) => f.path) : [];
+    validate(RELOAD ? RELOAD_FILES.map((p) => ({ path: p })) : dirty);
+    if (!CLIENT && !RELOAD) checkIdle();
     const store = coordStore();
     checkGates(store);
     checkAgents(store, dirty);
@@ -331,4 +378,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { SERVER_PATH_RE, CLIENT_PATH_RE, _verdict: verdict, _findings: findings };
+module.exports = { SERVER_PATH_RE, CLIENT_PATH_RE, selfSessionId, reloadFileList, claimCovers, _verdict: verdict, _findings: findings };
