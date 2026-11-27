@@ -1,0 +1,10 @@
+== keyboard before
+      mInputShown=true
+
+== after BACK: keyboard and popup window
+      mInputShown=false
+  Window #2 Window{d18698 u0 MelatonPopup}:
+
+== logcat
+         1795758026.728  8664  8664 I MelatonBars: bubble note:lane:1343g drawn here
+         1795758033.993  8664  8664 I MelatonBars: keyboard down: 0 px (probe)

@@ -1,0 +1,42 @@
+== push
+{"success":true,"mode":"push","deviceId":"ea4b99c1325311b73750be7bc04df37e","notice":{"id":"lane:1343d","app":"test","cls":"test","title":"Lane test","text":"Line one of the lane test notice.\nLine two of the lane test notice.\nLine three of the lane test notice.\nLine four of the lane test notice.","actions":[],"data":{"kind":"test"},"createdAt":1795757925496,"updatedAt":1795757925496,"expiresAt":1795779525496,"state":"new","actedBy":null,"sortAt":1795757925496,"prio":1,"alert":true},"sent":1}
+
+== 4-line box: windows
+  Window #2 Window{8d6c7d2 u0 MelatonPopup}:
+  Window #3 Window{f36eed u0 MelatonHomeStrip}:
+  Window #4 Window{d42f531 u0 MelatonBarEdge}:
+  Window #5 Window{1ce4119 u0 MelatonBarEdge}:
+  Window #6 Window{f2b270d u0 MelatonBar}:
+  Window #7 Window{aef6ed1 u0 MelatonBar}:
+  Window #8 Window{2d75a83 u0 InputMethod}:
+  Window #9 Window{abd08ba u0 MelatonImeProbe}:
+  Window #10 Window{6e29fae u0 MelatonBarProbe}:
+      mInputShown=true
+
+== 4-line box: logcat
+         1795757924.684  8664  8664 I MelatonBars: bubble note:lane:1343d drawn here
+         1795757924.692  8664  8664 I NoteAlerts: test: ringer 0, sound Infbeg.wav?v=1b3ddf19139630d7, vibrate false
+
+== Menu open: windows
+  Window #2 Window{9b606da u0 MelatonPopup}:
+  Window #3 Window{f36eed u0 MelatonHomeStrip}:
+  Window #4 Window{d42f531 u0 MelatonBarEdge}:
+  Window #5 Window{1ce4119 u0 MelatonBarEdge}:
+  Window #6 Window{f2b270d u0 MelatonBar}:
+  Window #7 Window{aef6ed1 u0 MelatonBar}:
+  Window #8 Window{2d75a83 u0 InputMethod}:
+  Window #9 Window{abd08ba u0 MelatonImeProbe}:
+  Window #10 Window{6e29fae u0 MelatonBarProbe}:
+      mInputShown=true
+
+== Menu open: logcat
+         1795757946.673  8664  8664 I MelatonBars: popup soft key: right (Menu)
+         1795757946.696  8664  8664 I MelatonBars: bubble notemenu:lane:1343d drawn here
+
+== tap on the lifted Hide row: windows
+  Window #7 Window{2d75a83 u0 InputMethod}:
+      mInputShown=true
+
+== tap on the lifted Hide row: logcat
+         1795757960.513  8664  8664 I MelatonBars: popup tap 673,1170: box 1
+         1795757960.522  8664  8664 I MelatonBars: note menu: Hide (lane:1343d)

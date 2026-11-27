@@ -1,0 +1,72 @@
+== keyboard
+      mInputShown=true
+  mIsInputViewShown=true mStatusIcon=0
+
+== push
+{"success":true,"mode":"push","deviceId":"ea4b99c1325311b73750be7bc04df37e","notice":{"id":"lane:1343c","app":"test","cls":"test","title":"Lane test","text":"hello","actions":[],"data":{"kind":"test"},"createdAt":1795757882058,"updatedAt":1795757882058,"expiresAt":1795779482058,"state":"new","actedBy":null,"sortAt":1795757882058,"prio":1,"alert":true},"sent":1}
+
+== dumpsys window windows (excerpt)
+  Window #0 Window{781e2ab u0 ScreenDecorOverlayBottom}:
+  Window #1 Window{19a7f24 u0 ScreenDecorOverlay}:
+  Window #2 Window{5283d0c u0 MelatonPopup}:
+    mAttrs={(0,0)(fillxfill) gr=TOP START CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=ACCESSIBILITY_OVERLAY fmt=TRANSLUCENT
+    Frames: parent=[0,0][1080,2400] display=[-100000,-100000][100000,100000] frame=[0,0][1080,2400] last=[0,0][1080,2400] insetsChanged=false
+    isOnScreen=true
+    isVisible=true
+  Window #3 Window{f36eed u0 MelatonHomeStrip}:
+  Window #4 Window{d42f531 u0 MelatonBarEdge}:
+  Window #5 Window{1ce4119 u0 MelatonBarEdge}:
+  Window #6 Window{f2b270d u0 MelatonBar}:
+    mAttrs={(0,0)(fillx126) gr=BOTTOM START CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=ACCESSIBILITY_OVERLAY fmt=TRANSLUCENT
+    Frames: parent=[0,0][1080,2400] display=[-100000,-100000][100000,100000] frame=[0,2274][1080,2400] last=[0,2274][1080,2400] insetsChanged=false
+    isOnScreen=true
+    isVisible=true
+  Window #7 Window{aef6ed1 u0 MelatonBar}:
+    mAttrs={(0,0)(fillx63) gr=TOP START CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=ACCESSIBILITY_OVERLAY fmt=TRANSLUCENT
+    Frames: parent=[0,0][1080,2400] display=[-100000,-100000][100000,100000] frame=[0,0][1080,63] last=[0,0][1080,63] insetsChanged=false
+    isOnScreen=true
+    isVisible=true
+  Window #8 Window{2d75a83 u0 InputMethod}:
+    mAttrs={(0,0)(fillxfill) gr=BOTTOM CENTER_VERTICAL sim={adjust=pan} ty=INPUT_METHOD fmt=TRANSPARENT wanim=0x1030056 receive insets ignoring z-order
+    touchable region=SkRegion((0,1517,1080,2400))
+    Frames: parent=[0,63][1080,2400] display=[0,63][1080,2400] frame=[0,63][1080,2400] last=[0,63][1080,2400] insetsChanged=false
+    isOnScreen=true
+    isVisible=true
+  Window #9 Window{abd08ba u0 MelatonImeProbe}:
+  Window #10 Window{6e29fae u0 MelatonBarProbe}:
+  Window #11 Window{e218cff u0 Taskbar}:
+  Window #12 Window{3d7304b u0 NotificationShade}:
+  Window #13 Window{eb9a29c u0 StatusBar}:
+  Window #14 Window{d4fe751 u0 ShellDropTarget}:
+  Window #15 Window{920f227 u0 com.google.android.settings.intelligence/com.google.android.settings.intelligence.modules.search.SearchActivity}:
+  Window #16 Window{7b5d827 u0 com.android.settings/com.android.settings.homepage.SettingsHomepageActivity}:
+  Window #17 Window{5271d76 u0 jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MainActivity}:
+  Window #18 Window{c6fdd97 u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}:
+  Window #19 Window{44f8fb3 u0 com.android.systemui.wallpapers.ImageWallpaper}:
+
+== insets
+        InsetsSource id=3 type=ime frame=[0,1517][1080,2400] visibleFrame=[0,1517][1080,2400] visible=true flags= sideHint=BOTTOM boundingRects=null
+        InsetsSource id=cc70001 type=navigationBars frame=[0,2274][1080,2400] visible=true flags=INSETS_ROUNDED_CORNER sideHint=BOTTOM boundingRects=null
+        mSource=InsetsSource id=cc70001 type=navigationBars frame=[0,2274][1080,2400] visible=true flags=INSETS_ROUNDED_CORNER sideHint=BOTTOM boundingRects=null
+
+== logcat at the draw
+         1795757872.171  8664  8664 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+         1795757872.447  8664  8664 I MelatonBars: keyboard up: 883 px (probe)
+         1795757872.954  8664  8664 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+         1795757873.027  8664  8664 I MelatonBars: translucent check (soft keys): strip spread 0.0 (picture above 14), against below 16.0 (runs on under 10)
+         1795757880.125  8664  8664 I MelatonBars: bubble note:lane:1343c drawn here
+         1795757880.126  8664  8664 I NoteAlerts: test: ringer 0, sound Infbeg.wav?v=1b3ddf19139630d7, vibrate false
+
+== after the Dismiss tap: windows, keyboard
+  Window #2 Window{f36eed u0 MelatonHomeStrip}:
+  Window #3 Window{d42f531 u0 MelatonBarEdge}:
+  Window #4 Window{1ce4119 u0 MelatonBarEdge}:
+  Window #5 Window{f2b270d u0 MelatonBar}:
+  Window #6 Window{aef6ed1 u0 MelatonBar}:
+  Window #7 Window{2d75a83 u0 InputMethod}:
+  Window #8 Window{abd08ba u0 MelatonImeProbe}:
+  Window #9 Window{6e29fae u0 MelatonBarProbe}:
+      mInputShown=true
+
+== logcat of the tap
+         1795757899.558  8664  8664 I MelatonBars: popup soft key: left (Dismiss)

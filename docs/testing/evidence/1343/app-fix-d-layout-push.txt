@@ -1,0 +1,38 @@
+== what was done (as app-7)
+lane:1356d up, keyboard down. AndroidBars.layouts(<the app's own saved layouts.json, 17 page roles, plus an empty unused1356>) over CDP (134 KB: lib/cdp.js loaded with the script from a file, past the one-argument limit). Then a tap on the drawn Dismiss at 211,2336.
+
+== push taken by the app
+roles before 17 after 18 | added: ['unused1356'] | removed: []
+any note:/notemenu:/notetray/softmenu role in the pushed set: False
+
+== after the tap
+popups=0
+
+== log
+         1795759260.989 13195 13195 I MelatonBars: popup soft key: left (Dismiss)
+
+== server notice states right after (id|how|state|actedBy)
+(at the time of the earlier run lane:1343i was box|seen after the tap, see app-7-*.txt; its row below was cleared later by the test harness. lane:1356d was cleared by this device's own client, b4beec6cf4aa, 2 s after the tap. The lane:1356c row: see app-fix-a-b-c-notices.txt.)
+lane:1343i|box|cleared|test-harness
+lane:1356probe|box|cleared|b4beec6cf4aa
+lane:1356a|box|cleared|b4beec6cf4aa
+lane:1356c|box|cleared|deea8c0a5bcc
+lane:1356d|box|cleared|b4beec6cf4aa
+
+== Menu
+lane:1356e up; a layout push (the original set back; saved file equal to the original); tap Menu; the Menu drew. Another push (with unused1356) with the Menu open; it stayed drawn (the two crops differ by 4363 px, all on text rows, not visible at 1:1 or in the side-by-side); tap on its Hide row:
+
+== log, Menu open
+         1795759310.734 13195 13195 I MelatonBars: bubble note:lane:1356e drawn here
+         1795759316.088 13195 13195 I MelatonBars: popup soft key: right (Menu)
+         1795759316.107 13195 13195 I MelatonBars: bubble notemenu:lane:1356e drawn here
+
+== log, Hide row
+         1795759335.202 13195 13195 I MelatonBars: popup tap 673,1926: box 1
+         1795759335.212 13195 13195 I MelatonBars: note menu: Hide (lane:1356e)
+
+== limit
+lane:1356e was already "seen" on the server from the second it was created (another client), so the server state does not prove the Hide ack; the log line and the closed popup are the proof.
+
+== restore
+app's saved set = original

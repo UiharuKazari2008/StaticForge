@@ -1,0 +1,17 @@
+== lane.sh sound --since 1795759053273
+{"ok": true, "sinceMs": 1795759051334, "count": 5, "sounds": [{"atMs": 1795759056161, "file": "Infbeg.wav", "sha256Prefix": "1b3ddf19139630d7", "ringer": "0", "silentByRinger": true}, {"atMs": 1795759094666, "file": "Infbeg.wav", "sha256Prefix": "1b3ddf19139630d7", "ringer": "0", "silentByRinger": true}, {"atMs": 1795759137924, "file": "Infbeg.wav", "sha256Prefix": "1b3ddf19139630d7", "ringer": "0", "silentByRinger": true}, {"atMs": 1795759202505, "file": "Infbeg.wav", "sha256Prefix": "1b3ddf19139630d7", "ringer": "0", "silentByRinger": true}, {"atMs": 1795759310751, "file": "Infbeg.wav", "sha256Prefix": "1b3ddf19139630d7", "ringer": "0", "silentByRinger": true}], "playedCount": 0, "played": [], "alarmLikeStarted": 0, "sources": {"noteAlerts": [{"atMs": 1795759056161, "line": "test: ringer 0, sound Infbeg.wav?v=1b3ddf19139630d7, vibrate false", "ringer": "0", "file": "Infbeg.wav", "sha256Prefix": "1b3ddf19139630d7"}, {"atMs": 1795759094666, "line": "test: ringer 0, sound Infbeg.wav?v=1b3ddf19139630d7, vibrate false", "ringer": "0", "file": "Infbeg.wav", "sha256Prefix": "1b3ddf19139630d7"}, {"atMs": 1795759137924, "line": "test: ringer 0, sound Infbeg.wav?v=1b3ddf19139630d7, vibrate false", "ringer": "0", "file": "Infbeg.wav", "sha256Prefix": "1b3ddf19139630d7"}, {"atMs": 1795759202505, "line": "test: ringer 0, sound Infbeg.wav?v=1b3ddf19139630d7, vibrate false", "ringer": "0", "file": "Infbeg.wav", "sha256Prefix": "1b3ddf19139630d7"}, {"atMs": 1795759310751, "line": "test: ringer 0, sound Infbeg.wav?v=1b3ddf19139630d7, vibrate false", "ringer": "0", "file": "Infbeg.wav", "sha256Prefix": "1b3ddf19139630d7"}], "playerState": [], "notificationAlert": [], "playbackNow": [{"piid": 335, "uid": 1000, "pid": 718, "state": "idle", "usage": "USAGE_ASSISTANCE_SONIFICATION"}, {"piid": 343, "uid": 10186, "pid": 978, "state": "idle", "usage": "USAGE_ASSISTANCE_SONIFICATION"}]}, "authoritative": "noteAlerts (the app named the file and sha256 prefix it played); playerState / notificationAlert confirm Android saw it", "wav": null}
+
+== crash check
+logcat: no FATAL EXCEPTION / ANR / fatal signal for the app; MelatonBarService Bound, Crashed services:{}; app pid 13195 unchanged from start-app to the end
+
+== my notices, all cleared
+lane:1356probe|cleared|b4beec6cf4aa
+lane:1356a|cleared|b4beec6cf4aa
+lane:1356c|cleared|deea8c0a5bcc
+lane:1356d|cleared|b4beec6cf4aa
+lane:1356e|cleared|test-harness
+
+== bars back to golden
+wmCameraExtendBar removed, setConfig enabled:false softkeys:false
+bars=0 popups=0
+lease released without `down`. The instance keeps the test APK 3631867 (golden snapshot untouched).

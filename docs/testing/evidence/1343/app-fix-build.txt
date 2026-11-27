@@ -1,0 +1,62 @@
+== source
+DSApp-Kotlin origin/fix/1343-notice-above-keyboard 312aa34 merged with origin/main d0b7d70 (clean, in a throwaway clone; the branch itself was not merged) + the uncommitted #1356 diff (NativeLayout.kt, NativeNote.kt; sha256 of the diff 39c47d7ae19bc548d0b3c2e761d5c534750d2dd2af5b8d3027dd8edf3cffae84). The diff compiled unchanged.
+
+== where
+Ruiko C:\Users\ykaza\claude-build\dsapp-ut-1356 (build gate 248). Lane only: no server release, nothing uploaded.
+:app:testDebugUnitTest :app:assembleRelease -PversionCode=3631867 -PversionName=1.0.3631867-1356
+
+== build output
+START 2026-11-27T00:49:14.2644632-05:00
+GRADLE EXIT=0
+END 2026-11-27T00:53:57.6100629-05:00
+BUILD SUCCESSFUL in 4m 43s
+76 actionable tasks: 76 executed
+--- warnings in the changed files ---
+--- tests ---
+jp.net.seventhreeseven.dreamscape.activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ApkInstallPlanTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ApkInstallRetryTest: tests=16 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NavRoomPolicyTest: tests=18 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+TOTAL suites=16 tests=224 failures=0 errors=0 skipped=0
+SIGN EXIT 0
+
+Signer #1 certificate SHA-256 digest: 
+5c7b3ecc8c7fe5d80c042d3dfc0bfecc94aa9810754ee4c14bd633d5ccd0ab06
+package: name='jp.net.seventhreeseven.dreamscape' versionCode='3631867' 
+versionName='1.0.3631867-1356' platformBuildVersionName='16' platformBuildVersionCode='36' 
+compileSdkVersion='36' compileSdkVersionCodename='16'
+LENGTH 23505480
+SHA256 B389D64C02664CAC493321E6C1AF893762CBFA297E6750A3141E4CB694654DB7
+
+
+ssh exit 0
+
+== release 25 for comparison
+versionCode 3631866, signer SHA-256 5c7b3ecc8c7fe5d80c042d3dfc0bfecc94aa9810754ee4c14bd633d5ccd0ab06 (same)
+
+== install on aemu-a53-4 (once)
+b389d64c02664cac493321e6c1af893762cbfa297e6750a3141e4cb694654db7  /tmp/claude-1000/-home-kanmi-staticforge/62ef373d-a0ec-42ee-9c4f-01ffab730ed4/scratchpad/b1356/dsapp-1356-lane.apk
+install start 00:56:01
+Performing Streamed Install
+Success
+install end 00:56:04
+    versionCode=3631867 minSdk=31 targetSdk=36
+    versionName=1.0.3631867-1356
+    lastUpdateTime=2026-11-27 00:56:01
+jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+     Bound services:{}
+     Enabled services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Crashed services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+(read right after the install, before the app was started: it listed MelatonBarService as crashed; after start-app: Bound, Crashed services:{})

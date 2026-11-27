@@ -1,0 +1,49 @@
+== bar setup
+AndroidBars.setConfig enabled+softkeys, localStorage wmCameraExtendBar=1, AndroidBars.requestRender().
+The first probe notice (lane:1356probe, before renderKit) came out 25 px low: left border y 1247-1541 with the keyboard top at 1517 (app-fix-0-*.png).
+Then: probe dismissed, start-app, melatonBars.renderKit({reqId:900001}), Settings in front again. NEEDED, as in the earlier run. Everything below is after it.
+
+== (a) push
+{"success":true,"mode":"push","deviceId":"ea4b99c1325311b73750be7bc04df37e","notice":{"id":"lane:1356a","app":"test","cls":"test","title":"Lane test","text":"Line one of the lane test notice.\nLine two of the lane test notice.\nLine three of the lane test notice.\nLine four of the lane test notice.","actions":[],"data":{"kind":"test"},"createdAt":1795759096619,"updatedAt":1795759096619,"expiresAt":1795780696619,"state":"new","actedBy":null,"sortAt":1795759096619,"prio":1,"alert":true},"sent":1}
+
+== (a) keyboard up: state
+mInputShown=true
+  Window #2 Window{6f1a7c9 u0 MelatonPopup}:
+  Window #3 Window{d1d8c90 u0 MelatonBar}:
+  Window #4 Window{7a97224 u0 MelatonBar}:
+  Window #8 Window{2d75a83 u0 InputMethod}:
+        InsetsSource id=3 type=ime frame=[0,1517][1080,2400] visibleFrame=[0,1517][1080,2400] visible=true flags= sideHint=BOTTOM boundingRects=null
+
+== (a) log
+         1795759094.665 13195 13195 I MelatonBars: bubble note:lane:1356a drawn here
+         1795759094.666 13195 13195 I NoteAlerts: test: ringer 0, sound Infbeg.wav?v=1b3ddf19139630d7, vibrate false
+
+== (a) full-res pixels
+box left border y 1200-1518 (keyboard top 1517); orange band y 1189-1262; title glyphs y 1213-1241; the four body text rows y 1305-1485, all below the band
+
+== (b) keyboard down: state
+mInputShown=false
+  Window #2 Window{6f1a7c9 u0 MelatonPopup}:
+  Window #3 Window{d1d8c90 u0 MelatonBar}:
+  Window #4 Window{7a97224 u0 MelatonBar}:
+
+== (b) log
+         1795759114.285 13195 13195 I MelatonBars: keyboard down: 0 px (probe)
+         1795759130.353 13195 13195 I MelatonBars: popup soft key: left (Dismiss)
+
+== (b) full-res pixels
+box left border y 1957-2275 (soft key bar top 2274); band y 1946-2019; title glyphs y 1970-1998; body rows y 2062-2242
+
+== (c) push
+{"success":true,"mode":"push","deviceId":"ea4b99c1325311b73750be7bc04df37e","notice":{"id":"lane:1356c","app":"test","cls":"test","title":"Lane test","text":"hello","actions":[],"data":{"kind":"test"},"createdAt":1795759139875,"updatedAt":1795759139875,"expiresAt":1795780739875,"state":"new","actedBy":null,"sortAt":1795759139875,"prio":1,"alert":true},"sent":1}
+
+== (c) log
+         1795759137.923 13195 13195 I MelatonBars: bubble note:lane:1356c drawn here
+         1795759137.924 13195 13195 I NoteAlerts: test: ringer 0, sound Infbeg.wav?v=1b3ddf19139630d7, vibrate false
+
+== (c) against release 25
+keyboard up: 0 differing pixels (full res 1080x305 box, against the earlier run's full-res shot of app-1b).
+keyboard down: same box / band / text row positions as app-5a; the glyph pixels differ (1926 px inside the box). Release 25's own up and down shots differ from each other by the same 1926 px inside the box; the fix build's up and down are 0 px apart, and a fresh keyboard-down draw (lane:1356d) equals the lowered one inside the box.
+
+== (c) note
+Both (c) shots were written 00:59:04 and 00:59:10 EST. At 00:59:25 the server shows lane:1356c cleared by another client (deea8c0a5bcc; the lane devices share the "test" notice queue). My cleanup tap came later, found no box and pressed the bar's Back key (Settings went from search back to its home page).

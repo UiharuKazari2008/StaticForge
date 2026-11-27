@@ -1,0 +1,9 @@
+== what was done
+Notice lane:1343i up (keyboard down). Then the page bridge AndroidBars.layouts(<the app's own stored page layouts plus one empty unused key>) was called, as the hidden page does when one of its layouts changes; it carries no note:<id> role. Then a tap on the drawn Dismiss. The original layouts were pushed back afterwards.
+
+== logcat
+         1795758158.367  8664  8664 I MelatonBars: bubble note:lane:1343i drawn here
+         1795758170.582  8664  8664 I MelatonBars: popup tap 211,2336: outside: closed
+
+== server state of the notice (id|how|state): seen, not cleared
+lane:1343i|box|seen
