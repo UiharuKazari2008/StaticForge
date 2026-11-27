@@ -1,0 +1,74 @@
+StaticForge #1367 defect 6: .wmsp-play / .wmsp-stop on WM 6.5.1
+Device: lane emulator aemu-a53-2 (412x915 CSS, dpr 2.625, --wm-px 1.5px, app versionCode 3632021), page as served (wm65.css sha 722132f9...).
+6.5.1 set by localStorage wmVersion=6.5.1 + app force stop/start; before: key absent (page ran 6.1). After: key removed, app restarted, ver 6.1, no rev.
+'after' = the exact rule now in wm65.css, injected as a temporary <style> (removed). No client update was run. Play/Stop never tapped; no sound chosen; ok never pressed.
+lane sound log: playedCount 0, playerState none, alarmLikeStarted 0 (two NoteAlerts 'dropped sound' lines, not plays).
+
+== 1. Notifications tab, phone event (.wmsp-media), before
+[play] and [stop] each w 41.00 h 35.00 u (61.50 x 52.50 px), at x 269.69 and 338.69, y 238.50
+row .wmsp-media 87.00 x 35.00 u (130.50 x 52.50 px); combo 87.00 x 35.00 u; block .wmsp-ev 245.79 x 75.00 u; gap 7.5px (5 u)
+
+== 1. phone event, after (unchanged)
+unit 1.5px rev 6.5.1
+[play] in .wmsp-media (combo "Infbeg")
+  button x 269.69 y 238.50 w 61.50 h 52.50 px | w 41.00 h 35.00 u
+  row    x 269.69 y 238.50 w 130.50 h 52.50 px | w 87.00 h 35.00 u
+  outer  x 31.50 y 178.50 w 368.69 h 112.50 px | w 245.79 h 75.00 u
+  combo  x 269.69 y 178.50 w 130.50 h 52.50 px | w 87.00 h 35.00 u
+  button flex 1 1 0px; combo flex 0 1 auto; gap 7.5px
+[stop] in .wmsp-media (combo "Infbeg")
+  button x 338.69 y 238.50 w 61.50 h 52.50 px | w 41.00 h 35.00 u
+  row    x 269.69 y 238.50 w 130.50 h 52.50 px | w 87.00 h 35.00 u
+  outer  x 31.50 y 178.50 w 368.69 h 112.50 px | w 245.79 h 75.00 u
+  combo  x 269.69 y 178.50 w 130.50 h 52.50 px | w 87.00 h 35.00 u
+  button flex 1 1 0px; combo flex 0 1 auto; gap 7.5px
+
+== 2. Notifications tab, workspace event 'Melaton: Notification' (.wmsp-sound-row), before
+[play] button 5.29 x 52.50 px = 3.52 x 35.00 u (x 394.90 y 229.50)
+row 368.69 x 52.50 px = 245.79 x 35.00 u; combo 330.40 x 52.50 px = 220.27 x 35.00 u; gap 6px (4 u)
+button flex 1 1 0px; combo flex 1 1 auto
+
+== 2. workspace event, after
+unit 1.5px rev 6.5.1
+[play] in .wmsp-indent.wmsp-sound-row (combo "Melaton Balloon")
+  button x 303.44 y 229.50 w 96.75 h 52.50 px | w 64.50 h 35.00 u
+  row    x 31.50 y 229.50 w 368.69 h 52.50 px | w 245.79 h 35.00 u
+  outer  x 31.50 y 229.50 w 368.69 h 52.50 px | w 245.79 h 35.00 u
+  combo  x 58.50 y 229.50 w 238.94 h 52.50 px | w 159.29 h 35.00 u
+  button flex 0 0 auto; combo flex 1 1 auto; gap 6px
+
+== 3. Chime tab, mode Off, before
+unit 1.5px rev 6.5.1
+[play-hourSound disabled] in .wmsp-sound-row (combo "Remind 02")
+  button x 394.90 y 198.00 w 5.29 h 52.50 px | w 3.52 h 35.00 u
+  row    x 12.00 y 198.00 w 388.19 h 52.50 px | w 258.79 h 35.00 u
+  outer  x 12.00 y 174.00 w 388.19 h 76.50 px | w 258.79 h 51.00 u
+  combo  x 12.00 y 198.00 w 376.90 h 52.50 px | w 251.27 h 35.00 u
+  button flex 1 1 0px; combo flex 1 1 auto; gap 6px
+
+== 3. Chime tab, mode Off, after
+unit 1.5px rev 6.5.1
+[play-hourSound disabled] in .wmsp-sound-row (combo "Remind 02")
+  button x 303.44 y 198.00 w 96.75 h 52.50 px | w 64.50 h 35.00 u
+  row    x 12.00 y 198.00 w 388.19 h 52.50 px | w 258.79 h 35.00 u
+  outer  x 12.00 y 174.00 w 388.19 h 76.50 px | w 258.79 h 51.00 u
+  combo  x 12.00 y 198.00 w 285.44 h 52.50 px | w 190.29 h 35.00 u
+  button flex 0 0 auto; combo flex 1 1 auto; gap 6px
+
+== 3. Chime tab, 'Every half hour' (unsaved draft, set back to Off), after
+unit 1.5px rev 6.5.1
+[play-hourSound] in .wmsp-sound-row (combo "Remind 02")
+  button x 303.44 y 198.00 w 96.75 h 52.50 px | w 64.50 h 35.00 u
+  row    x 12.00 y 198.00 w 388.19 h 52.50 px | w 258.79 h 35.00 u
+  outer  x 12.00 y 174.00 w 388.19 h 76.50 px | w 258.79 h 51.00 u
+  combo  x 12.00 y 198.00 w 285.44 h 52.50 px | w 190.29 h 35.00 u
+  button flex 0 0 auto; combo flex 1 1 auto; gap 6px
+[play-halfSound] in .wmsp-sound-row (combo "Remind 01")
+  button x 303.44 y 279.00 w 96.75 h 52.50 px | w 64.50 h 35.00 u
+  row    x 12.00 y 279.00 w 388.19 h 52.50 px | w 258.79 h 35.00 u
+  outer  x 12.00 y 255.00 w 388.19 h 76.50 px | w 258.79 h 51.00 u
+  combo  x 12.00 y 279.00 w 285.44 h 52.50 px | w 190.29 h 35.00 u
+  button flex 0 0 auto; combo flex 1 1 auto; gap 6px
+
+== long combo label, with the rule
+combo w 285.44049072265625 h 52.5; play w 96.75 h 52.5; span overflow hidden ellipsis nowrap

@@ -2686,6 +2686,13 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-stop {
     background: var(--wm65-face) !important;
 }
 
+/* a lone Play beside a combo box (a workspace event, the Chime tab): the combo takes the row's free space first, which
+ * left the key above only 3.5 units wide (#1367), so here it keeps the device key's own width and the combo gives way */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-sound-row > .wmsp-play {
+    flex: 0 0 auto;
+    width: calc(64.5 * var(--wm-px));
+}
+
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-play:active:not(:disabled),
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-stop:active:not(:disabled) {
     border-image: none !important;
