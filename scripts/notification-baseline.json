@@ -1,7 +1,7 @@
 {
  "note": "Emit sites with no registered source id. Counts may only go down. See docs/design/notification-discipline.md and scripts/check-notifications.js.",
  "totals": {
-  "message": 473,
+  "message": 470,
   "toast": 1022,
   "balloon": 14,
   "sound": 34
@@ -517,9 +517,6 @@
   "public/scripts/comp/wmNotes.js": {
    "message": 15,
    "sound": 1
-  },
-  "public/scripts/comp/wmNotificationInbox.js": {
-   "message": 3
   },
   "public/scripts/comp/wmPayPass.js": {
    "message": 5
