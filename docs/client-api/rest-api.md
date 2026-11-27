@@ -1507,6 +1507,9 @@ Errors are `{ success: false, code, error }`.
 | `DELETE /api/test-devices/notices` | none | Clears the whole test lane |
 | `POST /api/test-devices/:id/catch-up` | none | What a hello would send now (`notificationInbox.catchUpPhone`) |
 | `GET /api/test-devices/deliveries` | `?device=` | The delivery rows: `sentAt`, `attempts`, `postedAt`, how |
+| `GET /api/test-devices/traffic` | none | `{ places: { primary, devices: [{ device, name, place, at, via, fresh, decides }], log }, decision: { home, work } }`: the places the test devices reported with `traffic_place` (their own lane, never the household's; `via` is `task` or `page`) and what the lane's scheduled run would do for each direction (`{ skip, why, ... }`). `modules/trafficTestLaneRoute.js`, #1289 |
+| `POST /api/test-devices/traffic/run` | `{ direction: 'home'\|'work', kind?: 'scheduled'\|'go' }` | `{ result }`: the scheduled To Home / To Work run for the test lane (`trafficService.runScheduled`, lane `test`): decided from the test lane's reports, `{ skipped: true, why }` or `{ skipped: false, why, noticeId, title }` with the notice published to test devices only; no broadcast to the household's pages, no leave advisor. 409 `NO_TEST_DEVICE` while none is set |
+| `DELETE /api/test-devices/traffic` | none | Clears the test lane's reported places and log |
 
 ---
 
