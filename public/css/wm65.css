@@ -2057,6 +2057,15 @@ html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-sip] .wm-noti
     bottom: calc(env(safe-area-inset-bottom) + 34 * var(--wm-px) + var(--wm-sip-lift, 0px));
     max-height: calc(70% - 34 * var(--wm-px) - var(--wm-sip-lift, 0px));
 }
+/* (#1343) ... but with Android's buttons behind ours (data-wm-soft-h) the bar is under the keyboard (wm-shell.css #1013):
+ * the notice and the picture toolbar stand on the keyboard's top */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-sip][data-wm-soft-h] .wm-notify,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-sip][data-wm-soft-h] .wm-viewbar {
+    bottom: calc(env(safe-area-inset-bottom) + var(--wm-sip-lift, 0px));
+}
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-sip][data-wm-soft-h] .wm-notify {
+    max-height: calc(70% - var(--wm-sip-lift, 0px));
+}
 
 html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-lock65-scene {
     top: calc(18 * var(--wm-px));
