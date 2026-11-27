@@ -1,0 +1,282 @@
+# #1332 staged-update acceptance, aemu-fold-1, agent claude-d138e55a
+2026-11-27 00:20:34 start. APK sha256 verified 29540e0f...cf2a9 (matches).
+2026-11-27 00:20:34 Ruiko CPU 97 then 100 at 00:20; waiting in a bounded background loop.
+2026-11-27 00:20:34 pre-lease server read: latest=29, builds[0] versionCode 3631988 size 23521864 sha256 f67f63d008303fb7c3b2cd4bf7d9e0324cd77d7626b6a370204cc62b50163957
+2026-11-27 00:20:34 device id (lane env) f59ea601ec17510953a44bf8e09c35a0; server devices row: versionCode 3631835 name "Lane aemu-fold-1"
+2026-11-27 00:20:34 server deliveries row for this device BEFORE: versionCode 3631866 state staged at 2026-11-27T03:22:54.655Z detail {"attempts":1,"info":{"state":"staged","versionCode":3631866}} -> older than latest 3631988, so a new send is expected (not blocked)
+2026-11-27 00:36:54 brief change from coordinator: NO up retry loop; wait CPU<80, request lease, up --golden ONCE; on exit 5 release lease and go back to CPU wait; do not swap/edit lane.sh
+2026-11-27 00:53:13 CPU wait stopped (last probe 90). coord_device_request aemu-fold-1: queued position 1; holder claude-3c4b359d (planner-1340b), lease to ~06:43 local, instance running with its state. Coordinator: when granted, FIRST lane.sh reset, check app = golden 3631835, then baseline. Note: lane.sh in live tree was replaced by #1312 planner at 05:48 (origin/main copy); used as it is.
+2026-11-27 01:10:02 coordinator: use aemu-a53-4 (lease 235) instead of fold-1; first down then up --golden once
+2026-11-27 01:10:51 instance now aemu-a53-4 (Android 16, serial emulator-5568, device id ea4b99c1325311b73750be7bc04df37e, lane env apk_versionCode=3631866). Was running app 3631867 (planner #1356). lane.sh down issued -> {"state":"stopped"}.
+2026-11-27 01:10:51 latest now release 30 versionCode 3632021 size 23521864 sha256 360504a3c20a5f79277e7a6c7404572cde6800659197998aba27c2d29e0fcc24
+2026-11-27 01:10:51 PRECONDITION: server deliveries row for a53-4 BEFORE = {"versionCode":3632021,"state":"staged","at":"2026-11-27T05:47:00.423Z","detail":"{attempts:1,info:{state:staged,versionCode:3632021}}"}; devices row = versionCode 3631867 name "Lane aemu-a53-4" at 05:56:07Z. androidAppUpdatePush.js:289 consider() returns null for same versionCode staged/waiting/installed => server will not push. Reported to claude-5023e715 via coord_post; not edited.
+2026-11-27 01:11:56 COUNTS [baseline (golden booted, before test APK)]
+    a_total=4
+    a_dsinstall=0
+    a_names=dalvik-cache lane-apk.sha lane-shot.png lane-ui.xml 
+    b_files=0
+    b_folder=absent
+    b_list=
+    c_files=0
+    c_list=
+2026-11-27 01:12:01 BASELINE status:
+{"running":true,"booted":true,"appPid":2969,"appVersionCode":3631835,"shizukuRunning":true,"noAudio":true,"adb":{"listening5555":true,"note5555":"always listening on the emulator (not the phone's rule): use appPort","appPort":5555,"listeningAppPort":true,"serviceAdbTcpPort":"5555","persistAdbTcpPort":"","adbEnabled":"1","adbWifiEnabled":"0","adbdUid":2000},"deviceId":"ea4b99c1325311b73750be7bc04df37e"}
+dumpsys:
+    versionCode=3631835 minSdk=31 targetSdk=36
+    versionName=1.0.3631835
+shizuku status:
+{"ok": true, "running": true, "pid": 2895, "uid": "shell", "installed": true, "appPermission": true}
+2026-11-27 01:12:05 server rows at baseline:
+{"latest":30,"b0":{"id":30,"versionCode":3632021,"size":23521864},"del":{"versionCode":3632021,"state":"staged","at":"2026-11-27T05:47:00.423Z","detail":"{\"attempts\":1,\"info\":\"{\\\"state\\\":\\\"staged\\\",\\\"versionCode\\\":3632021}\"}"},"dev":{"versionCode":3631835,"versionName":"1.0.3631835","name":"Lane aemu-a53-4","at":"2026-11-27T06:11:38.394Z"}}
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="settings">{&quot;allow&quot;:true,&quot;autoRestore&quot;:true,&quot;shizukuAutoStart&quot;:true,&quot;shizukuRecover&quot;:true,&quot;preferred&quot;:&quot;adb&quot;,&quot;port&quot;:5555,&quot;features&quot;:{&quot;radioRead&quot;:true,&quot;radioModify&quot;:false,&quot;install&quot;:true,&quot;screenshots&quot;:true,&quot;castRead&quot;:false,&quot;castInteract&quot;:false,&quot;commands&quot;:false,&quot;portForward&quot;:false,&quot;filesRead&quot;:false,&quot;filesWrite&quot;:false}}</string>
+    <boolean name="restore" value="true" />
+    <boolean name="authorized_once" value="true" />
+</map>
+2026-11-27 01:12:10 up --golden once: {"ok":true,"state":"booted","bootSecs":8,"noAudio":true} exit 0 (CPU read 96 before it, guard did not refuse). Guest answers adb (sh id = shell, su = root). App 3631835 = golden (not 3631867).
+2026-11-27 01:12:10 baseline server hello: devices row versionCode 3631835 at 2026-11-27T06:11:38Z, deliveries row UNCHANGED (3632021 staged 05:47Z) => the server did not push after the golden app's hello (as predicted from consider() line 289).
+2026-11-27 01:12:10 saved settings: /tmp/claude-1000/-home-kanmi-staticforge/d138e55a-2ebd-4069-b6eb-2baca3a5d65a/scratchpad/local_adb.xml.baseline (features.install true, autoRestore true, shizukuAutoStart true, shizukuRecover true, preferred adb, port 5555). NOTE shizukuAutoStart/Recover true: app may restart Shizuku after 'shizuku stop' in step 3.
+2026-11-27 01:12:42 coordinator reorder: install test APK, start, then sweep test (old step 2) first; then watch server up to ~8 min; leave instance + lease; NO steps 3/4 until told; do not edit server state; do not post to claude-5023e715
+29540e0f0ece71e5967f5fef4c4498a22c61922aa62056224fdfde76068cf2a9  /tmp/claude-1000/-home-kanmi-staticforge/d138e55a-2ebd-4069-b6eb-2baca3a5d65a/scratchpad/dsapp-1332-lane.apk
+2026-11-27 01:12:42 installing: lane.sh aemu-a53-4 adb install -r -d dsapp-1332-lane.apk
+Performing Streamed Install
+Success
+    versionCode=3631800 minSdk=31 targetSdk=36
+    versionName=1.0.3631800-1332
+2026-11-27 01:12:50 start-app
+{"ok": true, "appPid": 8804, "display": "0"}
+{"appPid":8804,"appVersionCode":3631800,"top":"jp.net.seventhreeseven.dreamscape/.MainActivity","shizukuRunning":true}
+2026-11-27 01:13:49 LOG after install+auto start (app started by the notification listener after the update, pid 8804): ApkInstall 'swept leftover install copies in /data/local/tmp via shizuku' at epoch 1795759971.720 (link start, before any planted file; first sweep)
+2026-11-27 01:13:49 COUNTS [after test APK 3631800 installed and running (pid 8804)]
+    a_total=4
+    a_dsinstall=0
+    a_names=dalvik-cache lane-apk.sha lane-shot.png lane-ui.xml 
+    b_files=0
+    b_folder=absent
+    b_list=
+    c_files=0
+    c_list=
+2026-11-27 01:13:49 server rows:
+{"latest":30,"del":{"versionCode":3632021,"state":"staged","at":"2026-11-27T05:47:00.423Z","detail":"{\"attempts\":1,\"info\":\"{\\\"state\\\":\\\"staged\\\",\\\"versionCode\\\":3632021}\"}"},"dev":{"versionCode":3631800,"versionName":"1.0.3631800-1332","name":"Lane aemu-a53-4","at":"2026-11-27T06:12:51.346Z"}}
+{"ok":true,"value":"{\"installer\":\"silent\",\"waiting\":null,\"installed\":{\"versionCode\":3631800,\"versionName\":\"1.0.3631800-1332\"},\"staged\":null,\"attempted\":0}"}
+2026-11-27 01:13:57 STEP 2 (sweep) planting as shell user
+total 284
+drwxrwxrwx 3 shell shell   4096 2026-11-26 22:07 dalvik-cache
+-rw-rw-rw- 1 shell shell   8192 2026-11-27 01:13 ds-install-x.apk
+-rw-rw-rw- 1 shell shell      6 2026-11-27 01:13 ds-installer-keep.txt
+-rw-rw-rw- 1 shell shell     65 2026-11-26 22:06 lane-apk.sha
+-rw-rw-r-- 1 shell shell 234404 2026-11-26 22:25 lane-shot.png
+-rw-rw-rw- 1 shell shell   4464 2026-11-26 22:07 lane-ui.xml
+2026-11-27 01:13:58 COUNTS [step 2 BEFORE restart (planted ds-install-x.apk + ds-installer-keep.txt)]
+    a_total=6
+    a_dsinstall=2
+    a_names=dalvik-cache ds-install-x.apk ds-installer-keep.txt lane-apk.sha lane-shot.png lane-ui.xml 
+    b_files=0
+    b_folder=absent
+    b_list=
+    c_files=0
+    c_list=
+2026-11-27 01:13:58 stop-app then start-app
+{"ok": true}
+{"appPid":9250}
+{"ok": true, "appPid": 9250, "display": "0"}
+         1795759986.788  8804  8804 I chromium: [INFO:CONSOLE(2)] "Hash mismatch or missing for /scripts/comp/melatonAppUpdate.js, adding to update list", source: https://staticforge.737.jp.net/scripts/comp/serviceWorkerManager.js?sha=540530dc124917b318690217bc00d464d557a7bd35e0e8d6aed427d7c3740ace (2)
+         1795760002.312  8804  8804 I chromium: [INFO:CONSOLE(2)] "Hash mismatch or missing for /scripts/comp/melatonAppUpdate.js, adding to update list", source: https://staticforge.737.jp.net/scripts/comp/serviceWorkerManager.js?sha=540530dc124917b318690217bc00d464d557a7bd35e0e8d6aed427d7c3740ace (2)
+         1795760038.890  9250  9291 W ApkInstall: the sweep of /data/local/tmp via shizuku failed (-1): Shizuku is not available
+         1795760041.864  9250  9291 W ApkInstall: the sweep of /data/local/tmp via shizuku failed (-1): Shizuku is not available
+         1795760046.386  9250  9291 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795760056.841  9250  9250 I chromium: [INFO:CONSOLE(2)] "Hash mismatch or missing for /scripts/comp/melatonAppUpdate.js, adding to update list", source: https://staticforge.737.jp.net/scripts/comp/serviceWorkerManager.js?sha=540530dc124917b318690217bc00d464d557a7bd35e0e8d6aed427d7c3740ace (2)
+         1795760060.198  9250  9250 I chromium: [INFO:CONSOLE(2)] "Hash mismatch or missing for /scripts/comp/melatonAppUpdate.js, adding to update list", source: https://staticforge.737.jp.net/scripts/comp/serviceWorkerManager.js?sha=540530dc124917b318690217bc00d464d557a7bd35e0e8d6aed427d7c3740ace (2)
+total 272
+drwxrwxrwx 3 shell shell   4096 2026-11-26 22:07 dalvik-cache
+-rw-rw-rw- 1 shell shell      6 2026-11-27 01:13 ds-installer-keep.txt
+-rw-rw-rw- 1 shell shell     65 2026-11-26 22:06 lane-apk.sha
+-rw-rw-r-- 1 shell shell 234404 2026-11-26 22:25 lane-shot.png
+-rw-rw-rw- 1 shell shell   4464 2026-11-26 22:07 lane-ui.xml
+1795759971.720 = 2026-11-27 01:12:51 local
+1795760038.890 = 2026-11-27 01:13:58 local
+1795760041.864 = 2026-11-27 01:14:01 local
+1795760046.386 = 2026-11-27 01:14:06 local
+dalvik-cache
+lane-apk.sha
+lane-shot.png
+lane-ui.xml
+2026-11-27 01:14:39 COUNTS [step 2 AFTER sweep (decoy removed by me); app pid 9250]
+    a_total=4
+    a_dsinstall=0
+    a_names=dalvik-cache lane-apk.sha lane-shot.png lane-ui.xml 
+    b_files=0
+    b_folder=absent
+    b_list=
+    c_files=0
+    c_list=
+{"ok":true,"value":"{\"installer\":\"silent\",\"waiting\":null,\"installed\":{\"versionCode\":3631800,\"versionName\":\"1.0.3631800-1332\"},\"staged\":null,\"attempted\":0}"}
+2026-11-27 01:14:48 watching server for a push (5 x 90 s)
+01:16:21 {"latest":30,"b0":3632021,"del":{"versionCode":3632021,"state":"staged","at":"2026-11-27T05:47:00.423Z","detail":"{\"attempts\":1,\"info\":\"{\\\"state\\\":\\\"staged\\\",\\\"versionCode\\\":3632021}\"}"},"dev":{"versionCode":3631800,"at":"2026-11-27T06:12:51.346Z"}}
+2026-11-27 01:17:28 DECISION from coordinator: switch to a fresh device id. OLD=ea4b99c1325311b73750be7bc04df37e NEW=78ba828b3f6515935c7364025b8f1212
+{"ok": true}
+{"appPid":9668}
+-rw-rw---- 1 u0_a217 u0_a217 u:object_r:app_data_file:s0:c217,c256,c512,c768  1943 2026-11-27 01:12 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/activesync.xml
+-rw-rw---- 1 u0_a217 u0_a217 u:object_r:app_data_file:s0:c217,c256,c512,c768  1943 2026-11-27 01:17 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/activesync.xml
+name="device_id">78ba828b3f6515935c7364025b8f1212<
+7
+2026-11-27 01:17:43 app had restarted itself after stop-app (pid 9668); redoing: force-stop + rewrite in one root script
+9842
+name="device_id">78ba828b3f6515935c7364025b8f1212<
+-rw-rw---- 1 u0_a217 u0_a217 u:object_r:app_data_file:s0:c217,c256,c512,c768  1943 2026-11-27 01:17 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/activesync.xml
+pid-after: 9842
+{"appPid":9842,"appVersionCode":3631800,"deviceId":"ea4b99c1325311b73750be7bc04df37e"}
+{"ok":false,"error":"socket hang up"}
+name="device_id">78ba828b3f6515935c7364025b8f1212<
+{"new":{"versionCode":3631800,"versionName":"1.0.3631800-1332","name":"sdk_gphone64_x86_64","at":"2026-11-27T06:17:45.943Z"},"newdel":{"versionCode":3632021,"state":"staged","at":"2026-11-27T06:17:51.045Z","detail":"{\"attempts\":1,\"info\":\"{\\\"state\\\":\\\"staged\\\",\\\"versionCode\\\":3632021}\"}"},"old":{"versionCode":3631800,"versionName":"1.0.3631800-1332","name":"Lane aemu-a53-4","at":"2026-11-27T06:12:51.346Z"}}
+{"ok":false,"error":"socket hang up"}
+2026-11-27 01:18:55 COUNTS [step 1 STAGING: after server pushed to NEW id (delivery staged 06:17:51Z), NOT yet marked test device]
+    a_total=4
+    a_dsinstall=0
+    a_names=dalvik-cache lane-apk.sha lane-shot.png lane-ui.xml 
+    b_files=0
+    b_folder=exists entries=0
+    b_list=/sdcard/Android/data/jp.net.seventhreeseven.dreamscape/cache/activesync-install 
+    c_files=1
+    c_list=23521864 dsapp-3632021.apk;
+360504a3c20a5f79277e7a6c7404572cde6800659197998aba27c2d29e0fcc24  /sdcard/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632021.apk
+total 22976
+-rw-rw---- 1 u0_a217 ext_data_rw 23521864 2026-11-27 01:17 dsapp-3632021.apk
+2026-11-27 01:19:04 PUT /api/test-devices/78ba828b3f6515935c7364025b8f1212 name 'Lane aemu-a53-4'
+{"success":true,"device":{"id":"78ba828b3f6515935c7364025b8f1212","status":{},"name":"Lane aemu-a53-4","markedAt":1795760265934,"kind":"emulator","online":true,"partner":true,"service":true,"pageInFront":false}}{"ok":false,"error":"socket hang up"}
+{"ok":false,"error":"socket hang up"}
+{"ok": true, "appPid": 9842, "display": "0"}
+{"ok":true,"value":"{\"installer\":\"silent\",\"waiting\":null,\"installed\":{\"versionCode\":3631800,\"versionName\":\"1.0.3631800-1332\"},\"staged\":{\"versionCode\":3632021,\"versionName\":\"1.0.3632021\",\"buildId\":30,\"stagedAt\":1795760269633},\"attempted\":0}"}
+{"ok":true,"value":"78ba828b3f6515935c7364025b8f1212"}
+2026-11-27 01:20:21 STEP 1 RESULT (new id 78ba828b3f6515935c7364025b8f1212): server rows:
+{"latest":30,"new":{"versionCode":3631800,"versionName":"1.0.3631800-1332","name":"Lane aemu-a53-4","at":"2026-11-27T06:19:58.188Z"},"newdel":{"versionCode":3632021,"state":"staged","at":"2026-11-27T06:17:51.045Z","detail":"{\"attempts\":1,\"info\":\"{\\\"state\\\":\\\"staged\\\",\\\"versionCode\\\":3632021}\"}"}}
+page state(): staged 3632021 build 30 stagedAt 1795760269633, waiting null, installed 3631800, attempted 0; getDeviceId = 78ba828b3f6515935c7364025b8f1212. Server pushed BEFORE the device was marked test (06:17:51Z) and before any partner step: it was already online/partner:true/service:true (PUT answer).
+2026-11-27 01:20:28 COUNTS [step 3 BEFORE (staged file present, Shizuku running)]
+    a_total=4
+    a_dsinstall=0
+    a_names=dalvik-cache lane-apk.sha lane-shot.png lane-ui.xml 
+    b_files=0
+    b_folder=exists entries=0
+    b_list=/sdcard/Android/data/jp.net.seventhreeseven.dreamscape/cache/activesync-install 
+    c_files=1
+    c_list=23521864 dsapp-3632021.apk;
+2026-11-27 01:20:28 shizuku stop
+{"ok": true, "stoppedPid": 2895, "running": false}
+{"ok": true, "running": false, "pid": 0, "uid": "", "installed": true, "appPermission": true}
+2026-11-27 01:20:36 setAdbSettings(features.install=false)
+{"ok":true,"value":true}
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="settings">{&quot;allow&quot;:true,&quot;autoRestore&quot;:true,&quot;shizukuAutoStart&quot;:true,&quot;shizukuRecover&quot;:true,&quot;preferred&quot;:&quot;adb&quot;,&quot;port&quot;:5555,&quot;features&quot;:{&quot;radioRead&quot;:true,&quot;radioModify&quot;:false,&quot;install&quot;:false,&quot;screenshots&quot;:true,&quot;castRead&quot;:false,&quot;castInteract&quot;:false,&quot;commands&quot;:false,&quot;portForward&quot;:false,&quot;filesRead&quot;:false,&quot;filesWrite&quot;:false}}</string>
+    <boolean name="restore" value="true" />
+    <boolean name="authorized_once" value="true" />
+</map>
+{"ok": true, "running": false, "pid": 0, "uid": "", "installed": true, "appPermission": true}
+{"listening5555": true, "note5555": "always listening on the emulator (not the phone's rule): use appPort", "appPort": 5555, "listeningAppPort": true, "serviceAdbTcpPort": "5555", "persistAdbTcpPort": "", "adbEnabled": "1", "adbWifiEnabled": "0", "adbdUid": 2000}
+install&quot;:false
+2026-11-27 01:21:04 COUNTS [step 3 after route removed, BEFORE restartNow]
+    a_total=4
+    a_dsinstall=0
+    a_names=dalvik-cache lane-apk.sha lane-shot.png lane-ui.xml 
+    b_files=0
+    b_folder=exists entries=0
+    b_list=/sdcard/Android/data/jp.net.seventhreeseven.dreamscape/cache/activesync-install 
+    c_files=1
+    c_list=23521864 dsapp-3632021.apk;
+{"ok":true,"value":"{\"installer\":\"silent\",\"waiting\":null,\"installed\":{\"versionCode\":3631800,\"versionName\":\"1.0.3631800-1332\"},\"staged\":{\"versionCode\":3632021,\"versionName\":\"1.0.3632021\",\"buildId\":30,\"stagedAt\":1795760269633},\"attempted\":0}"}
+2026-11-27 01:21:04 restartNow()
+{"ok":true,"value":"{\"state\":\"waiting\",\"why\":\"Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off\"}"}
+took  s (includes lane overhead)
+ls: /sdcard/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/: No such file or directory
+dalvik-cache
+lane-apk.sha
+lane-shot.png
+lane-ui.xml
+2026-11-27 01:21:11 COUNTS [step 3 AFTER restartNow (waiting)]
+    a_total=4
+    a_dsinstall=0
+    a_names=dalvik-cache lane-apk.sha lane-shot.png lane-ui.xml 
+    b_files=0
+    b_folder=exists entries=0
+    b_list=/sdcard/Android/data/jp.net.seventhreeseven.dreamscape/cache/activesync-install 
+    c_files=0
+    c_list=
+{"ok":true,"value":"{\"installer\":\"silent\",\"waiting\":{\"versionCode\":3632021,\"why\":\"Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off\",\"since\":1795760463607},\"installed\":{\"versionCode\":3631800,\"versionName\":\"1.0.3631800-1332\"},\"staged\":null,\"attempted\":0}"}
+{"newdel":{"versionCode":3632021,"state":"waiting","at":"2026-11-27T06:21:05.024Z","detail":"{\"attempts\":1,\"why\":\"Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off\"}"},"dev":{"versionCode":3631800,"versionName":"1.0.3631800-1332","name":"Lane aemu-a53-4","at":"2026-11-27T06:19:58.188Z"}}
+{"ok": true, "file": "/tmp/claude-1000/-home-kanmi-staticforge/d138e55a-2ebd-4069-b6eb-2baca3a5d65a/scratchpad/shot-step3.png", "display": "0"}
+  mCurrentFocus=Window{96f7c80 u0 jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MainActivity}
+  mFocusedApp=ActivityRecord{175221614 u0 jp.net.seventhreeseven.dreamscape/.MainActivity t10}
+         1795760380.860  9842  9892 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795760395.495  9842  9842 I chromium: [INFO:CONSOLE(2)] "Hash mismatch or missing for /scripts/comp/melatonAppUpdate.js, adding to update list", source: https://staticforge.737.jp.net/scripts/comp/serviceWorkerManager.js?sha=540530dc124917b318690217bc00d464d557a7bd35e0e8d6aed427d7c3740ace (2)
+         1795760396.530  9842  9842 I chromium: [INFO:CONSOLE(2)] "Hash mismatch or missing for /scripts/comp/melatonAppUpdate.js, adding to update list", source: https://staticforge.737.jp.net/scripts/comp/serviceWorkerManager.js?sha=540530dc124917b318690217bc00d464d557a7bd35e0e8d6aed427d7c3740ace (2)
+         1795760463.616  9842  9865 I ApkInstall: jp.net.seventhreeseven.dreamscape 1.0.3632021 (3632021) is not installed now: Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off
+2026-11-27 01:21:33 STEP 3 RESULT: restartNow -> {"state":"waiting","why":"Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off"} ; log 1795760463.616 (01:21:03 local) ApkInstall: "jp.net.seventhreeseven.dreamscape 1.0.3632021 (3632021) is not installed now: Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off"; app-update folder GONE at once (c=0); /data/local/tmp unchanged (4 entries, no ds-install*); state(): staged null, waiting {3632021, why, since 1795760463607}, attempted 0 (NOTE: brief expected 'attempted set'; it is 0 because dropStaged/clearStagedBuild removes K_ATTEMPTED; the waiting record holds the ask); server delivery new id = waiting at 06:21:05.024Z detail {"attempts":1,"why":"Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off"}. Screenshot shot-step3.png: Today page, no installer/settings; only another agent's lane test notice 'reboot-test 1795760439 ... nobody touched the phone' (1 of 2) at the bottom. dumpsys window focus = MainActivity of the app.
+2026-11-27 01:21:33 STEP 4: restoring saved settings (install true)
+{"ok":true,"value":true}
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="settings">{&quot;allow&quot;:true,&quot;autoRestore&quot;:true,&quot;shizukuAutoStart&quot;:true,&quot;shizukuRecover&quot;:true,&quot;preferred&quot;:&quot;adb&quot;,&quot;port&quot;:5555,&quot;features&quot;:{&quot;radioRead&quot;:true,&quot;radioModify&quot;:false,&quot;install&quot;:true,&quot;screenshots&quot;:true,&quot;castRead&quot;:false,&quot;castInteract&quot;:false,&quot;commands&quot;:false,&quot;portForward&quot;:false,&quot;filesRead&quot;:false,&quot;filesWrite&quot;:false}}</string>
+    <boolean name="restore" value="true" />
+    <boolean name="authorized_once" value="true" />
+</map>
+2026-11-27 01:22:42 60 s after settings restore, before Shizuku start:
+{"ok":true,"value":"{\"installer\":\"silent\",\"waiting\":{\"versionCode\":3632021,\"why\":\"Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off\",\"since\":1795760463607},\"installed\":{\"versionCode\":3631800,\"versionName\":\"1.0.3631800-1332\"},\"staged\":null,\"attempted\":0}"}
+ls: /sdcard/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/: No such file or directory
+2026-11-27 01:22:49 COUNTS [step 4 BEFORE Shizuku start (settings restored 01:21:33, nothing happened in 60 s)]
+    a_total=4
+    a_dsinstall=0
+    a_names=dalvik-cache lane-apk.sha lane-shot.png lane-ui.xml 
+    b_files=0
+    b_folder=exists entries=0
+    b_list=/sdcard/Android/data/jp.net.seventhreeseven.dreamscape/cache/activesync-install 
+    c_files=0
+    c_list=
+2026-11-27 01:22:49 shizuku start
+{"ok": true, "shizukuPid": 10693, "starter": "info: apk path is /data/app/~~o0QLRLOqiAyqPtVGKyxNFg==/moe.shizuku.privileged.api-A0-DtU93MTiaoszcN3SW8g==/base.apk info: starting server... info: shizuku_server pid is 10693 info: shizuku_starter exit with 0 "}
+{"ok": true, "running": true, "pid": 10693, "uid": "shell", "installed": true, "appPermission": true}
+--- +10 s 01:23:01 pkgver:  versionCode=3632021 minSdk=31 targetSdk=36
+--- +20 s 01:23:11 pkgver:  versionCode=3632021 minSdk=31 targetSdk=36
+--- +30 s 01:23:22 pkgver:  versionCode=3632021 minSdk=31 targetSdk=36
+--- +40 s 01:23:32 pkgver:  versionCode=3632021 minSdk=31 targetSdk=36
+--- +50 s 01:23:42 pkgver:  versionCode=3632021 minSdk=31 targetSdk=36
+--- +60 s 01:23:52 pkgver:  versionCode=3632021 minSdk=31 targetSdk=36
+         1795760569.031  9842  9892 I ApkInstall: asked the server to send jp.net.seventhreeseven.dreamscape (3632021) again (routes: adb+shizuku)
+         1795760575.311  9842  9865 I AppUpdate: the update to 3632021 was asked for before: {"state":"installing","via":"shizuku"}
+         1795760575.316  9842  9892 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632021 (3632021) via shizuku (stream) from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632021.apk (try 1)
+         1795760580.132 10791 10844 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632021) via shizuku (stream) (confirmed at app start)
+         1795760580.760 10791 10883 I ApkInstall: jp.net.seventhreeseven.dreamscape (3632021) no longer waits: its file is gone
+1795760569.031 = 01:22:49 local
+1795760575.311 = 01:22:55 local
+1795760575.316 = 01:22:55 local
+1795760580.132 = 01:23:00 local
+1795760580.760 = 01:23:00 local
+{"latest":30,"newdel":{"versionCode":3632021,"state":"installed","at":"2026-11-27T06:23:03.512Z","detail":"{\"resends\":1,\"info\":\"reported 3632021\"}"},"dev":{"versionCode":3632021,"versionName":"1.0.3632021","name":"Lane aemu-a53-4","at":"2026-11-27T06:23:03.510Z"}}
+{"appPid":10791,"appVersionCode":3632021,"shizukuRunning":true,"top":"com.google.android.apps.nexuslauncher/.NexusLauncherActivity"}
+2026-11-27 01:24:25 COUNTS [step 4 AFTER (new process at 3632021, ~1.5 min after install)]
+    a_total=4
+    a_dsinstall=0
+    a_names=dalvik-cache lane-apk.sha lane-shot.png lane-ui.xml 
+    b_files=0
+    b_folder=exists entries=0
+    b_list=/sdcard/Android/data/jp.net.seventhreeseven.dreamscape/cache/activesync-install 
+    c_files=0
+    c_list=
+         1795760463.616  9842  9865 I ApkInstall: jp.net.seventhreeseven.dreamscape 1.0.3632021 (3632021) is not installed now: Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off
+         1795760569.000  9842  9866 D ShizukuProvider: binder received
+         1795760569.031  9842  9892 I ApkInstall: asked the server to send jp.net.seventhreeseven.dreamscape (3632021) again (routes: adb+shizuku)
+         1795760575.311  9842  9865 I AppUpdate: the update to 3632021 was asked for before: {"state":"installing","via":"shizuku"}
+         1795760575.316  9842  9892 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632021 (3632021) via shizuku (stream) from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632021.apk (try 1)
+         1795760575.621 10749 10749 I ShizukuServiceStarter: starting service jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.ShellService...
+         1795760575.745 10749 10749 I ShizukuServiceStarter: send binder to moe.shizuku.privileged.api in user 0
+         1795760580.074 10791 10807 D ShizukuProvider: binder received
+         1795760580.132 10791 10844 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632021) via shizuku (stream) (confirmed at app start)
+         1795760580.154 10791 10807 D ShizukuProvider: sendBinder is called when already a living binder
+         1795760580.760 10791 10883 I ApkInstall: jp.net.seventhreeseven.dreamscape (3632021) no longer waits: its file is gone
+    versionCode=3632021 minSdk=31 targetSdk=36
+    versionName=1.0.3632021
+  mCurrentFocus=Window{5e03cf1 u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+{"ok": true, "file": "/tmp/claude-1000/-home-kanmi-staticforge/d138e55a-2ebd-4069-b6eb-2baca3a5d65a/scratchpad/shot-final.png", "display": "0"}
+2026-11-27 01:24:47 STEP 4 RESULT: settings restore (01:21:33) alone triggered NOTHING in 60 s (no ApkInstall/AppUpdate lines, state still waiting, no file). 'shizuku start' at 01:22:49 was THE trigger: log 01:22:49.000 ShizukuProvider binder received -> 01:22:49.031 ApkInstall 'asked the server to send ... (3632021) again (routes: adb+shizuku)' -> (server resend, file arrived in app-update; not snapshotted but the install log names the file path) -> 01:22:55.311 AppUpdate 'the update to 3632021 was asked for before: {"state":"installing","via":"shizuku"}' -> 01:22:55.316 ApkInstall 'installing ... via shizuku (stream) from /storage/emulated/0/Android/data/PKG/files/app-update/dsapp-3632021.apk (try 1)' -> 01:23:00.132 new process 10791 'installed ... (3632021) via shizuku (stream) (confirmed at app start)' -> 01:23:00.760 'no longer waits: its file is gone'. dumpsys versionCode 3632021. Server delivery new id: installed at 06:23:03.512Z detail {"resends":1,"info":"reported 3632021"}; devices row 3632021 at 06:23:03.510Z. Final screenshot shot-final.png: stock Pixel launcher home, no installer/settings window.
+2026-11-27 01:24:47 STEP 5: lane.sh reset (once, background)
+2026-11-27 01:50 FINISH (planner, after the first session died during `reset`): a53-4 was down (lease ended); lane.sh up --golden once: booted in 8 s; app 3631835, device id ea4b99c1... (the original), Shizuku running; /data/local/tmp 4 entries (dalvik-cache lane-apk.sha lane-shot.png lane-ui.xml), app-update and activesync-install folders absent (= baseline). DELETE /api/test-devices/78ba828b... -> success. Lease released.
