@@ -1,0 +1,10 @@
+# Live server after the restart (observed 2026-11-27T16:39:43-05:00; the restart was not made by this session)
+pm2.log: 2026-11-27T16:37:03 Stopping app:Dreamscape id:1 / 16:37:05 online (web_server.js started 16:37:05)
+#1410 files on disk equal commit cb057bc29; last written 15:42:01 (handler 308) and 15:56:45 (relays, wmYouTube.js): before the start
+server log: 2026-11-27T16:37:13: [videos] kick asmongold: session started again (restart)
+the viewer who was watching (e480): same address cbd9dfe118a5c085b2bcbd23; at 16:38:03 playlist last asked 7 s before, newest piece written 16:38:01
+that record lists no viewers (made before #1410, brought back by the playlist, no start since): today's behaviour for it, as designed
+GET http://127.0.0.1:9220/ -> 200
+page: .cache/runtime-assets/scripts/comp/wmYouTube.js built 16:37:48, 87144 bytes, holds wmVideosViewer and the three viewer: fields;
+its sha256 aad73230c17395643faa3c6285a9df5c3fa925ae652b9430d7d4dff9f3291960 is the one .cache/asset-manifest.json lists
+not observed: a phone or desktop downloading that page copy, or a live packet from one carrying a viewer id
