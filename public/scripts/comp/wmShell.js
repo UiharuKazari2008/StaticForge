@@ -7610,6 +7610,9 @@
      * (the page is not on screen). The app is the arbiter: AndroidInbox.takeSound(id, stamp, event, awake) answers 'page'
      * (the page sounds it) or 'app' (the page neither sounds, buzzes nor repeats it). A synchronous bridge call: asked once
      * as a note is fresh, never in a render. No bridge, an older app or a failing call: the page sounds it, as before.
+     * The stamp is the notice's alertAt; a note that does not know it (a program's own) sends minus the time it was made:
+     * the app matches those by that time, not by when it is asked (with the screen off the page's timers are paused, so
+     * it can ask minutes after the app sounded the event).
      */
     // the repeating notices whose sound is the app's: notice id -> { up: its bubble has been on screen }
     const appRepeats = new Map();
@@ -7624,7 +7627,7 @@
             if (own && own.silent) continue;
             if (!own || !own.notice) return false; // a note of the page's own: the page's to sound
             let answer = 'page';
-            try { answer = bridge.takeSound(own.notice, String(own.noticeAt || 0), event, awake()); } catch (_) { answer = 'page'; }
+            try { answer = bridge.takeSound(own.notice, String(own.noticeAt || -(own.made || 0)), event, awake()); } catch (_) { answer = 'page'; }
             if (answer !== 'app') return false;
             theirs = true;
             const p = eventPrefs(event);
@@ -8260,8 +8263,8 @@
             // issue 1098: where the notice sorts (the server's sortAt / prio) and the count a stack shows on its tray icon
             sortAt: Number(opts.sortAt) || 0, prio: Number(opts.prio) || 0, badge: Math.max(0, Math.floor(Number(opts.badge) || 0)),
             // #1367: the inbox notice this note stands for and when it was last published as news (0: not known): the app
-            // decides who sounds that event (appTakesSound)
-            notice: opts.notice ? String(opts.notice) : '', noticeAt: Number(opts.noticeAt) || 0 };
+            // decides who sounds that event (appTakesSound); made: when this note was made (sent where noticeAt is not known)
+            notice: opts.notice ? String(opts.notice) : '', noticeAt: Number(opts.noticeAt) || 0, made: Date.now() };
         const bar = opts.progress != null && opts.progress !== false;
         let id = null;
         try {

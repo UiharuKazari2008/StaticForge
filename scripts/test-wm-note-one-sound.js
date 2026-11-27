@@ -108,7 +108,8 @@ function world(o = {}) {
         bridge.takeSound = (id, stamp, event, awake) => {
             asked.push([id, stamp, event, awake]);
             if (o.bridge === 'throws') throw new Error('bridge gone');
-            if (appSounded.has(`${id}|${stamp}`) || !awake) return 'app';
+            // (a note that does not know the notice's alertAt sends minus the time it was made: '0' in these lists)
+            if (appSounded.has(`${id}|${Number(stamp) > 0 ? stamp : '0'}`) || !awake) return 'app';
             return 'page';
         };
         bridge.hush = (id) => hushed.push(id);
@@ -233,11 +234,14 @@ async function main() {
         assert.deepStrictEqual(w.sounds, []);
     });
     await check('a page that runs but is not on screen (screen off, behind a program) asks with awake false and stays silent', async () => {
+        const before = Date.now();
         for (const mark of ['screenOff', 'wmBehind']) {
             const w = world();
             w.root.dataset[mark] = '';
             w.note({ event: 'sms', notice: 'sms:a:c' });
-            assert.deepStrictEqual(w.asked, [['sms:a:c', '0', 'sms', false]], 'a program\'s note with no alertAt claims stamp 0');
+            assert.deepStrictEqual([w.asked.length, w.asked[0][0], w.asked[0][2], w.asked[0][3]], [1, 'sms:a:c', 'sms', false]);
+            const made = -Number(w.asked[0][1]);
+            assert.ok(made >= before && made <= Date.now(), `a program's note with no alertAt sends minus the time it was made (${w.asked[0][1]})`);
             assert.deepStrictEqual(w.sounds, []);
         }
     });
@@ -278,6 +282,16 @@ async function main() {
         w.run();
         assert.deepStrictEqual(w.asked.map((a) => a[0]), ['sms:new']);
         assert.deepStrictEqual(w.sounds, ['chat']);
+    });
+    await check('a note without alertAt keeps the time it was made, however late it is asked (the screen off, timers paused)', async () => {
+        const w = world();
+        const before = Date.now();
+        w.api.appNote({ title: 'wx', html: 'x', event: 'weather-alert', notice: 'wx:late' });
+        const after = Date.now();
+        while (Date.now() < after + 25) { /* the page's timers paused */ }
+        w.run();
+        const made = -Number(w.asked[0][1]);
+        assert.ok(made >= before && made <= after, `the time the note was made, not the time it asked (${made - before} ms after)`);
     });
     await check('a batch: an error is the first candidate, and one sound only', async () => {
         const w = world();
