@@ -4,7 +4,7 @@
 /**
  * Fleet notices (Yozora #1196, #1291): modules/fleetNotices.js and its hooks in agentSupervisor.setWork.
  * Exactly two work notices reach the phone (done, needs her); routine alerts tell the Supervisor first and reach the
- * phone only on their Fleet Manager switch. Every notice is cls 'fleet'; the work notices STACK (stack:fleetdone and
+ * phone only on their Fleet Manager switch. Every notice is cls 'notification'; the work notices STACK (stack:fleetdone and
  * stack:fleetattn, one sound per stack, each item keeping its own id and workId) and have lives: done 4 h, needs you 12 h,
  * account login 24 h, routine 4 h, each stack item its own.
  *
@@ -96,7 +96,7 @@ const qs = (list) => JSON.stringify(list);
         assert.strictEqual(n[0].text, '', 'a done notice says what is done and nothing else (Yukimi, Nov 26 2026: too wordy)');
         assert.strictEqual(n[0].data.app, 'claudedesk');
         assert.strictEqual(n[0].data.workId, id);
-        assert.strictEqual(n[0].cls, 'fleet', 'its own class, not "Other notifications"');
+        assert.strictEqual(n[0].cls, 'notification', '"Other notifications": the sound she chose, no sound class of its own');
         assert.strictEqual(n[0].stack, 'stack:fleetdone');
         assert.strictEqual(loud(), 1);
     });
@@ -276,7 +276,7 @@ const qs = (list) => JSON.stringify(list);
         assert.strictEqual(managerNotes().length, before + 1);
         const n = live('fleet-maintenance:2026-11-26');
         assert.strictEqual(n.length, 1);
-        assert.strictEqual(n[0].cls, 'fleet');
+        assert.strictEqual(n[0].cls, 'notification');
         assert.strictEqual(n[0].app, 'claudedesk');
         assert.strictEqual(loud(), 1);
         assert.strictEqual(fn.routine('usage', flag('usage-flag:k2')).published, false, 'usage is still off');
@@ -351,7 +351,7 @@ const qs = (list) => JSON.stringify(list);
         const ids = finish(20);
         assert.deepStrictEqual(inbox.list('admin').map((n) => n.id), ['stack:fleetdone'], 'one row, not twenty');
         const st = stackRow('fleetdone');
-        assert.strictEqual(st.cls, 'fleet');
+        assert.strictEqual(st.cls, 'notification');
         assert.strictEqual(st.app, 'claudedesk');
         assert.strictEqual(st.data.count, 20);
         assert.strictEqual(st.title, '20 Fleet items are done');
@@ -483,7 +483,7 @@ const qs = (list) => JSON.stringify(list);
         fn.accountLogin({ index: 71, id: 'ffffffffffffffff', name: 'Fiona', since: 1 });
         const l = inbox.get('admin', 'fleet-account:ffffffffffffffff:login');
         assert.strictEqual(l.expiresAt - l.createdAt, 24 * H);
-        assert.strictEqual(l.cls, 'fleet');
+        assert.strictEqual(l.cls, 'notification');
         assert.ok(!stackRow('login'), 'the account notice is a single row, not stacked');
         await sup.saveSettings(gr, { notify: { maintenance: true, usage: true } });
         fn.routine('maintenance', { id: 'fleet-maintenance:life', title: 'Fleet maintenance: needs a look', text: 't', data: { kind: 'maintenance' }, ttlMs: 2 * 24 * H });
@@ -495,7 +495,7 @@ const qs = (list) => JSON.stringify(list);
         assert.strictEqual(life('usage-flag:life'), 4 * H);
         assert.strictEqual(life('usage-flag:short'), 1 * H, 'a shorter ask is kept');
         assert.strictEqual(life('fleet-maintenance:none'), 4 * H, 'no ask: four hours');
-        assert.strictEqual(inbox.get('admin', 'usage-flag:life').cls, 'fleet');
+        assert.strictEqual(inbox.get('admin', 'usage-flag:life').cls, 'notification');
         await sup.saveSettings(gr, { notify: { maintenance: false, usage: false } });
     });
 

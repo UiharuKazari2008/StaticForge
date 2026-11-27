@@ -10051,9 +10051,8 @@
         { id: 'menu', label: 'Menu pop-up', kind: 'event', sound: 'MenuPop.wav', play: false, desktop: 'dialog' },
         { id: 'mail', label: 'Messaging: New e-mail message', kind: 'note', sound: 'Alarm1.mp3', desktop: 'notify', dovecote: true },
         { id: 'notification', label: 'Other notifications', kind: 'note', sound: 'Alarm2.wav', repeatable: true, desktop: 'balloon' },
-        // #1291: Fleet's own notices (a work item done or needing her, an account to sign in again) - a class and a sound of
-        // their own, so they are not "Other notifications" (the app posts them on a channel built from this event's sound)
-        { id: 'fleet', label: 'Fleet', kind: 'note', sound: 'Alarm4.mp3', repeatable: true, desktop: 'balloon' },
+        // (Fleet's notices have no sound event of their own: they sound as "Other notifications", the sound she chose for it - #1291,
+        // Yukimi Nov 26 2026: a default she never chose played)
         { id: 'question', label: 'Questions', kind: 'event', sound: 'Alarm2.wav', desktop: 'dialog' },
         { id: 'reminder', label: 'Reminders', kind: 'note', sound: 'notify.mp3', repeatable: true, repeat: true, desktop: 'balloon' },
         // #848: the update icon's notification (updates downloaded and ready, applied, available)

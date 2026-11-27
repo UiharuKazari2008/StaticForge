@@ -36,7 +36,7 @@ const reset = () => { toPhones.length = 0; cleared.length = 0; touches.length = 
 const snapshot = async () => (await phoneStatus._test.build()).notices;
 const ids = (a) => a.map((n) => n.id);
 const expired = (id) => pushed.filter((m) => m.type === 'inbox_updated' && m.data.reason === 'ack' && m.data.id === id && m.data.state === 'cleared' && m.data.expired === true).length;
-const fleet = (n, extra) => Object.assign({ app: 'claudedesk', cls: 'fleet', alert: true, text: 't', data: { app: 'claudedesk' } }, n, extra);
+const fleet = (n, extra) => Object.assign({ app: 'claudedesk', cls: 'notification', alert: true, text: 't', data: { app: 'claudedesk' } }, n, extra);
 
 (async () => {
     // 1. (a) a plain notice expires with nothing else going on: pages, phone status and phones are told by prune, not left to the next event

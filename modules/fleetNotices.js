@@ -15,7 +15,7 @@
  * Event driven only: agentSupervisor.setWork calls workChanged on a state change; the maintenance run and the usage audit
  * call routine when they have something to say. No timer, no polling.
  *
- * Class and stacking (Yozora #1291): every Fleet notice is cls 'fleet' (its own class: sound, icon, holder picture) and data.app
+ * Class and stacking (Yozora #1291): every Fleet notice is cls 'notification' (the sound of "Other notifications"; its icon and holder picture come from its id, status-order.js) and data.app
  * 'claudedesk', which wmNotificationInbox.openFor opens through wmShell.open('claudedesk') on a tap. The work notices STACK
  * (notificationInbox #1098): "is done" is the row stack:fleetdone, "needs you" / "stopped" the row stack:fleetattn - twenty
  * items finishing in a row are ONE notice with a count and ONE sound (the row new is loud, an item joining is silent), each item
@@ -37,7 +37,7 @@ const inbox = SANDBOXED
 
 const USER = 'admin';
 const APP = 'claudedesk';
-const CLS = 'fleet';
+const CLS = 'notification'; // "Other notifications": the sound she chose for it (no sound event of Fleet's own, #1291)
 const HOUR = 60 * 60 * 1000;
 const LIFE = { done: 4 * HOUR, attention: 12 * HOUR, login: 24 * HOUR, routine: 4 * HOUR };
 // the stack keys (notificationInbox STACK_TITLES / STACK_LINES)

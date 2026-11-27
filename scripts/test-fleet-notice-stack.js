@@ -10,7 +10,7 @@
  * - stack:fleetdone / stack:fleetattn: one box with a count, not titled as e-mail, its rows "<title> - <text>", a tap on a
  *   row opens THAT work item and clears that entry, the body opens Fleet (never Messaging), Dismiss clears the stack;
  * - a mail stack beside them still opens Messaging;
- * - the Fleet sound event exists in wmShell's SND_EVENTS (id 'fleet', "Fleet", its own default sound).
+ * - Fleet has no sound event of its own (they sound as "Other notifications").
  */
 'use strict';
 
@@ -92,7 +92,7 @@ const flush = () => new Promise((r) => setImmediate(r));
 const APP = 'claudedesk';
 const doneItem = (k) => ({ id: `fleet-work:${k}:done`, title: `Work item ${k} is done`, text: `Fix the thing ${k}\nCommitted.`, at: 1000 + k, data: { app: APP, kind: 'work-done', workId: k }, actions: [] });
 const stackOf = (id, kind, items, extra = {}) => Object.assign({
-    id, app: APP, cls: 'fleet', title: `${items.length} Work items`, text: '', state: 'new', createdAt: 1000, updatedAt: 2000, sortAt: 2000, prio: 2, alert: true,
+    id, app: APP, cls: 'notification', title: `${items.length} Work items`, text: '', state: 'new', createdAt: 1000, updatedAt: 2000, sortAt: 2000, prio: 2, alert: true,
     data: { stack: id.slice(6), count: items.length, lastAt: 2000, items },
 }, extra);
 const rowOf = (item) => ({ closest: (sel) => (sel === '.wm-stack-row' ? { dataset: { item } } : null) });
@@ -100,23 +100,21 @@ const bodyOf = () => ({ closest: (sel) => (sel === '[data-wm-tap]' ? {} : null) 
 
 (async () => {
     // the sound event
-    const ev = /\{ id: 'fleet', label: 'Fleet', kind: 'note', sound: '([^']+)'/.exec(SHELL);
-    assert.ok(ev, 'wmShell SND_EVENTS has the Fleet event');
-    assert.ok(!/Alarm[23]\./.test(ev[1]), 'its own default sound, not Alarm2 / Alarm3');
-    assert.ok(fs.existsSync(path.join(ROOT, 'public/sounds/wm61', ev[1])), 'the sound file exists');
+    assert.ok(!/\{ id: 'fleet',/.test(SHELL), 'no Fleet sound event: its notices sound as "Other notifications", a sound she chose (Yukimi Nov 26 2026)');
+    assert.ok(/\{ id: 'notification', label: 'Other notifications'/.test(SHELL), 'the class they use is listed');
 
     // single notices
     const p = page();
     await flush();
     const one = (n) => { const before = p.notes.length; p.push(n); assert.strictEqual(p.notes.length, before + 1, `${n.id}: shown`); return p.notes[before]; };
-    const d1 = one({ id: 'fleet-work:7:done', app: APP, cls: 'fleet', title: 'Work item 7 is done', text: 'x', state: 'new', data: { app: APP, kind: 'work-done', workId: 7 } });
+    const d1 = one({ id: 'fleet-work:7:done', app: APP, cls: 'notification', title: 'Work item 7 is done', text: 'x', state: 'new', data: { app: APP, kind: 'work-done', workId: 7 } });
     assert.strictEqual(d1.opts.icon, 'status-fleet-done', 'done: the check glyph');
     assert.strictEqual(d1.opts.holder, 'fleet-done', 'done: the green check holder');
-    assert.strictEqual(d1.opts.event, 'fleet', 'done: the Fleet sound class');
-    const a1 = one({ id: 'fleet-work:7:attention', app: APP, cls: 'fleet', title: 'Work item 7 needs you', text: 'x', state: 'new', data: { app: APP, kind: 'work-attention', workId: 7, state: 'input' } });
+    assert.strictEqual(d1.opts.event, 'notification', 'done: the Other notifications sound');
+    const a1 = one({ id: 'fleet-work:7:attention', app: APP, cls: 'notification', title: 'Work item 7 needs you', text: 'x', state: 'new', data: { app: APP, kind: 'work-attention', workId: 7, state: 'input' } });
     assert.strictEqual(a1.opts.icon, 'status-fleet-attn', 'attention: the exclamation glyph');
     assert.strictEqual(a1.opts.holder, 'fleet-attention');
-    const l1 = one({ id: 'fleet-account:2:login', app: APP, cls: 'fleet', title: 'Sign in', text: 'x', state: 'new', data: { app: APP, kind: 'account-login', accountIndex: 2, page: 'accounts' } });
+    const l1 = one({ id: 'fleet-account:2:login', app: APP, cls: 'notification', title: 'Sign in', text: 'x', state: 'new', data: { app: APP, kind: 'account-login', accountIndex: 2, page: 'accounts' } });
     assert.strictEqual(l1.opts.icon, 'status-fleet-login', 'login: the key glyph');
     assert.strictEqual(l1.opts.holder, 'fleet-login');
     const view = (note) => note.opts.softKeys().right.menu().find((m) => m.label === 'View').action();
@@ -131,7 +129,7 @@ const bodyOf = () => ({ closest: (sel) => (sel === '[data-wm-tap]' ? {} : null) 
     q.push(stackOf('stack:fleetdone', 'work-done', [doneItem(3), doneItem(2), doneItem(1)]));
     assert.strictEqual(q.notes.length, 1, 'one box for the stack');
     const box = q.notes[0];
-    assert.strictEqual(box.opts.event, 'fleet', 'one Fleet sound');
+    assert.strictEqual(box.opts.event, 'notification', 'one sound, the Other notifications one');
     assert.strictEqual(box.opts.icon, 'status-fleet-done', 'the stack row has the done glyph');
     assert.strictEqual(box.opts.holder, 'fleet-done', 'and the done holder picture');
     assert.strictEqual(box.opts.badge, 3, 'the count on the tray icon');
