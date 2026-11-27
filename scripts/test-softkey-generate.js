@@ -317,6 +317,16 @@ const reply = (text, status = 200) => ({ ok: status < 300, status, headers: { ge
 const stub = (fn) => sk._setFetch(async (url, init) => { lastCall = { url, init, body: JSON.parse(init.body) }; return fn(url, init); });
 const req = { pkg: PKG, label: 'YouTube', probe: { pkg: PKG, links: probe.links, activities: probe.activities }, wish: 'a menu for the main screens' };
 
+t('open:<own program> is for Home / Open the app only: a label naming another screen is a problem, not a key that just starts the app', () => {
+    const own = `open:android:${PKG}`;
+    const raw = { left: { action: own, label: 'Subscriptions' }, center: { action: 'tasks', label: '' }, right: { action: 'ownmenu', label: 'Menu', menu: [{ label: 'Home', action: own }, { label: 'History', action: own }] } };
+    const out = sk.validateProfile(raw, probe, { pkg: PKG, appLabel: 'YouTube' });
+    assert.ok(!out.profile.left, 'Subscriptions must not be a key that only starts the app');
+    assert.ok(out.problems.some((p) => p.label === 'Subscriptions' && /starts the app/.test(p.reason)));
+    assert.deepStrictEqual(out.profile.right.menu.map((r) => r.label), ['Home']);
+    assert.ok(out.problems.some((p) => p.label === 'History'));
+});
+
 async function main() {
     await ta('generate: a good answer comes back as profile, items, problems, engine, model, ms; the call is JSON mode with the key only in the header', async () => {
         stub(() => reply(JSON.stringify(youtubeAnswer)));

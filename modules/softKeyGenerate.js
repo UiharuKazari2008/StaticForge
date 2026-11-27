@@ -25,7 +25,7 @@ const path = require('path');
 const keycodes = require('./androidKeycodes');
 
 const CALL_TIMEOUT_MS = 90 * 1000;
-const MAX_TOKENS = 8000;
+const MAX_TOKENS = 16000;
 const CAPS = { activities: 200, links: 150, shortcuts: 60, keyboardShortcuts: 60, notes: 20, routes: 10, str: 300, wish: 2000, label: 100 };
 const LIMITS = { keyLabel: 24, menuLabel: 40, menuRows: 24, uri: 600 };
 const SIDES = ['left', 'center', 'right'];
@@ -375,6 +375,7 @@ function assemble(raw, ctx = {}) {
                 }
                 const v = validateAction(rowAction, probe, { pkg, menu: true });
                 if (!v.ok) { sidePush(sideProblems, { menuIndex: i, label: label.slice(0, LIMITS.menuLabel), action: String(rowAction).slice(0, 700), reason: v.reason }); seen(label); return; }
+                if (opensWrongScreen(label, v.action, ctx.appLabel)) { sidePush(sideProblems, { menuIndex: i, label: label.slice(0, LIMITS.menuLabel), action: v.action, reason: `no link or shortcut of the app reaches "${label.slice(0, 40)}": the only action found just starts the app on its own screen` }); seen(label); return; }
                 if (!label && !defaultLabel(v.action)) { sidePush(sideProblems, { menuIndex: i, label: '', action: v.action, reason: 'the row would show no text: it needs a label' }); return; }
                 const shown = (label || defaultLabel(v.action)).slice(0, LIMITS.menuLabel);
                 const cut = (label || '').length > LIMITS.menuLabel ? ` (label shortened to ${LIMITS.menuLabel} characters)` : '';
@@ -419,7 +420,10 @@ function assemble(raw, ctx = {}) {
                 seen(keyLabel);
             } else {
                 const v = validateAction(action, probe, { pkg });
-                if (!v.ok) { sidePush(sideProblems, { menuIndex: null, label: keyLabel.slice(0, LIMITS.keyLabel), action: action.slice(0, 700), reason: v.reason }); seen(keyLabel); } else if (!keyLabel && !defaultLabel(v.action)) {
+                if (!v.ok) { sidePush(sideProblems, { menuIndex: null, label: keyLabel.slice(0, LIMITS.keyLabel), action: action.slice(0, 700), reason: v.reason }); seen(keyLabel); } else if (opensWrongScreen(keyLabel, v.action, ctx.appLabel)) {
+                    sidePush(sideProblems, { menuIndex: null, label: keyLabel.slice(0, LIMITS.keyLabel), action: v.action, reason: `no link or shortcut of the app reaches "${keyLabel.slice(0, 40)}": the only action found just starts the app on its own screen` });
+                    seen(keyLabel);
+                } else if (!keyLabel && !defaultLabel(v.action)) {
                     sidePush(sideProblems, { menuIndex: null, label: '', action: v.action, reason: 'the key would show no text: it needs a label' });
                 } else {
                     const cut = keyLabel.length > LIMITS.keyLabel ? ` (label shortened to ${LIMITS.keyLabel} characters)` : '';
@@ -447,6 +451,19 @@ function assemble(raw, ctx = {}) {
     return { profile, items, problems };
 }
 
+/**
+ * open:android:<pkg> starts the app on whatever it shows: it is the right action for "Home" or "Open <app>", never for another
+ * screen (Subscriptions, History). A label that names another screen is a problem, not a button that only starts the app.
+ */
+function opensWrongScreen(label, action, appLabel) {
+    if (!String(action || '').startsWith('open:')) return false;
+    const l = norm(label);
+    if (!l) return false;
+    if (/^(home|start|open|launch|main|app|program)\b/.test(l) || /\b(open|launch|start)\b/.test(l)) return false;
+    const a = norm(appLabel);
+    return !(a && l === a);
+}
+
 function whyText(v, modelWhy) {
     const w = clampStr(modelWhy, 300).replace(/[.;\s]+$/, '');
     const parts = [];
@@ -459,14 +476,14 @@ function whyText(v, modelWhy) {
 /** The model's { left, center, right } checked as a profile: { profile, items, problems }. */
 function validateProfile(raw, probe, opts = {}) {
     const o = opts || {};
-    return assemble(raw, { probe, pkg: o.pkg || (probe && probe.pkg) || '', design: o.design || null, unmapped: isObj(raw) ? raw.unmapped : [] });
+    return assemble(raw, { probe, pkg: o.pkg || (probe && probe.pkg) || '', design: o.design || null, unmapped: isObj(raw) ? raw.unmapped : [], appLabel: o.appLabel || '' });
 }
 
 // ---------------------------------------------------------------- the prompt
 
 const GRAMMAR = [
     'back, menu (the global Soft Key Menu), home, recents, tasks (running programs), start, today, notifications, quicksettings, keyboard (show/hide), none (never use it: a key that does nothing is rejected), ownmenu (this key opens its own menu)',
-    'open:android:<package> (ONLY this app\'s own package; never invent program ids)',
+    'open:android:<package> (ONLY this app\'s own package, never invent program ids; it just STARTS the app on its own screen: use it only for Home or Open <app>, never for another screen)',
     `do:${DO_ROWS.join(' | do:')}`,
     'key:KEYCODE_X (one real android.view.KeyEvent name written in full upper case, e.g. key:KEYCODE_ESCAPE; the app is DRIVEN with that key event)',
     'combo:KEYCODE_A+KEYCODE_B (2 to 5 real KEYCODE names, modifiers first, e.g. combo:KEYCODE_CTRL_LEFT+KEYCODE_F)',
@@ -785,7 +802,7 @@ async function generate(gr, req) {
         e.code = 'SOFTKEYS_BAD_ANSWER';
         throw e;
     }
-    const out = assemble(parsed, { probe, pkg, design, unmapped: parsed.unmapped });
+    const out = assemble(parsed, { probe, pkg, design, unmapped: parsed.unmapped, appLabel: label });
     const notes = clampStr(typeof parsed.notes === 'string' ? parsed.notes : asArr(parsed.notes).map((n) => clampStr(n, 200)).join(' '), 600);
     return Object.assign(out, { notes, engine, model: call.model, ms: Date.now() - started });
 }

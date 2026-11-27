@@ -1,0 +1,99 @@
+{
+ "success": true,
+ "profile": {
+  "left": {
+   "action": "open:android:com.google.android.youtube",
+   "label": "Subscriptions"
+  },
+  "center": {
+   "action": "tasks",
+   "label": ""
+  },
+  "right": {
+   "action": "ownmenu",
+   "label": "Menu",
+   "menu": [
+    {
+     "label": "Home",
+     "action": "open:android:com.google.android.youtube"
+    }
+   ]
+  }
+ },
+ "items": [
+  {
+   "side": "left",
+   "menuIndex": null,
+   "label": "Subscriptions",
+   "action": "open:android:com.google.android.youtube",
+   "via": "builtin",
+   "why": "Launches YouTube; no direct link to Subscriptions is declared, so this opens the app's Home"
+  },
+  {
+   "side": "center",
+   "menuIndex": null,
+   "label": "Running Programs",
+   "action": "tasks",
+   "via": "builtin",
+   "why": "Opens the running programs list"
+  },
+  {
+   "side": "right",
+   "menuIndex": 0,
+   "profileIndex": 0,
+   "label": "Home",
+   "action": "open:android:com.google.android.youtube",
+   "via": "builtin",
+   "why": "Launches YouTube, whose main activity is Home"
+  },
+  {
+   "side": "right",
+   "menuIndex": null,
+   "label": "Menu",
+   "action": "ownmenu",
+   "via": "builtin",
+   "why": "opens this key's own menu"
+  }
+ ],
+ "problems": [
+  {
+   "side": "right",
+   "menuIndex": 1,
+   "label": "Shorts",
+   "action": "",
+   "reason": "No link filter or keyboard shortcut reaches Shorts; the app declares none."
+  },
+  {
+   "side": "right",
+   "menuIndex": 2,
+   "label": "Watch Later",
+   "action": "",
+   "reason": "No link filter or keyboard shortcut reaches Watch Later; the app declares none."
+  },
+  {
+   "side": "right",
+   "menuIndex": 3,
+   "label": "Search",
+   "action": "",
+   "reason": "No link filter or keyboard shortcut reaches Search; the app declares none."
+  },
+  {
+   "side": "right",
+   "menuIndex": 5,
+   "label": "My Account",
+   "action": "",
+   "reason": "No link filter or keyboard shortcut reaches My Account; the app declares none."
+  },
+  {
+   "side": "right",
+   "menuIndex": 6,
+   "label": "History",
+   "action": "",
+   "reason": "No link filter or keyboard shortcut reaches History; the app declares none."
+  }
+ ],
+ "notes": "YouTube declares no link filters and no keyboard shortcuts, so only Home can be reached by launching the app. All other screens are unmapped.",
+ "engine": "tokenrouter",
+ "model": "deepseek/deepseek-v4.1-flash",
+ "ms": 72976
+}
