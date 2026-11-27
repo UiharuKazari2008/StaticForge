@@ -1,0 +1,69 @@
+#1327 Output panel - Android unit tests
+origin/main                      d0b7d70c64f54000b71ef2db5ad055aa47646999
+origin/feat/1327-output-panel    5950385dc30c547db686fce693687e5fb24287aa
+merge (ut/1327, local, not pushed) 1c3183c837efe1b65e21e67b1cb50beaaacdae6d (clean merge, --no-ff)
+What: :app:testDebugUnitTest --no-daemon on Ruiko in a fresh unpack (claude-build\dsapp-ut-1327), git archive of the merge
+Build gate: #245 (dsapp-unit-test-1327)
+Date: 2026-11-27 00:48 EST
+
+GRADLE EXIT=0
+> Task :app:compileDebugKotlin
+e: Daemon compilation failed: Connection to the Kotlin daemon has been unexpectedly lost. This might be caused by the daemon being killed by another process or the operating system, or by JVM crash.
+Failed to compile with Kotlin daemon: org.jetbrains.kotlin.gradle.tasks.DaemonCrashedException: Connection to the Kotlin daemon has been unexpectedly lost. This might be caused by the daemon being killed by another process or the operating system, or by JVM crash.
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:testDebugUnitTest
+BUILD SUCCESSFUL in 4m 26s
+27 actionable tasks: 27 executed
+--- warnings in the files this branch changed or added ---
+--- tests ---
+jp.net.seventhreeseven.dreamscape.activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ApkInstallPlanTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ApkInstallRetryTest: tests=16 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NavRoomPolicyTest: tests=18 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+TOTAL tests=252 failures=0 errors=0 skipped=0
+
+OutputPanelTest cases:
+  ok   otherFieldsAreNotOurs
+  ok   theEmptyLineIsTheAppsTextOrTheLayoutsOwn
+  ok   aHeadsetOfferedAsSeveralRoutesIsOneRow
+  ok   noRoutesNoRows
+  ok   theOrderIsAndroidsOwn
+  ok   aDockIsNamedByItsOwnName
+  ok   onlyOneRouteIsOneRowAndItIsNotMarkedUnlessAndroidSaysSo
+  ok   theCallsOnlyLinkAndAnUnconnectedDeviceAreNoPlaceForMedia
+  ok   castRoutesAreKeptWhateverTheirStateAndNamedByTheirOwnName
+  ok   aGlyphIsDrawnOnlyForTheRowsOwnGlyph
+  ok   nothingIsDrawnForARowThatIsNotThere
+  ok   anUnconnectedDeviceThatIsPlayingIsStillShown
+  ok   rowsKeepTheirPlacesWhenTheMarkMoves
+  ok   aNewOutputComesAtTheEndAndAGoneOneLeavesNoGap
+  ok   theRoleFollowsTheNumberOfRows
+  ok   ofSeveralRoutesTheOnePlayingNowStays
+  ok   twoDifferentBluetoothDevicesStayTwoRows
+  ok   aSystemRouteOfAKindWithNoNameIsLeftOut
+  ok   theMarkIsDrawnOnTheCurrentRowOnly
+  ok   theBuiltInSpeakerIsSpeakersWithThePhoneGlyph
+  ok   aCastRouteThatIsPlayingIsMarked
+  ok   noneSelectedMeansNoRowIsCurrent
+  ok   aRowsNameIsItsLiveText
+  ok   anHdmiOutputIsAdisplayNamedByTheDevice
+  ok   aBluetoothDeviceIsNamedByItsOwnName
+  ok   moreRowsThanTheLayoutsHoldAreCutButTheCurrentOneStays
+  ok   wiredOutputsAreNamedByWhatTheyAre
+  ok   aNameOfARowThatIsGoneIsBlankNeverTheSample
+
+Warnings in OutputPanel|OutputPanelTest|NativeLayout|MelatonBars|QuickAccess|MediaSessionBridge|AudioDevicesBridge|MediaOutputRouting: none
+Note: the Kotlin compile daemon crashed once during compileDebugKotlin (Ruiko busy); gradle fell back and the build still succeeded.
