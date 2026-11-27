@@ -2325,6 +2325,8 @@
             }
             chatSync();
         }, { signal: appScopeSignal });
+        // the app's media notification was tapped: Videos comes up
+        window.addEventListener('melatonopenapp', (e) => { if (!HOST.desktop && e && e.detail === APP_ID && ws) ws.open(APP_ID); }, { signal: appScopeSignal });
         // another program has the app's player now: the stream Videos had there is gone from it
         window.addEventListener('wmnativeplayer', (e) => {
             if (!player || !(player.handed || player.popped) || !e.detail || e.detail.owner === ME) return;

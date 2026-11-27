@@ -2311,6 +2311,8 @@
         // (the screen coming on is no visibilitychange: the player's state is read again here too, #1322; the screen
         // going off does nothing to the sound, native or the page's own)
         window.addEventListener('melatonscreen', (e) => { if (e && e.detail && e.detail.on) syncNative(); void syncHub(); }, { signal: appScopeSignal });
+        // the app's media notification was tapped: the radio comes up
+        window.addEventListener('melatonopenapp', (e) => { if (e && e.detail === APP_ID && ws) ws.open(APP_ID); }, { signal: appScopeSignal });
         // another program has the app's player now, or started a sound of its own
         window.addEventListener('wmnativeplayer', (e) => { if (radio.native && e.detail && e.detail.owner !== ME) nativeLost(); }, { signal: appScopeSignal });
         window.addEventListener('wmphonesound', (e) => {
