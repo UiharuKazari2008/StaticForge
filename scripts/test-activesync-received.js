@@ -18,22 +18,30 @@ const internals = as.__test || null;
 assert.deepStrictEqual(as.listReceived(gr, dev), []);
 if (internals) {
     internals.noteReceived(gr, null, dev, 'open.item', { kind: 'url', url: 'https://example.com', title: 'Example' }, 'PC');
-    // a program: stream.receive into the app's temporary folder (temp), then apps.install by transfer id
+    // a program (#1335): stream.receive into the app's temporary folder, then apps.install by transfer id.
+    // An install is machinery, not something a person sent: no row, no unseen count, no received icon.
     internals.noteReceived(gr, null, dev, 'stream.receive', { transferId: 'f'.repeat(32), root: 'internal', dir: '/ActiveSync', name: 'app.apk', size: 10, temp: true }, 'PC');
+    internals.noteReceived(gr, null, dev, 'stream.receive', { root: 'internal', dir: '/ActiveSync', name: 'older-app.apk', size: 10 }, 'PC');
+    assert.strictEqual(as.listReceived(gr, dev).length, 1, 'an .apk stream records nothing');
+    const before = as.receivedUnseen(gr, dev);
     internals.noteReceived(gr, null, dev, 'apps.install', { temp: 'f'.repeat(32), name: 'app.apk', root: 'internal', path: '/ActiveSync/app.apk' }, 'PC');
+    assert.strictEqual(internals.receivedOf('apps.install', { temp: 'f'.repeat(32), name: 'app.apk' }), null);
+    assert.strictEqual(as.receivedUnseen(gr, dev), before, 'an install leaves the unseen count unchanged');
+    assert.strictEqual(as.listReceived(gr, dev).length, 1, 'an install records no row');
+    // a picture, a file and clipboard text still record and count
     internals.noteReceived(gr, null, dev, 'stream.receive', { root: 'internal', dir: '/ActiveSync', name: 'cat.jpg', size: 10, mkdirs: true }, 'PC');
+    internals.noteReceived(gr, null, dev, 'stream.receive', { root: 'internal', dir: '/ActiveSync', name: 'notes.txt', size: 10 }, 'PC');
+    internals.noteReceived(gr, null, dev, 'clipboard.set', { text: 'hello' }, 'PC');
     internals.noteReceived(gr, null, dev, 'status.get', {}, 'PC');
     const list = as.listReceived(gr, dev);
-    assert.deepStrictEqual(list.map((i) => i.kind), ['picture', 'program', 'link'], 'the .apk file folds into its program; status.get is not an item');
-    assert.strictEqual(list[2].detail.url, 'https://example.com');
-    assert.strictEqual(list[1].title, 'app.apk');
-    assert.strictEqual(list[1].detail.temp, 'f'.repeat(32), 'Install from Received Items finds the program in the temporary folder');
-    assert.strictEqual(list[0].detail.path, '/ActiveSync/cat.jpg');
-    assert.strictEqual(as.receivedUnseen(gr, dev), 3);
+    assert.deepStrictEqual(list.map((i) => i.kind), ['clipboard', 'file', 'picture', 'link'], 'status.get is not an item, no program rows');
+    assert.strictEqual(list[3].detail.url, 'https://example.com');
+    assert.strictEqual(list[2].detail.path, '/ActiveSync/cat.jpg');
+    assert.strictEqual(as.receivedUnseen(gr, dev), 4);
     as.updateReceived(gr, null, dev, 'seen');
     assert.strictEqual(as.receivedUnseen(gr, dev), 0);
     as.updateReceived(gr, null, dev, 'remove', list[0].id);
-    assert.strictEqual(as.listReceived(gr, dev).length, 2);
+    assert.strictEqual(as.listReceived(gr, dev).length, 3);
     as.updateReceived(gr, null, dev, 'clear');
     assert.strictEqual(as.listReceived(gr, dev).length, 0);
 }

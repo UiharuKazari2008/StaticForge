@@ -1353,18 +1353,15 @@ const IMAGE_EXT = /\.(png|jpe?g|gif|webp|heic|heif|bmp|avif)$/i;
 
 function receivedOf(op, args) {
     const a = isPlainObject(args) ? args : {};
-    const base = (p) => String(p || '').split('/').filter(Boolean).pop() || '';
     if (op === 'open.item' && a.kind === 'url' && a.url) return { kind: 'link', title: clampString(a.title || a.url, 200), detail: { url: clampString(a.url, 4000) } };
+    // An install is machinery, not something a person sent (#1335): no row, no unseen count, no received icon.
+    // A build's delivery lives in androidAppUpdatePush.js (state per phone and versionCode) and the app's ApkInstall log.
+    if (op === 'apps.install') return null;
+    if (op === 'stream.receive' && (a.temp || /\.apk$/i.test(String(a.name || '')))) return null; // the program on its way to the installer
     if (op === 'stream.receive') {
         const name = clampString(a.name || 'file', 200);
         const dir = String(a.dir || '/');
         return { kind: IMAGE_EXT.test(name) ? 'picture' : 'file', title: name, detail: { root: clampString(a.root || '', 64), path: `${dir.replace(/\/+$/, '')}/${name}`, size: Number(a.size) || 0 } };
-    }
-    if (op === 'apps.install') {
-        // temp: the transfer id of a program in the app's temporary folder (activeSyncTransfers.js)
-        const detail = { root: clampString(a.root || '', 64), path: clampString(a.path || '', 1000) };
-        if (/^[0-9a-f]{32}$/.test(String(a.temp || ''))) detail.temp = a.temp;
-        return { kind: 'program', title: clampString(a.name || base(a.path) || 'Program', 200), detail };
     }
     if (op === 'clipboard.set') return { kind: 'clipboard', title: clampString(String(a.text || '').replace(/\s+/g, ' ') || 'Clipboard', 120), detail: { text: clampString(String(a.text || ''), 4000) } };
     if (op === 'notify.show') return { kind: 'note', title: clampString(a.title || a.text || 'Notification', 200), detail: { text: clampString(String(a.text || ''), 2000) } };
@@ -1394,10 +1391,6 @@ function noteReceived(globalResources, server, deviceId, op, args, fromName) {
     const r = receivedOf(op, args);
     if (!r) return;
     const d = getDb(globalResources);
-    // an .apk sent to be installed: the program stands for the file it came in
-    if (r.kind === 'program' && r.detail.path) {
-        d.prepare("DELETE FROM as_received WHERE device_id = ? AND kind = 'file' AND json_extract(detail, '$.path') = ? AND created > ?").run(deviceId, r.detail.path, Date.now() - 10 * 60 * 1000);
-    }
     d.prepare('INSERT INTO as_received (device_id, kind, op, title, detail, from_name, created) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .run(deviceId, r.kind, op, r.title, JSON.stringify(r.detail), clampString(fromName || '', 64), Date.now());
     d.prepare('DELETE FROM as_received WHERE device_id = ? AND id NOT IN (SELECT id FROM as_received WHERE device_id = ? ORDER BY id DESC LIMIT ?)').run(deviceId, deviceId, RECEIVED_MAX);
