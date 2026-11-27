@@ -1,0 +1,78 @@
+/* Melaton Mobile Settings > Sounds & Notifications > Sounds: the Notification sound picker (wmNotifySound.js, StaticForge #1298).
+   The list is the kit's (.wm-listbox / .wm-listbox-row, the theme's highlight); this file only adds the three small marks
+   a picker row needs - the tick of the choice in use, a chevron on a category, Stop on the Play button - drawn in
+   currentColor so they follow the highlight in every theme. html.ui-mobile only. */
+
+/* one-line rows: a long title ends in an ellipsis (ui-standard rule 10) */
+html.ui-mobile .wm-form .wmns-row {
+    cursor: default;
+}
+
+html.ui-mobile .wm-form .wmns-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* the column the tick sits in, so every title starts at the same place */
+html.ui-mobile .wm-form .wmns-mark {
+    flex: 0 0 auto;
+    position: relative;
+    width: calc(10 * var(--wm-px));
+    height: calc(10 * var(--wm-px));
+}
+
+/* the tick: a 2-unit stroke angle, as WM's menu check (the sound / category in use) */
+html.ui-mobile .wm-form .wmns-mark.is-chosen::before {
+    content: '';
+    position: absolute;
+    left: calc(3 * var(--wm-px));
+    top: calc(0.5 * var(--wm-px));
+    width: calc(3 * var(--wm-px));
+    height: calc(6 * var(--wm-px));
+    border: solid currentColor;
+    border-width: 0 calc(1.5 * var(--wm-px)) calc(1.5 * var(--wm-px)) 0;
+    transform: rotate(45deg);
+}
+
+/* how many sounds a category holds */
+html.ui-mobile .wm-form .wmns-count {
+    flex: 0 0 auto;
+}
+
+/* a category opens: WM's submenu triangle, 4 x 8 units */
+html.ui-mobile .wm-form .wmns-chevron {
+    flex: 0 0 auto;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: calc(4 * var(--wm-px)) 0 calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    border-color: transparent transparent transparent currentColor;
+}
+
+/* Show more: the list's last row, an action rather than a sound */
+html.ui-mobile .wm-form .wmns-more .wmns-label {
+    text-align: center;
+    font-weight: bold;
+}
+
+html.ui-mobile .wm-form .wmns-empty {
+    padding: calc(4 * var(--wm-px)) calc(3 * var(--wm-px));
+}
+
+/* Play / Stop on the highlighted row: the Notifications tab's play button, a little shorter than the 17-unit row's
+   frame so highlighting a row does not make it taller; Stop is a black square in place of the triangle */
+html.ui-mobile .wm-form .wmns-play {
+    height: calc(15 * var(--wm-px));
+    margin-left: auto;
+}
+
+html.ui-mobile .wm-form .wmns-play.is-playing::before {
+    width: calc(7 * var(--wm-px));
+    height: calc(7 * var(--wm-px));
+    margin: calc(-3.5 * var(--wm-px)) 0 0 calc(-3.5 * var(--wm-px));
+    border: 0;
+    background: currentColor;
+}

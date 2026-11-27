@@ -3736,8 +3736,29 @@
             if (sh.current === 'settings') { sh.setTitle('Settings'); refreshTitleKind(); }
         }
 
+        /**
+         * A page (or the extension of its open tab) with a sub-view open - a picker or editor drawn inside the page.
+         * viewDepth(draft) says how many screens deep it is (0 or missing = none). While one is open the owner's
+         * softKeys(draft), back(draft) (true = went up one level, the page stays open), viewOk(draft) (the corner ok;
+         * true = handled) and viewTitle(draft) (the heading) apply, the tabs are not drawn, and each level is one
+         * back step in the shell's history. Returns { owner, draft, depth } or null.
+         */
+        function subView() {
+            if (!open) return null;
+            const ext = open.exts.find((x) => x.tabs.some(([id]) => id === open.tab));
+            const owners = ext ? [[ext, open.extDrafts.get(ext.id)], [open.def, open.draft]] : [[open.def, open.draft]];
+            for (const [owner, draft] of owners) {
+                if (typeof owner.viewDepth !== 'function') continue;
+                let depth = 0;
+                try { depth = Math.floor(Number(owner.viewDepth(draft))) || 0; } catch (err) { console.warn('Settings: viewDepth failed', owner.id, err); }
+                if (depth > 0) return { owner, draft, depth };
+            }
+            return null;
+        }
+
         function renderPage() {
             const { def, tab, draft, tabs } = open;
+            const view = subView();
             // the title bar reads "Settings" on every applet, as on the device (the applet's name is
             // the page heading under it); the applet name there was cut short by the status icons
             // 6.5.1 (#850) pivot: on 6.5.3 the band under the title bar names the page (a tab's name,
@@ -3746,10 +3767,24 @@
             if (sh.current === 'settings') sh.setTitle(def.title || (pivotOn() && root.dataset.wmBars === 'bottom' ? def.label : 'Settings')); // a program's own page (Messaging's Options, #757) carries its name
             // a redraw (a tap on a list row, a check box) keeps where the page and its lists were
             // scrolled: the same tab redrawn, not a new one (Today > Items read from the top again)
-            const keep = page.dataset.setPage === `${def.id}:${tab}`
+            let keep = page.dataset.setPage === `${def.id}:${tab}`
                 ? [...page.querySelectorAll('.wm-set-scroll, .wm-listbox')].map((x) => x.scrollTop) : null;
+            // a sub-view opening or going up a level: its lists start at the top, and the page's own scroll waits
+            // for it (put back when the view is left)
+            const viewDepth = view ? view.depth : 0;
+            const viewMoved = viewDepth !== (open.viewDepthSeen || 0);
+            if (viewMoved) {
+                if (!open.viewDepthSeen) open.viewScroll = keep;
+                keep = viewDepth ? null : (open.viewScroll || null);
+                if (!viewDepth) open.viewScroll = null;
+                open.viewDepthSeen = viewDepth;
+            }
+            let heading = def.label;
+            if (view && typeof view.owner.viewTitle === 'function') {
+                try { heading = view.owner.viewTitle(view.draft) || heading; } catch (err) { console.warn('Settings: viewTitle failed', view.owner.id, err); }
+            }
             page.dataset.setPage = `${def.id}:${tab}`;
-            page.innerHTML = `<div class="wm-form-hdr">${esc(def.label)}</div><div class="wm-set-scroll"><div class="wm-form"></div></div>${tabs.length ? tabsHtml(tabs, tab) : ''}`;
+            page.innerHTML = `<div class="wm-form-hdr">${esc(heading)}</div><div class="wm-set-scroll"><div class="wm-form"></div></div>${tabs.length && !view ? tabsHtml(tabs, tab) : ''}`;
             const el = page.querySelector('.wm-form');
             const api = { rerender: () => { if (open && open.draft === draft) renderPage(); }, tab };
             // a tab of an extension (extendPage) draws with that extension's own draft
@@ -3778,6 +3813,8 @@
             if (open.focusedTab !== (open.tab || '-')) { open.focusedTab = open.tab || '-'; ui.focusFirst(el); }
             refreshTitleKind();
             if (sh && typeof sh.refreshSoftKeys === 'function') sh.refreshSoftKeys();
+            // a sub-view came or went: its levels are history entries (historyDepth)
+            if (viewMoved) sh.syncHistory();
         }
 
         /**
@@ -3952,9 +3989,12 @@
             },
             hide() {},
             // a page may bring its own soft keys (Wireless Manager's Menu): def.softKeys(draft)
+            // (a page with a sub-view open - subView() - gets its softKeys(draft) first)
             softKeys() {
-                if (open && typeof open.def.softKeys === 'function') {
-                    try { return open.def.softKeys(open.draft) || { left: null, right: null }; } catch (err) { console.warn('Settings: softKeys failed', open.def.id, err); }
+                const view = subView();
+                const owner = view && typeof view.owner.softKeys === 'function' ? view : (open && typeof open.def.softKeys === 'function' ? { owner: open.def, draft: open.draft } : null);
+                if (owner) {
+                    try { return owner.owner.softKeys(owner.draft) || { left: null, right: null }; } catch (err) { console.warn('Settings: softKeys failed', owner.owner.id, err); }
                 }
                 return { left: null, right: null };
             },
@@ -3962,10 +4002,25 @@
             // a page may ask for X instead of ok (Wireless Manager, an app on WM): X goes back to the grid
             titleKind: () => (open ? (typeof open.def.titleKind === 'function' ? open.def.titleKind() : 'ok') : 'close'),
             closeGoesBack: true,
-            onTitleOk: () => commitAndClose(false),
-            historyDepth: () => (open ? 1 : 0),
-            // the back key leaves a page as ok does on the device
-            onBack: () => commitAndClose(true)
+            // ok inside a sub-view confirms that layer (viewOk) and leaves the page open
+            onTitleOk: () => {
+                const view = subView();
+                if (view && typeof view.owner.viewOk === 'function') {
+                    try { if (view.owner.viewOk(view.draft)) return true; } catch (err) { console.warn('Settings: viewOk failed', view.owner.id, err); }
+                }
+                return commitAndClose(false);
+            },
+            // the page is one back step, each level of an open sub-view one more
+            historyDepth: () => { const view = open && subView(); return open ? 1 + (view ? view.depth : 0) : 0; },
+            // the back key leaves a page as ok does on the device; inside a sub-view it goes up one level
+            // (back(draft) true = handled, the page is not saved or closed)
+            onBack: () => {
+                const view = subView();
+                if (view && typeof view.owner.back === 'function') {
+                    try { if (view.owner.back(view.draft)) return true; } catch (err) { console.warn('Settings: back failed', view.owner.id, err); }
+                }
+                return commitAndClose(true);
+            }
         });
     }
 

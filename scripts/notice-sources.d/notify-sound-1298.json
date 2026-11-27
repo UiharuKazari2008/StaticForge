@@ -1,0 +1,12 @@
+{
+ "sources": {
+  "wm-notify-sound-preview": {
+   "area": "public/scripts/comp/wmNotifySound.js preview (Settings > Sounds & Notifications > Sounds > Notification sound picker: a tap on a sound's row and the Play button)",
+   "trigger": "user-action",
+   "action": "content: the sound she tapped, so she can hear it before choosing; the Stop button on the same row ends it",
+   "sound": true,
+   "switch": "her tap on the row or on Play; Stop, Back, Select, ok, leaving Settings and saving the page all end it, and the app stops it by itself after about 8 seconds",
+   "note": "N7 ok: a sound she asked for with a tap, in the window she is choosing in. Nothing in the picker sounds, toasts or announces by itself, and no 'saved' notice follows the choice (N2). #1298"
+  }
+ }
+}

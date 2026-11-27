@@ -25,6 +25,9 @@
  *   Buttons                 the Today screen's soft keys (a phone browser has no program buttons
  *                           of its own; Back is the shell's), per device: wmShell.todaySoftKeys
  *
+ * Sounds & Notifications > Sounds also has "Notification sound:" (the Android app's notification sound, #1298): one button that
+ * opens a picker view inside the page (wmNotifySound.js, with the Settings sub-view hooks viewDepth / viewTitle / softKeys /
+ * back / viewOk; only where the app's window.AndroidSounds exists), saved with ok through AndroidSounds.set.
  * Sounds & Notifications also keeps this device's own sound options (wmShell.sounds: screen taps,
  * hardware buttons, and each phone event's WM sound, repeat, display and vibrate; localStorage)
  * and, on a Vibration tab the device does not have, its vibration (wmShell.vibration: on, the
@@ -56,6 +59,8 @@
     const S = () => window.desktopSounds || null;
     const ws = () => window.wsClient || null;
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    // the Notification sound picker (wmNotifySound.js, #1298): read when it is used, so the load order does not matter
+    const NS = () => window.wmNotifySound || null;
     // notice: wm-settings-error
     const box = (opts) => ui.messageBox(opts);
 
@@ -180,6 +185,7 @@
             stash: new Map()
         };
         d.sel = eventList(d)[0] ? eventList(d)[0].key : '';
+        if (NS()) NS().init(d);
         d.saved = clone({ scheme: d.scheme, sounds: d.sounds, startupSound: d.startupSound, mail: d.mail, bridge: d.bridge, dev: d.dev, vib: d.vib });
         return d;
     }
@@ -208,7 +214,8 @@
             ${ui.gap()}
             ${ui.row('Sound scheme:', ui.comboHtml('scheme', (schemes.find(([v]) => v === cur) || schemes[0])[1]), { wide: true })}
             ${ui.gap()}
-            ${ui.note('The sound scheme of this workspace, shared with the desktop. Each event\'s sound is on the Notifications tab.')}`;
+            ${ui.note('The sound scheme of this workspace, shared with the desktop. Each event\'s sound is on the Notifications tab.')}
+            ${NS() ? NS().rowHtml(d) : ''}`;
         // no "Play Melaton Startup sound" here: Melaton Mobile boots silent and offers no switch that
         // plays nothing (#1299 N8). The desktop keeps it in Personalization > Sounds; the workspace's
         // startupSound preference is shared, so the phone leaves it untouched
@@ -223,6 +230,7 @@
             }
         }
         if (d.dev) ui.bindCombo(el.querySelector('[data-act="clickset"]'), CLICK_SETS, d.dev.clicks, (v) => { d.dev.clicks = v; api.rerender(); });
+        if (NS()) NS().bindRow(el, d, api);
         ui.bindCombo(el.querySelector('[data-act="scheme"]'), schemes, cur, (v) => {
             if (v === 'modified') return;
             // as the Sound dialog: picking the scheme starts from its own sounds
@@ -428,6 +436,8 @@
     async function commitSounds(d) {
         const v = d.saved;
         if (SND()) SND().stop();
+        // the Android notification sound first: when the app refuses it nothing else is half saved and the page stays open
+        if (NS() && !(await NS().commit(d, box))) return false;
         // only what changed (the scheme only when one was picked): the Sound dialog's own fields
         const patch = {};
         if (d.scheme !== v.scheme) patch.soundScheme = d.scheme;
@@ -452,12 +462,20 @@
         available: () => !!(P() && typeof P().get === 'function' && typeof P().update === 'function'),
         init: readSounds,
         render(el, tab, d, api) {
+            // the Notification sound picker is a view of the page, over every tab
+            if (NS() && NS().viewDepth(d)) { NS().render(el, d, api); return; }
             if (tab === 'volume') renderVolumeTab(el);
             else if (tab === 'vibration') { if (d.vib) renderVibrationTab(el, d, api); else el.innerHTML = ui.note('This device cannot vibrate.'); }
             else if (tab === 'notifications') renderNotifyTab(el, d, api);
             else renderSoundsTab(el, d, api);
         },
-        commit: commitSounds
+        commit: commitSounds,
+        // the Notification sound picker, when it is open (wmPrograms.js subView): its levels, soft keys, back and ok
+        viewDepth: (d) => (NS() ? NS().viewDepth(d) : 0),
+        viewTitle: (d) => (NS() ? NS().viewTitle(d) : ''),
+        softKeys: (d) => (NS() ? NS().softKeys(d) : { left: null, right: null }),
+        back: (d) => !!NS() && NS().back(d),
+        viewOk: (d) => !!NS() && NS().viewOk(d)
     });
 
     // ======================================================================== Location (#907)
