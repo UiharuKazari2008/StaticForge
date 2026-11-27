@@ -25,7 +25,7 @@
     const doc = root.document;
     if (!doc) return;
     const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
-    const ART = '/static_images/vista-cmd';
+    const ART = '/static_images/vista-cmd';   // cmd.exe's own program icon (cmd.exe,0): the real 16 / 32 / 48 frames, not the .cmd file icon (#1342)
     const ICON16 = `${ART}/cmd-16.png`;
     const ICON32 = `${ART}/cmd-32.png`;
     const TITLE = 'Command Prompt';
@@ -37,12 +37,12 @@
     const SCROLLBAR = 17;
     const SCREEN_W = COLS * CELL_W + SCROLLBAR;
     const SCREEN_H = ROWS * CELL_H;
-    const FRAME_W = 16;   // the glass frame: 8 px each side
-    const FRAME_H = 36;   // caption and the frame under the client
+    const FRAME_W = 20;   // the frame beside the client: 10 px each side (8 px glass and the 2 px client edge; VM cmd.exe 677 wide, 640 client + 17 scroll bar)
+    const FRAME_H = 40;   // 30 px above the client (caption and its edge) and 10 below (VM cmd.exe 340 tall, 300 client)
     // cmd.exe's banner, 1:1 with Vista with the holder rewritten (copyrights-not-1to1.mdc: Microsoft Windows -> Xyridian Melaton)
     const VERSION_TEXT = 'Xyridian Melaton [Version 6.0.6002]';
     const COPYRIGHT_TEXT = 'Copyright (c) 2006 Xyridian Corporation.  All rights reserved.';
-    const FONT_STACK = '"Lucida Console", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace';
+    const FIT_CHARS = COLS * 50;   // the font fit's probe: 50 rows of cells in one line (its layout width is an integer)
     const OPENED_AT = Date.now();
     const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -2332,26 +2332,72 @@
             });
         }
 
-        /** The font's advance is fitted so 80 cells are exactly 640 px: a size from the font, then the leftover as letter spacing */
+        /**
+         * The console's faces (--console-font in the console theme) are /protected/ web fonts: a window opened before
+         * they arrive measures a fallback face. So it fits once with what is resolved now, waits for the face the stack
+         * really resolves to (an event, no timer), and fits again; 'loadingdone' (any later face change) fits again only
+         * when the resolved advance moved. All of it ends with the window (this.ac).
+         */
         calibrate() {
+            this.advance = 0;
+            this.refit = false;
+            this.fit();
+            const fonts = doc.fonts;
+            if (!fonts) return;
+            fonts.addEventListener('loadingdone', () => this.fit(), { signal: this.ac.signal });
+            void this.loadFace().then(() => { if (!this.closed) this.fit(); });
+        }
+
+        /** Loads the first face of the console font stack the page declares as a web font (a face that fails to load: the next one) */
+        async loadFace() {
+            const fonts = doc.fonts;
+            if (typeof fonts.load !== 'function') return;
+            const names = root.getComputedStyle(this.scroller).fontFamily.split(',').map((s) => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+            for (const name of names) {
+                if (this.closed) return;
+                try {
+                    const got = await fonts.load(`${CELL_H}px "${name}"`, 'M');
+                    if (got && got.length) return;
+                } catch (_) { /* this face did not arrive: the next one of the stack */ }
+            }
+        }
+
+        /** The font's advance is fitted so 80 cells are exactly 640 px: a size from the font, then the leftover as letter spacing */
+        fit() {
+            if (this.closed) return;
+            const sc = this.scroller;
+            let adv = 0;
+            try {
+                if (!this.cv) this.cv = doc.createElement('canvas').getContext('2d');
+                this.cv.font = `100px ${root.getComputedStyle(sc).fontFamily}`;
+                adv = this.cv.measureText('M'.repeat(100)).width / 100;
+            } catch (_) { adv = 0; /* the default size */ }
+            if (adv > 0 && adv === this.advance && !this.refit) return;
             const probe = doc.createElement('div');
             probe.className = 'cmd-row cmd-probe';
-            probe.textContent = 'M'.repeat(COLS);
+            probe.textContent = 'M'.repeat(FIT_CHARS);
             this.rowsEl.appendChild(probe);
-            const sc = this.scroller;
-            let size = 13;
-            try {
-                const cv = doc.createElement('canvas').getContext('2d');
-                cv.font = `100px ${FONT_STACK}`;
-                const adv = cv.measureText('M'.repeat(100)).width / 100;
-                if (adv > 0) size = Math.max(8, Math.min(18, (CELL_W * 100) / adv));
-            } catch (_) { /* the default size */ }
+            const size = adv > 0 ? Math.max(8, Math.min(18, (CELL_W * 100) / adv)) : 13;
             sc.style.setProperty('--cmd-font-size', `${size.toFixed(3)}px`);
             sc.style.setProperty('--cmd-spacing', '0px');
-            const w = probe.getBoundingClientRect().width;
+            // the window's open animation is a 3-D transform, so a box's rect is not its size: the probe's layout width is
+            // read (an integer, so the probe is FIT_CHARS cells long and the rounding is spread over all of them)
+            const w = probe.offsetWidth / (FIT_CHARS / COLS);
             const spacing = w > 0 ? (COLS * CELL_W - w) / COLS : 0;
             if (Math.abs(spacing) > 0.0005) sc.style.setProperty('--cmd-spacing', `${spacing.toFixed(4)}px`);
             probe.remove();
+            this.advance = adv;
+            if (w > 0) { this.refit = false; return; }
+            // not on screen (minimised): nothing could be measured, so fit again when the console has a size
+            if (this.refit) return;
+            this.refit = true;
+            if (typeof root.ResizeObserver !== 'function') return;
+            const ro = new root.ResizeObserver(() => {
+                if (!this.refit) { ro.disconnect(); return; }
+                if (sc.clientWidth > 0) { this.fit(); if (!this.refit) ro.disconnect(); }
+            });
+            ro.observe(sc);
+            this.ac.signal.addEventListener('abort', () => ro.disconnect(), { once: true });
         }
 
         close() {

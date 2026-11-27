@@ -12,7 +12,7 @@ This document is for other agents (Cursor, Claude Code, Grok). The Dreamscape cl
 ## Where it is
 
 - The VM runs on Ruiko (`192.168.100.12`) under VMware. Its address moves: it was
-  `192.168.110.39`, then `192.168.100.243` (2026-10-13). When the helper times out, scan the /24
+  `192.168.110.39`, then `192.168.100.243` (2026-10-13). On 2026-11-26 it was powered off on Ruiko (`vmrun list` empty); start it with `vmrun start "E:\Users\kazari\Documents\Virtual Machines\Windows Vista x64 Edition\Windows Vista x64 Edition.vmx" nogui` launched through WMI (`Invoke-CimMethod Win32_Process Create`) from ssh, it auto-logs on, and it came up at `192.168.100.245` (`vmrun getGuestIPAddress` gives the address). When the helper times out, scan the /24
   for port **8790** and fix `B=` in the helper:
 
   ```bash

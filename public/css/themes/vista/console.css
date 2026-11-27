@@ -20,6 +20,14 @@
     --console-cmd-d: #ff00ff;
     --console-cmd-e: #ffff00;
     --console-cmd-f: #ffffff;
+    /* the console window's scroll bar is Windows' classic (unthemed) one, measured on the Vista VM (cmd.exe, Aero on):
+       a raised 17 px button (outer light / dark shadow, inner highlight / shadow), a checkered track, black arrows */
+    --console-scroll-face: #f0f0f0;
+    --console-scroll-light: #e3e3e3;
+    --console-scroll-highlight: #ffffff;
+    --console-scroll-shadow: #a0a0a0;
+    --console-scroll-dark-shadow: #696969;
+    --console-scroll-arrow: #000000;
     --console-term-background: #0c0c0c;
     --console-term-foreground: #cccccc;
     --console-term-selection: rgba(255, 255, 255, 0.3);
@@ -39,4 +47,55 @@
     --console-term-bright-magenta: #b4009e;
     --console-term-bright-cyan: #61d6d6;
     --console-term-bright-white: #f2f2f2;
+}
+
+/* The scroll bar: a console window's is the window's own, drawn by Windows without the theme (measured on the Vista
+   VM, Aero on): 17 px; two raised 17 x 17 buttons with a 7 x 4 black arrow (rows 6-9 of the up button, 7-10 of the
+   down button); a thumb of the same raised button; a track checkered 1 px white / face. The ids in :not(#_) outrank
+   the desktop's themed scroll bar (vista-scrollbars.css), which this window does not take. */
+.cmd-window .cmd-screen:not(#_)::-webkit-scrollbar {
+    width: 17px;
+    height: 17px;
+    background: var(--console-scroll-face);
+}
+
+.cmd-window .cmd-screen:not(#_)::-webkit-scrollbar-track:vertical {
+    background: repeating-conic-gradient(var(--console-scroll-face) 0 25%, var(--console-scroll-highlight) 0 50%) 0 0 / 2px 2px;
+}
+
+.cmd-window .cmd-screen:not(#_)::-webkit-scrollbar-button,
+.cmd-window .cmd-screen:not(#_)::-webkit-scrollbar-thumb:vertical {
+    border: 0;
+    border-image: none;
+    border-radius: 0;
+    background-color: var(--console-scroll-face);
+    box-shadow: inset -1px -1px var(--console-scroll-dark-shadow), inset 1px 1px var(--console-scroll-light), inset -2px -2px var(--console-scroll-shadow), inset 2px 2px var(--console-scroll-highlight);
+}
+
+.cmd-window .cmd-screen:not(#_)::-webkit-scrollbar-thumb:vertical {
+    background-image: none;
+    min-height: 17px;
+}
+
+.cmd-window .cmd-screen:not(#_)::-webkit-scrollbar-button {
+    width: 17px;
+    height: 17px;
+    background-repeat: no-repeat;
+}
+
+.cmd-window .cmd-screen:not(#_)::-webkit-scrollbar-button:vertical:start:increment,
+.cmd-window .cmd-screen:not(#_)::-webkit-scrollbar-button:vertical:end:decrement {
+    display: none;
+}
+
+.cmd-window .cmd-screen:not(#_)::-webkit-scrollbar-button:vertical:start:decrement {
+    background-image: linear-gradient(var(--console-scroll-arrow), var(--console-scroll-arrow)), linear-gradient(var(--console-scroll-arrow), var(--console-scroll-arrow)), linear-gradient(var(--console-scroll-arrow), var(--console-scroll-arrow)), linear-gradient(var(--console-scroll-arrow), var(--console-scroll-arrow));
+    background-size: 1px 1px, 3px 1px, 5px 1px, 7px 1px;
+    background-position: 8px 6px, 7px 7px, 6px 8px, 5px 9px;
+}
+
+.cmd-window .cmd-screen:not(#_)::-webkit-scrollbar-button:vertical:end:increment {
+    background-image: linear-gradient(var(--console-scroll-arrow), var(--console-scroll-arrow)), linear-gradient(var(--console-scroll-arrow), var(--console-scroll-arrow)), linear-gradient(var(--console-scroll-arrow), var(--console-scroll-arrow)), linear-gradient(var(--console-scroll-arrow), var(--console-scroll-arrow));
+    background-size: 7px 1px, 5px 1px, 3px 1px, 1px 1px;
+    background-position: 5px 7px, 6px 8px, 7px 9px, 8px 10px;
 }
