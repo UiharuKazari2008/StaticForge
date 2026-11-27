@@ -159,6 +159,17 @@ function checkIdle() {
     if (!findings.some((f) => f.level === 'wait') && rest.length) add('wait', `wait for: ${rest.join(', ')}`);
 }
 
+/** When the running Dreamscape process started (ms), from its PM2 pid file and ps; 0 when unknown. */
+function serverBootMs() {
+    try {
+        const pid = Number(fs.readFileSync(path.join(process.env.PM2_HOME || path.join(require('os').homedir(), '.pm2'), 'pids', 'Dreamscape-0.pid'), 'utf8').trim());
+        if (!pid) return 0;
+        const r = run('ps', ['-o', 'etimes=', '-p', String(pid)], { timeout: 5000 });
+        const secs = Number(String(r.stdout || '').trim());
+        return Number.isFinite(secs) && secs > 0 ? Date.now() - secs * 1000 : 0;
+    } catch (_) { return 0; }
+}
+
 function coordStore() {
     try { return require('../modules/agentCoord/store'); } catch (_) { return null; }
 }
@@ -180,7 +191,12 @@ function checkGates(store) {
         if (RELOAD) {
             // a reload waits only for a restart under way, another reload, and a hold-reload; no other build or hold matters
             if (b.target === HOLD_TARGET && (b.state === 'open' || b.state === 'running')) add('wait', `wait for ${who}: ${HOLD_TARGET}${b.note ? ` (${b.note})` : ''}`, { agent: b.requestedBy });
-            else if (b.state === 'running' && b.target === 'dreamscape-restart') add('wait', `wait for the restart (build ${b.id}) by ${who}`, { agent: b.requestedBy });
+            else if (b.state === 'running' && b.target === 'dreamscape-restart') {
+                // a restart gate begun before the running server booted: its restart has happened (the gate was not ended yet)
+                const boot = serverBootMs();
+                if (boot && b.startedAt && b.startedAt < boot) add('note', `the restart of build ${b.id} by ${who} already happened (the server runs since ${new Date(boot).toISOString()}); its gate is not ended yet, it does not hold a reload`);
+                else add('wait', `wait for the restart (build ${b.id}) by ${who}`, { agent: b.requestedBy });
+            }
             else if (b.state === 'running' && b.target === 'module-reload') add('wait', `wait for the module reload (build ${b.id}) by ${who}`, { agent: b.requestedBy });
             return;
         }
