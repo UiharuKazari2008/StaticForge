@@ -1,0 +1,4 @@
+--------- beginning of main
+11-27 03:45:43.214 I/BarsHeal( 5071): check (process start)
+---
+733.61 2210.33

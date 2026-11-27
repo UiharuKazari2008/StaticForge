@@ -1,0 +1,35 @@
+04:01:15
+Cannot open netlink socket: Permission denied
+iptables v1.8.11 (legacy): can't initialize iptables table `filter': Permission denied (you must be root)
+Perhaps iptables or your kernel needs to be upgraded.
+{"ok": true, "gate": "off", "appSees5555Closed": false}
+rules on 5555 left: 0 v4 0 v6
+{"ok": true, "shizukuPid": 18879, "starter": "info: apk path is /data/app/~~9Tm4
+04:01:22 pid=15677 bound=0 nav=0 holder= lockrecords=1 granted=0
+04:01:27 pid=15677 bound=0 nav=0 holder= lockrecords=1 granted=0
+04:01:32 pid=15677 bound=0 nav=0 holder= lockrecords=1 granted=0
+04:01:37 pid=15677 bound=0 nav=0 holder= lockrecords=1 granted=0
+04:01:42 pid=15677 bound=0 nav=0 holder= lockrecords=1 granted=0
+04:01:47 pid=15677 bound=0 nav=0 holder= lockrecords=1 granted=0
+04:01:54.173927346
+{"ok": true, "killedPid": 15677, "appPid": 19069}
+04:01:58 pid=19069 bound=0 nav=0 holder=19162 lockrec=1 granted=0
+04:02:01 pid=19069 bound=1 nav=0 holder=19162 lockrec=1 granted=1
+04:02:04 pid=19069 bound=1 nav=0 holder=19162 lockrec=1 granted=1
+04:02:07 pid=19069 bound=1 nav=0 holder=19162 lockrec=1 granted=1
+04:02:10 pid=19069 bound=1 nav=0 holder=19162 lockrec=1 granted=1
+04:02:13 pid=19069 bound=1 nav=0 holder=19162 lockrec=1 granted=1
+04:02:16 pid=19069 bound=1 nav=0 holder=19162 lockrec=1 granted=1
+04:02:19 pid=19069 bound=1 nav=0 holder=19162 lockrec=1 granted=1
+--- log
+11-27 04:01:54.062 I/ActivityManager(  668): Start proc 19069:jp.net.seventhreeseven.dreamscape/u0a235 for content provider {jp.net.seventhreeseven.dreamscape/rikka.shizuku.ShizukuProvider}
+11-27 04:01:54.414 I/MelatonBars(19069): Shizuku's binder arrived: holding the row (#1331)
+11-27 04:01:54.414 I/MelatonBars(19069): early hold at process start (#1371)
+11-27 04:01:55.204 I/MelatonBars(19069): holder token linked (#1331)
+11-27 04:01:58.404 I/BarsHeal(19069): check (process start)
+11-27 04:01:58.409 I/BarsHeal(19069): attempt 1: off and on
+11-27 04:02:00.214 I/MelatonBars(19069): show: on=true fits=false status=true bar=true top=false ext=true tray=false give=false
+11-27 04:02:00.485 I/MelatonBars(19069): ime probe live: visible=false bottom=0
+11-27 04:02:00.585 I/MelatonBars(19069): show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+11-27 04:02:00.587 I/MelatonBars(19069): show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+11-27 04:02:04.013 I/BarsHeal(19069): bound again: attempt 1, route shell, 5609 ms after the check

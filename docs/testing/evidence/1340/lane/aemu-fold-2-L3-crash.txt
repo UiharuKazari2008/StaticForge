@@ -1,0 +1,11 @@
+== aemu-fold-2 L3 crash 2026-11-27T08:54:39Z
+03:54:42.820 before-crash pid=9958 bound=1 binding=0 crashed=0 acc=1
+    topResumedActivity=ActivityRecord{203434485 u0 com.android.settings/.homepage.SettingsHomepageActivity t26}
+      topResumedActivity=ActivityRecord{225128585 u0 com.google.android.apps.nexuslauncher/com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher t25}
+nav=0 holder=10082
+app-activity-records=0
+CRASH-AT 03:54:43.007 pid=9958
+03:54:46.106 after-crash pid=9958 bound=1 binding=0 crashed=0 acc=1
+  mCurrentFocus=null
+  mCurrentFocus=Window{fa4dfed u0 Application Error: jp.net.seventhreeseven.dreamscape}
+box screenshot: /home/kanmi/staticforge/docs/testing/evidence/1340/lane/aemu-fold-2-L3-box.png

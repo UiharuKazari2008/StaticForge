@@ -1,0 +1,49 @@
+clear L1 {"success":true}
+clear L1late {"success":true}
+clear L1b {"success":true}
+clear L2 {"success":true}
+clear L3 {"success":false}
+clear L4 {"success":false}
+clear L5 {"success":true}
+sound: decisions 0 playedCount 0 alarmLikeStarted 0 ringer [] silentByRinger []
+{"ok": true, "appPid": 19763, "display": "0"}
+{"ok":true,"value":"complete wm=true"}
+{"ok":true,"value":"restored"}
+{"ok":true,"value":"{\"config\":{\"enabled\":false,\"corner\":\"close\",\"pullShade\":false,\"softkeys\":false,\"softRight\":\"home\",\"room\":true,\"softMenu\":[{\"id\":\"taskmanager\",\"on\":true},{\"id\":\"notifications\",\"on\":true},{\"id\":\"quicksettings\",\"on\":true},{\"id\":\"maximize\",\"on\":true},{\"id\":\"minimize\",\"on\":true},{\"id\":\"close\",\"on\":true}],\"softProfiles\":null,\"keepBars\":{},\"hideLandCover\":false,\"keyguardClear\":false,\"barBlackLight\":false,\"cutAnimations\":false,\"lockScreen\":false,\"lockPhoneWall\":false,\"volumePopup\":false,\"barBlack\":false,\"homeSense\":\"high\",\"holdAction\":\"freeform\"},\"ext\":null}"}
+bars config: identical to as found
+nav=2 holder=[]
+  mDisableRecords.size=2
+    [0] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@39453e9
+    [1] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@6eee86e
+navOrig/navFallback: none
+bars_heal.xml removed (did not exist as found)
+Deleted 1 rows
+showFirstCrash=null
+{"ok": true}
+{"ok": true, "killedPid": 19763, "appPid": 0}
+pid=21405 shizuku=18879
+     Bound services:{Service[label=Melaton Bars, feedbackType[FEEDBACK_GENERIC], capabilities=169, eventTypes=[TYPE_WINDOW_STATE_CHANGED, TYPE_WINDOWS_CHANGED], notificationTimeout=200, requestA11yBtn
+     Enabled services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Binding services:{}
+     Crashed services:{}
+ens=jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+acc=1
+    versionCode=3632181 minSdk=31 targetSdk=36
+      android.permission.WRITE_SECURE_SETTINGS: granted=true
+com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+      topResumedActivity=ActivityRecord{20944469 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity t3}
+      topResumedActivity=ActivityRecord{225128585 u0 com.google.android.apps.nexuslauncher/com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher t25}
+0
+ringer
+[V] volume is 0 in range [0..7]
+[V] volume is 2 in range [0..15]
+[V] volume is 1 in range [1..7]
+[V] volume is 0 in range [0..7]
+dalvik-cache
+lane-apk.sha
+lane-shot.png
+lane-ui.xml
+5555 rules: v4=0 v6=0
+bars_heal.xml: absent
+{"ok": true, "running": true, "pid": 18879, "uid": "shell", "installed": true, "appPermission": true}
+sound since last mark: playedCount 0 alarmLikeStarted 0

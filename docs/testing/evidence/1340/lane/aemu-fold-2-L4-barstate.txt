@@ -1,0 +1,20 @@
+== about +28 s
+03:58:54.164830600
+pid=15677 nav=0 holder= shizuku_server=
+  mDisableRecords.size=3
+    [0] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@39453e9
+    [1] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@6eee86e
+    [2] userId=0 what1=0x00930000 what2=0x00000001 pkg=android token=com.android.server.statusbar.StatusBarShellCommand$StatusBarShellCommandToken@19eab0f
+     Bound services:{}
+     Enabled services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Crashed services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+== about +75 s
+03:59:40.134711400
+pid=15677 nav=0 holder= shizuku_server=
+  mDisableRecords.size=3
+    [0] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@39453e9
+    [1] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@6eee86e
+    [2] userId=0 what1=0x00930000 what2=0x00000001 pkg=android token=com.android.server.statusbar.StatusBarShellCommand$StatusBarShellCommandToken@19eab0f
+     Bound services:{}
+     Enabled services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Crashed services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}

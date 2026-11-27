@@ -1,0 +1,132 @@
+03:47:53
+--------- beginning of main
+11-27 03:46:59.878 I/libprocessgroup( 5953): Created cgroup /sys/fs/cgroup/apps/uid_10235/pid_5953
+11-27 03:46:59.898 I/Zygote  ( 5953): Process 5953 created for jp.net.seventhreeseven.dreamscape
+11-27 03:46:59.898 I/even.dreamscape( 5953): Using generational CollectorTypeCMC GC.
+11-27 03:46:59.899 W/even.dreamscape( 5953): Unexpected CPU variant for x86: x86_64.
+11-27 03:46:59.899 W/even.dreamscape( 5953): Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+11-27 03:46:59.963 I/berberis( 5953): Initialized Berberis ((null)), version 16.0.0
+11-27 03:47:00.124 D/nativeloader( 5953): Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+11-27 03:47:00.158 D/nativeloader( 5953): Configuring clns-9 for other apk /data/app/~~S-gWGEzygMZQbn3b4bqqzw==/jp.net.seventhreeseven.dreamscape-7SOVXnFggDMXObR99CItUg==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~S-gWGEzygMZQbn3b4bqqzw==/jp.net.seventhreeseven.dreamscape-7SOVXnFggDMXObR99CItUg==/lib/arm64:/data/app/~~S-gWGEzygMZQbn3b4bqqzw==/jp.net.seventhreeseven.dreamscape-7SOVXnFggDMXObR99CItUg==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/jp.net.seventhreeseven.dreamscape
+11-27 03:47:00.215 V/GraphicsEnvironment( 5953): Currently set values for:
+11-27 03:47:00.215 V/GraphicsEnvironment( 5953):   angle_gl_driver_selection_pkgs=[]
+11-27 03:47:00.215 V/GraphicsEnvironment( 5953):   angle_gl_driver_selection_values=[]
+11-27 03:47:00.215 V/GraphicsEnvironment( 5953): jp.net.seventhreeseven.dreamscape is not listed in per-application setting
+11-27 03:47:00.215 V/GraphicsEnvironment( 5953): No special selections for ANGLE, returning default driver choice
+11-27 03:47:00.216 V/GraphicsEnvironment( 5953): Neither updatable production driver nor prerelease driver is supported.
+11-27 03:47:00.223 D/WM-WrkMgrInitializer( 5953): Initializing WorkManager with default configuration.
+11-27 03:47:00.226 D/WM-PackageManagerHelper( 5953): Skipping component enablement for androidx.work.impl.background.systemjob.SystemJobService
+11-27 03:47:00.226 D/WM-Schedulers( 5953): Created SystemJobScheduler and enabled SystemJobService
+11-27 03:47:00.227 D/WM-ForceStopRunnable( 5953): The default process name was not specified.
+11-27 03:47:00.227 D/WM-ForceStopRunnable( 5953): Performing cleanup operations.
+11-27 03:47:00.231 D/ShizukuProvider( 5953): Initialize Sui: false
+11-27 03:47:00.234 D/ShizukuProvider( 5953): binder received
+11-27 03:47:00.236 I/ShizukuApplication( 5953): attachApplication
+11-27 03:47:00.257 I/MelatonBars( 5953): Shizuku's binder arrived: holding the row (#1331)
+11-27 03:47:00.257 I/MelatonBars( 5953): early hold at process start (#1371)
+11-27 03:47:00.259 I/DriveState( 5953): 03:47:00 start: restored idle (-), cars 0, learned 0, places 2 [idle]
+11-27 03:47:00.265 I/CafeTasks( 5953): tasks drive-alerts, radio-mode, car-presence, status-bar, hour-chime (server 46bb3a31), engine supported
+11-27 03:47:00.269 D/WM-PackageManagerHelper( 5953): Skipping component enablement for androidx.work.impl.background.systemalarm.RescheduleReceiver
+11-27 03:47:00.291 I/NativeBar( 5953): task roles: []
+11-27 03:47:00.314 I/ActiveSyncBoot( 5953): notification listener connected, the link's service not running: service started for the link (battery optimisation exempt: false)
+11-27 03:47:00.356 D/BluetoothSocket( 5953): bindListen(): mPort=-1, mType=1
+11-27 03:47:00.364 D/BluetoothSocket( 5953): bindListen(), SocketState: INIT, mPfd: {ParcelFileDescriptor: java.io.FileDescriptor@54883e0}
+11-27 03:47:00.365 D/BluetoothSocket( 5953): bindListen(), Create LocalSocket
+11-27 03:47:00.365 D/BluetoothSocket( 5953): bindListen(), new LocalSocket.getInputStream()
+11-27 03:47:00.365 D/BluetoothSocket( 5953): bindListen(), readInt mSocketIS: android.net.LocalSocketImpl$SocketInputStream@74e9699
+11-27 03:47:00.366 D/BluetoothSocket( 5953): bindListen(): channel=12, mPort=-1
+11-27 03:47:00.366 D/BluetoothSocket( 5953): accept(), timeout (ms):-1
+11-27 03:47:00.378 I/CameraManagerGlobal( 5953): Connecting to camera service
+11-27 03:47:00.392 I/DreamScapeFGS( 5953): foreground from boot / update: the ActiveSync link starts
+11-27 03:47:00.422 I/ActiveSyncLink( 5953): reconnect now: network available
+11-27 03:47:00.431 I/WebViewFactory( 5953): Loading com.google.android.webview version 145.0.7632.218 (code 763221809)
+--------- beginning of system
+11-27 03:47:00.437 V/ResourcesManager( 5953): The following library key has been added: ResourcesKey{ mHash=eb4f5e38 mResDir=null mSplitDirs=[] mOverlayDirs=[] mLibDirs=[/data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk,/system/framework/android.test.base.jar,/system_ext/framework/androidx.window.extensions.jar] mDisplayId=0 mOverrideConfig=v37 mCompatInfo={360dpi always-compat} mLoaders=[]}
+11-27 03:47:00.440 D/ApplicationLoaders( 5953): Returning zygote-cached class loader: /system/framework/android.test.base.jar
+11-27 03:47:00.441 D/ApplicationLoaders( 5953): Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+11-27 03:47:00.444 D/nativeloader( 5953): Configuring clns-10 for other apk /data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/lib/x86_64:/data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk!/lib/x86_64, permitted_path=/data:/mnt/expand
+11-27 03:47:00.479 I/cr_WVCFactoryProvider( 5953): version=145.0.7632.218 (763221809) minSdkVersion=29 multiprocess=true packageId=2 splits=<none>
+11-27 03:47:00.491 I/CafeTasks( 5953): engine started (9 files, from the server)
+11-27 03:47:00.495 D/nativeloader( 5953): Load /data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk!/lib/x86_64/libwebviewchromium.so using class loader ns clns-10 (caller=/data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk): ok
+11-27 03:47:00.502 D/nativeloader( 5953): Load /system/lib64/libwebviewchromium_plat_support.so using class loader ns clns-10 (caller=/data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk): ok
+11-27 03:47:00.514 I/chromium( 5953): [1127/034700.513455:INFO:android_webview/browser/variations/variations_seed_loader.cc:67] Failed to open file for reading.: No such file or directory (2)
+11-27 03:47:00.514 I/cr_VariationsUtils( 5953): Failed reading seed file "/data/user/0/jp.net.seventhreeseven.dreamscape/app_webview/variations_seed_new"
+11-27 03:47:00.515 I/MelatonMiniport( 5953): task host wants the link
+11-27 03:47:00.515 D/DesktopExperienceFlags( 5953): Toggle override initialized to: false
+11-27 03:47:00.525 I/cr_LibraryLoader( 5953): Successfully loaded native library
+11-27 03:47:00.526 I/cr_CachingUmaRecorder( 5953): Flushed 16 samples from 16 histograms, 0 samples were dropped.
+11-27 03:47:00.842 I/ApkInstall( 5953): swept leftover install copies in /data/local/tmp via shizuku
+11-27 03:47:01.186 I/MelatonBars( 5953): holder token linked (#1331)
+11-27 03:47:01.223 I/ApkInstall( 5953): swept leftover install copies in /data/local/tmp via shizuku
+11-27 03:47:01.830 I/Wallpaper( 5953): slot 1: cropped null, original null, hint null (not used)
+11-27 03:47:01.833 I/Wallpaper( 5953): slot 2: cropped null, original null, hint null (not used)
+11-27 03:47:01.835 I/Wallpaper( 5953): slot 1: cropped null, original null, hint null (not used)
+11-27 03:47:01.835 I/Wallpaper( 5953): slot 9: cropped null, original null, hint null (not used)
+11-27 03:47:01.835 I/Wallpaper( 5953): slot 10: cropped null, original null, hint null (not used)
+11-27 03:47:01.835 I/Wallpaper( 5953): slot 9: cropped null, original null, hint null (not used)
+11-27 03:47:03.443 I/LocalAdb( 5953): pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=true last=-
+11-27 03:47:04.247 I/BarsHeal( 5953): check (process start)
+11-27 03:47:04.253 I/BarsHeal( 5953): attempt 1: off and on
+11-27 03:47:05.854 D/CompatChangeReporter( 5953): Compat change id reported: 377864165; UID 10235; state: ENABLED
+11-27 03:47:05.860 I/DisplayManager( 5953): Implicitly registering for refresh rate
+11-27 03:47:05.861 W/HWUI    ( 5953): Unknown dataspace 0
+11-27 03:47:06.015 W/libc    ( 5953): Access denied finding property "vendor.mesa.virtgpu.kumquat"
+11-27 03:47:06.061 I/NativeLayout( 5953): layouts for battery, bluetooth, data, mail, output.0, output.1, output.2, output.3, output.4, output.5, output.6, output.7, output.8, signal, volume
+11-27 03:47:06.088 I/GFXSTREAM( 5953): [eglDisplay.cpp(297)] Opening libGLESv1_CM_emulation.so
+11-27 03:47:06.088 I/GFXSTREAM( 5953): [eglDisplay.cpp(297)] Opening libGLESv2_emulation.so
+11-27 03:47:06.089 W/libc    ( 5953): Access denied finding property "vendor.mesa.virtgpu.kumquat"
+11-27 03:47:06.099 W/HWUI    ( 5953): Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+11-27 03:47:06.100 W/HWUI    ( 5953): Failed to initialize 101010-2 format, error = EGL_SUCCESS
+11-27 03:47:06.120 I/MelatonBars( 5953): show: on=true fits=false status=true bar=true top=false ext=true tray=false give=false
+11-27 03:47:06.130 I/Surface ( 5953): Creating surface for consumer unnamed-5953-0 with slotExpansion=1 for 64 slots
+11-27 03:47:06.132 I/Surface ( 5953): Creating surface for consumer VRI[MelatonBarProbe]#0(BLAST Consumer)0 with slotExpansion=1 for 64 slots
+11-27 03:47:06.134 W/libc    ( 5953): Access denied finding property "vendor.mesa.virtgpu.kumquat"
+11-27 03:47:06.144 W/HWUI    ( 5953): Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+11-27 03:47:06.145 W/HWUI    ( 5953): Failed to initialize 101010-2 format, error = EGL_SUCCESS
+11-27 03:47:06.158 W/libc    ( 5953): Access denied finding property "vendor.mesa.virtgpu.kumquat"
+11-27 03:47:06.158 W/libc    ( 5953): Access denied finding property "vendor.mesa.virtgpu.kumquat"
+11-27 03:47:06.309 I/NativeBar( 5953): art from https://staticforge.737.jp.net (refresh false): atlas 1024x320, 72 cells, search strip true
+11-27 03:47:06.326 I/MelatonBars( 5953): ime probe live: visible=false bottom=0
+11-27 03:47:06.332 I/Surface ( 5953): Creating surface for consumer unnamed-5953-1 with slotExpansion=1 for 64 slots
+11-27 03:47:06.333 I/Surface ( 5953): Creating surface for consumer VRI[MelatonImeProbe]#1(BLAST Consumer)1 with slotExpansion=1 for 64 slots
+11-27 03:47:06.382 I/NativeBar( 5953): android icons: {data=wifi-connected, battery=battery-charging, signal=signal-3}
+11-27 03:47:06.383 I/MelatonBars( 5953): show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+11-27 03:47:06.384 D/ProfileInstaller( 5953): Installing profile for jp.net.seventhreeseven.dreamscape
+11-27 03:47:06.386 I/MelatonBars( 5953): show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+11-27 03:47:06.414 E/even.dreamscape( 5953): hiddenapi: Accessing hidden field Landroid/view/ViewTreeObserver$InternalInsetsInfo;->touchableRegion:Landroid/graphics/Region; (runtime_flags=0, domain=platform, api=max-target-r) from Lb61; (domain=app, TargetSdkVersion=36) using reflection: denied
+11-27 03:47:06.415 W/TouchHole( 5953): no touchable region for View: No field touchableRegion in class Landroid/view/ViewTreeObserver$InternalInsetsInfo; (declaration of 'android.view.ViewTreeObserver$InternalInsetsInfo' appears in /system/framework/framework.jar!classes4.dex)
+11-27 03:47:06.423 E/even.dreamscape( 5953): hiddenapi: Accessing hidden field Landroid/view/ViewTreeObserver$InternalInsetsInfo;->touchableRegion:Landroid/graphics/Region; (runtime_flags=0, domain=platform, api=max-target-r) from Lb61; (domain=app, TargetSdkVersion=36) using reflection: denied
+11-27 03:47:06.423 W/TouchHole( 5953): no touchable region for View: No field touchableRegion in class Landroid/view/ViewTreeObserver$InternalInsetsInfo; (declaration of 'android.view.ViewTreeObserver$InternalInsetsInfo' appears in /system/framework/framework.jar!classes4.dex)
+11-27 03:47:06.444 I/Surface ( 5953): Creating surface for consumer unnamed-5953-2 with slotExpansion=1 for 64 slots
+11-27 03:47:06.445 I/Surface ( 5953): Creating surface for consumer VRI[MelatonBar]#2(BLAST Consumer)2 with slotExpansion=1 for 64 slots
+11-27 03:47:06.511 I/Surface ( 5953): Creating surface for consumer unnamed-5953-3 with slotExpansion=1 for 64 slots
+11-27 03:47:06.512 I/Surface ( 5953): Creating surface for consumer VRI[MelatonBar]#3(BLAST Consumer)3 with slotExpansion=1 for 64 slots
+11-27 03:47:06.561 I/Surface ( 5953): Creating surface for consumer unnamed-5953-4 with slotExpansion=1 for 64 slots
+11-27 03:47:06.568 I/Surface ( 5953): Creating surface for consumer VRI[MelatonBarEdge]#4(BLAST Consumer)4 with slotExpansion=1 for 64 slots
+11-27 03:47:06.615 I/Surface ( 5953): Creating surface for consumer unnamed-5953-5 with slotExpansion=1 for 64 slots
+11-27 03:47:06.615 I/Surface ( 5953): Creating surface for consumer VRI[MelatonBarEdge]#5(BLAST Consumer)5 with slotExpansion=1 for 64 slots
+11-27 03:47:06.651 I/NativeBar( 5953): kit for 1968: no page to ask
+11-27 03:47:06.776 I/MelatonBars( 5953): note lane:1340-L1: no WM box in the kit for 1968, the page asked for it
+11-27 03:47:06.776 I/NativeBar( 5953): kit for 1968: no page to ask
+11-27 03:47:06.777 W/MelatonBars( 5953): popup note:lane:1340-L1: not registered (no popup from the page or the status task)
+11-27 03:47:06.780 I/NoteAlerts( 5953): reminder: ringer 0, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+11-27 03:47:06.781 I/NativeBar( 5953): task roles: [notify]
+11-27 03:47:06.791 I/NativeBar( 5953): kit for 1968: no page to ask
+11-27 03:47:06.955 W/libc    ( 5953): Access denied finding property "vendor.mesa.virtgpu.kumquat"
+11-27 03:47:07.023 I/MelatonBars( 5953): translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+11-27 03:47:07.139 I/MelatonBars( 5953): translucent check (soft keys): strip spread 1.3 (picture above 14), against below 6.3 (runs on under 10)
+11-27 03:47:07.139 I/MelatonBars( 5953): translucent bar for com.android.settings: true
+11-27 03:47:07.140 I/MelatonBars( 5953): translucent soft key bar for com.android.settings: true
+11-27 03:47:07.152 I/HWUI    ( 5953): Using FreeType backend (prop=Auto)
+11-27 03:47:07.155 I/NativeBar( 5953): fonts (tahoma): regular true, bold true
+11-27 03:47:07.161 I/NativeBar( 5953): kit for 1968: no page to ask
+11-27 03:47:07.167 I/NativeBar( 5953): inline picture (826 chars): 54x54
+11-27 03:47:07.168 I/NativeBar( 5953): inline picture (618 chars): 47x47
+11-27 03:47:07.169 I/NativeBar( 5953): inline picture (778 chars): 92x104
+11-27 03:47:07.169 I/NativeBar( 5953): inline picture (798 chars): 92x104
+11-27 03:47:07.173 I/NativeLayout( 5953): picture not in: https://staticforge.737.jp.net/static_images/wm6 (70 chars) 64x64
+11-27 03:47:07.173 I/NativeBar( 5953): bar: battery, signal, data
+11-27 03:47:07.239 I/NativeBar( 5953): geometry for 2057 made from 1968's
+11-27 03:47:07.290 I/NativeBar( 5953): bar: battery, volume, signal, data, bluetooth
+11-27 03:47:09.766 I/BarsHeal( 5953): bound again: attempt 1, route direct, 5519 ms after the check
+11-27 03:47:40.079 I/NativeBar( 5953): android icons: {data=wifi-connected, battery=battery-charging, signal=signal-2}

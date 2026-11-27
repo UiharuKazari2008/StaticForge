@@ -1,0 +1,28 @@
+server start of L4: 1795769889856 2026-11-27T08:58:09Z
+BEFORE
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="switches">1795769800100</string>
+</map>
+
+AFTER
+03:58:09.706 devicems=1795769889699
+501641 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  65 2026-11-27 03:58 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map />
+
+-- after am crash, box up:
+03:58:17.206 devicems=1795769897199
+501641 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  65 2026-11-27 03:58 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map />
+
+-- after the give-up:
+04:00:11.530 devicems=1795770011523
+501641 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  199 2026-11-27 03:59 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <long name="faultAt" value="1795769944648" />
+    <string name="switches">1795769918593,1795769924614,1795769944638</string>
+</map>
+

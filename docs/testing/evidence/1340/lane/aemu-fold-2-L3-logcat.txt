@@ -1,0 +1,5 @@
+11-27 03:54:56.645 I/ActivityManager(  668): Killing 9958:jp.net.seventhreeseven.dreamscape/u0a235 (adj 100): crash
+11-27 03:55:06.694 I/ActivityManager(  668): Start proc 12034:jp.net.seventhreeseven.dreamscape/u0a235 for bound-service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+11-27 03:55:06.995 I/ActivityManager(  668): Start proc 12069:com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0/u0i9 for bound-service {jp.net.seventhreeseven.dreamscape/org.chromium.android_webview.js_sandbox.service.JsSandboxService0}
+11-27 03:55:10.944 I/BarsHeal(12034): check (process start)
+11-27 03:55:10.947 W/BarsHeal(12034): Melaton Bars' accessibility service keeps going unbound: switching it was started 5 times within 30 minutes (the limit is 5), so it is not switched again now

@@ -1,0 +1,13 @@
+03:50:00.556 final pid=7962 bound=1 binding=0 crashed=0 acc=1
+     Bound services:{Service[label=Melaton Bars, feedbackType[FEEDBACK_GENERIC], capabilities=169, eventTypes=[TYPE_WINDOW_STATE_CHANGED, TYPE_WINDOWS_CHANGED], notificationTimeout=200, requestA11yBtn=false]}
+     Enabled services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Binding services:{}
+     Crashed services:{}
+ens=jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+      android.permission.WRITE_SECURE_SETTINGS
+      android.permission.WRITE_SECURE_SETTINGS: granted=true
+    topResumedActivity=ActivityRecord{203434485 u0 com.android.settings/.homepage.SettingsHomepageActivity t26}
+      topResumedActivity=ActivityRecord{225128585 u0 com.google.android.apps.nexuslauncher/com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher t25}
+nav=0 holder=8087
+app-activity-records=0
+jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape} jp.net.seventhreeseven.dreamscape/.activesync.ActiveSyncNotificationListener c:android} jp.net.seventhreeseven.dreamscape/org.chromium.android_webview.js_sandbox.service.JsSandboxService0 c:jp.net.seventhreeseven.dreamscape} jp.net.seventhreeseven.dreamscape/.MelatonBarService c:android} 

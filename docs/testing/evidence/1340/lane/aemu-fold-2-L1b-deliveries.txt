@@ -1,0 +1,3 @@
+{"device": "1ed909e7d64bc1383053c5005bbb86de", "id": "lane:1340-L1b", "sentAt": 1795769381238, "attempts": 1, "alert": 1, "postedAt": 1795769381266, "how": "box"}
+{"device": "1ed909e7d64bc1383053c5005bbb86de", "id": "lane:1340-L1late", "sentAt": 1795769321480, "attempts": 1, "alert": 1, "postedAt": 1795769321503, "how": "box"}
+{"device": "1ed909e7d64bc1383053c5005bbb86de", "id": "lane:1340-L1", "sentAt": 1795769227048, "attempts": 1, "alert": 1, "postedAt": 1795769227067, "how": "held"}

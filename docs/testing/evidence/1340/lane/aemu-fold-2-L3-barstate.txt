@@ -1,0 +1,19 @@
+== at giveup+
+03:55:18.611587300
+pid=12034 nav=0 holder=12132
+  mDisableRecords.size=3
+    [0] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@39453e9
+    [1] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@6eee86e
+    [2] userId=0 what1=0x03600000 what2=0x00000000 pkg=com.android.shell token=android.os.BinderProxy@b4de2b9
+     Bound services:{}
+     Enabled services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Crashed services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+== after the 30 s deadline
+03:55:46.489713200
+pid=12034 nav=2 holder=
+  mDisableRecords.size=2
+    [0] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@39453e9
+    [1] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@6eee86e
+     Bound services:{}
+     Enabled services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Crashed services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}

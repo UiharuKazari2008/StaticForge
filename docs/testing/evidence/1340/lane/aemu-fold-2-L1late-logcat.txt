@@ -1,0 +1,8 @@
+11-27 03:47:06.776 I/NativeBar( 5953): kit for 1968: no page to ask
+11-27 03:47:06.777 W/MelatonBars( 5953): popup note:lane:1340-L1: not registered (no popup from the page or the status task)
+11-27 03:47:06.780 I/NoteAlerts( 5953): reminder: ringer 0, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+11-27 03:47:06.791 I/NativeBar( 5953): kit for 1968: no page to ask
+11-27 03:47:07.161 I/NativeBar( 5953): kit for 1968: no page to ask
+11-27 03:48:41.205 I/NativeLayout( 5953): note:lane:1340-L1late: 5 items, box 13,1755 - 1954,2024; rect@13,1755 1941x269 border@13,1755 1941x269 grad@19,1761 1929x64 text@46,1772 0x42
+11-27 03:48:41.216 I/MelatonBars( 5953): bubble note:lane:1340-L1late drawn here
+11-27 03:48:41.217 I/NoteAlerts( 5953): reminder: ringer 0, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false

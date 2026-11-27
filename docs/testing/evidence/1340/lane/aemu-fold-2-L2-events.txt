@@ -1,0 +1,7 @@
+old (crashed) pid=7962
+HOST bound seen at guest 03:52:22.610; pushing the notice
+PUSH_DELAY=3 s after the first bound line
+NOTICE-PUSHED guest=03:52:25.925 answer={"success":true,"mode":"push","deviceId":"1ed909e7d64bc1383053c5005bbb86de","notice":{"id":"lane:1340-L2","app":"test","cls":"reminder","title":"Bars heal 1340","text":"aemu-fold-2 L2: the service is bound again","actions":[],"data":{"kind":"test"},"createdAt":1795769546107,"updatedAt":1795769546107
+SHOT after1 guest-before-shot=03:52:28.086 file=/home/kanmi/staticforge/docs/testing/evidence/1340/lane/aemu-fold-2-L2-after1.png
+SHOT after2 guest-before-shot=03:52:30.789 file=/home/kanmi/staticforge/docs/testing/evidence/1340/lane/aemu-fold-2-L2-after2.png
+SHOT after3 guest-before-shot=03:52:33.503 file=/home/kanmi/staticforge/docs/testing/evidence/1340/lane/aemu-fold-2-L2-after3.png

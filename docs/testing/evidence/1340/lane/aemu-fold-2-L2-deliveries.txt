@@ -1,0 +1,1 @@
+{"device": "1ed909e7d64bc1383053c5005bbb86de", "id": "lane:1340-L2", "sentAt": 1795769546111, "attempts": 1, "alert": 1, "postedAt": 1795769546136, "how": "box"}

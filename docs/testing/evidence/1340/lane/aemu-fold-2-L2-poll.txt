@@ -1,0 +1,54 @@
+TAP-BEFORE 03:52:05.593
+TAP-DONE 03:52:05.634
+03:52:05.872 +65ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:06.616 +930ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:07.331 +1659ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:08.042 +2366ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:08.749 +3073ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:09.453 +3778ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:10.156 +4481ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:10.857 +5181ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:11.558 +5884ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:12.267 +6589ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:12.978 +7304ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:13.690 +8013ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:14.397 +8721ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:15.101 +9429ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:15.807 +10134ms pid= bound=0 binding=0 crashed=1 acc=0
+03:52:16.556 +10851ms pid=9958 bound=0 binding=0 crashed=1 acc=0
+03:52:17.301 +11609ms pid=9958 bound=0 binding=0 crashed=1 acc=0
+03:52:18.041 +12343ms pid=9958 bound=0 binding=0 crashed=1 acc=0
+03:52:18.776 +13093ms pid=9958 bound=0 binding=0 crashed=1 acc=0
+03:52:19.503 +13816ms pid=9958 bound=0 binding=0 crashed=1 acc=0
+03:52:20.230 +14543ms pid=9958 bound=0 binding=0 crashed=0 acc=0
+03:52:20.956 +15275ms pid=9958 bound=0 binding=0 crashed=0 acc=0
+03:52:21.723 +15993ms pid=9958 bound=0 binding=0 crashed=0 acc=1
+03:52:22.610 +16902ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:23.327 +17645ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:24.054 +18371ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:24.769 +19095ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:25.470 +19797ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:26.174 +20499ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:26.877 +21204ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:27.574 +21904ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:503:52:28.989 +23311ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:29.686 +24015ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:30.385 +24714ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:31.134 03:52:31.849 +26168ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:32.564 +26885ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:33.265 +27595ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:33.972 +28297ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:34.690 +29011ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:35.408 +29723ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:36.117 +30441ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:36.824 +31154ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:37.527 +31852ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:38.244 +32558ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:38.949 +33275ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:39.654 +33984ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:40.351 +34682ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:41.053 +35381ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:41.748 +36079ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:42.447 +36776ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+03:52:43.148 +37476ms pid=9958 bound=1 binding=0 crashed=0 acc=1
+POLL-END 03:52:43.803

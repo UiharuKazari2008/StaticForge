@@ -1,0 +1,31 @@
+03:57:18
+before pid=14548
+after-revoke pid=14548
+{"ok": true, "stoppedPid": 4177, "running": false}
+Cannot open netlink socket: Permission denied
+iptables v1.8.11 (legacy): can't initialize iptables table `filter': Permission denied (you must be root)
+Perhaps iptables or your kernel needs to be upgraded.
+{"ok": true, "gate": "on", "appSees5555Closed": false}
+{"ok": true, "running": false, "pid": 0, "uid": "", "installed": true, "appPermission": true}
+{"listening5555": true, "note5555": "always listening on the emulator (not the phone's rule): use appPort", "appPort": 5555, "listeningAppPort": true, "serviceAdbTcpPort": "", "persistAdbTcpPort": "", "adbEnabled": "1", "adbWifiEnabled": "1", "adbdUid": 2000}
+after-20s pid=14548 shizuku_server=
+      android.permission.WRITE_SECURE_SETTINGS
+1
+-- lane.sh 'adbd gate on' verifies with iptables as the SHELL user (SR), so it printed appSees5555Closed:false; checked as root and by connecting:
+== iptables
+-A INPUT -i lo -p tcp -m tcp --dport 5555 -j REJECT --reject-with tcp-reset
+== ip6tables
+-A INPUT -i lo -p tcp -m tcp --dport 5555 -j REJECT --reject-with tcp-reset
+connect 127.0.0.1:5555 exit=1
+connect ::1:5555 exit=1
+
+Chain INPUT (policy ACCEPT 10898 packets, 11M bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+    1    60 REJECT     tcp  --  lo     *       0.0.0.0/0            0.0.0.0/0            tcp dpt:5555 reject-with tcp-reset
+10898   11M oem_in     all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+nc: connect: Connection refused
+shell user connect 127.0.0.1:5555 exit=1
+pid=14548 shizuku_server=[]
+0
+--------- beginning of main
+11-27 03:56:38.206 I/LocalAdb(14548): pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=true last=-

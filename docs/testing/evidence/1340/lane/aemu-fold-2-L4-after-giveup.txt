@@ -1,0 +1,36 @@
+04:01:08
+11-27 03:58:37.091 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #1 in a row
+11-27 03:58:38.588 I/BarsHeal(15677): check (process start)
+11-27 03:58:38.593 I/BarsHeal(15677): attempt 1: off and on
+11-27 03:58:38.594 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #2 in a row
+11-27 03:58:38.609 W/BarsHeal(15677): attempt 1 failed: direct: no permission; shell: command failed or no shell route
+11-27 03:58:43.598 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #3 in a row
+11-27 03:58:43.599 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 03:58:44.613 I/BarsHeal(15677): attempt 2: off and on
+11-27 03:58:44.634 W/BarsHeal(15677): attempt 2 failed: direct: no permission; shell: command failed or no shell route
+11-27 03:58:58.607 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #4 in a row
+11-27 03:58:58.609 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 03:59:04.590 W/MelatonBars(15677): Bars service not bound at its deadline, 30 s after the process start, with the 3-button row on: gesture navigation without a hint (#1331)
+11-27 03:59:04.591 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 03:59:04.636 I/BarsHeal(15677): attempt 3: off and on
+11-27 03:59:04.647 W/BarsHeal(15677): attempt 3 failed: direct: no permission; shell: command failed or no shell route
+11-27 03:59:04.647 W/BarsHeal(15677): Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed
+11-27 03:59:19.598 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #5 in a row
+11-27 03:59:19.599 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 03:59:34.606 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #6 in a row
+11-27 03:59:34.607 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 03:59:49.622 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #7 in a row
+11-27 03:59:49.624 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 04:00:04.642 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #8 in a row
+11-27 04:00:04.643 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 04:00:19.663 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #9 in a row
+11-27 04:00:19.665 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 04:00:34.675 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #10 in a row
+11-27 04:00:34.677 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 04:00:34.677 W/MelatonBars(15677): Android's row: 10 holds in a row failed, no more until the next event (#1331)
+
+  mDisableRecords.size=3
+    [0] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@39453e9
+    [1] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@6eee86e
+    [2] userId=0 what1=0x00930000 what2=0x00000001 pkg=android token=com.android.server.statusbar.StatusBarShellCommand$StatusBarShellCommandToken@19eab0f
+nav=0 holder=

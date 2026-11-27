@@ -1,0 +1,89 @@
+{
+  "id": "fault_8b5b2df24e4e",
+  "program": {
+    "key": "android:MelatonBarService",
+    "name": "Dreamscape (Android)",
+    "launchId": null,
+    "game": null,
+    "core": false,
+    "windowId": null,
+    "windowTitle": null
+  },
+  "surface": "mobile",
+  "kind": "logged",
+  "errorName": "BarsServiceUnbound",
+  "message": "Melaton Bars' accessibility service keeps going unbound: switching it was started 5 times within 30 minutes (the limit is 5), so it is not switched again now",
+  "firstSeen": "2026-11-27T08:55:11.254Z",
+  "lastSeen": "2026-11-27T08:55:11.254Z",
+  "count": 1,
+  "repeats": 1,
+  "status": "open",
+  "latest": {
+    "surface": "mobile",
+    "kind": "logged",
+    "occurrenceId": "android-1795769710949-pnb97k",
+    "at": "2026-11-27T08:55:10.949Z",
+    "receivedAt": "2026-11-27T08:55:11.254Z",
+    "program": {
+      "key": "android:MelatonBarService",
+      "name": "Dreamscape (Android)",
+      "launchId": null,
+      "game": null,
+      "core": false,
+      "windowId": null,
+      "windowTitle": null
+    },
+    "errorName": "BarsServiceUnbound",
+    "message": "Melaton Bars' accessibility service keeps going unbound: switching it was started 5 times within 30 minutes (the limit is 5), so it is not switched again now",
+    "stack": "BarsServiceUnbound: Melaton Bars' accessibility service keeps going unbound: switching it was started 5 times within 30 minutes (the limit is 5), so it is not switched again now\n    Android 17 (SDK 37)\n    stopped by the limit over all process starts: 5 switches within 30 minutes (limit 5)\n    attempts by this process: 0 of 3\n    Shizuku granted: yes\n    shell access usable: yes\n    WRITE_SECURE_SETTINGS held: yes\n    other enabled accessibility services: 0\n    process started 4081 ms before this report",
+    "fileLine": "",
+    "source": "native",
+    "scripts": [],
+    "page": "",
+    "action": null,
+    "request": null,
+    "server": null,
+    "repeats": 1,
+    "extraFaults": [],
+    "client": {
+      "url": "android",
+      "userAgent": "Dreamscape Android 1.0.3632181 (3632181) Google sdk_gphone64_x86_64; Android 17",
+      "viewport": "",
+      "uptimeMs": 4083,
+      "desktopState": "",
+      "build": null,
+      "clientId": null,
+      "shell": "mobile",
+      "windows": []
+    }
+  },
+  "recent": [
+    {
+      "surface": "mobile",
+      "kind": "logged",
+      "occurrenceId": "android-1795769710949-pnb97k",
+      "at": "2026-11-27T08:55:10.949Z",
+      "receivedAt": "2026-11-27T08:55:11.254Z",
+      "program": {
+        "key": "android:MelatonBarService",
+        "name": "Dreamscape (Android)",
+        "launchId": null,
+        "game": null,
+        "core": false,
+        "windowId": null,
+        "windowTitle": null
+      },
+      "errorName": "BarsServiceUnbound",
+      "message": "Melaton Bars' accessibility service keeps going unbound: switching it was started 5 times within 30 minutes (the limit is 5), so it is not switched again now",
+      "stack": "BarsServiceUnbound: Melaton Bars' accessibility service keeps going unbound: switching it was started 5 times within 30 minutes (the limit is 5), so it is not switched again now\n    Android 17 (SDK 37)\n    stopped by the limit over all process starts: 5 switches within 30 minutes (limit 5)\n    attempts by this process: 0 of 3\n    Shizuku granted: yes\n    shell access usable: yes\n    WRITE_SECURE_SETTINGS held: yes\n    other enabled accessibility services: 0\n    process started 4081 ms before this report",
+      "fileLine": "",
+      "source": "native",
+      "scripts": [],
+      "page": "",
+      "action": null,
+      "request": null,
+      "server": null,
+      "repeats": 1
+    }
+  ]
+}

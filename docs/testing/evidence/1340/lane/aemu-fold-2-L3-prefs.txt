@@ -1,0 +1,77 @@
+server start of L3: 1795769667515 2026-11-27T08:54:27Z
+BEFORE
+517052 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  149 2026-11-27 03:52 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="switches">1795769224254,1795769375925,1795769540057</string>
+</map>
+
+AFTER
+03:54:27.401 devicems=1795769667394
+517052 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  157 2026-11-27 03:54 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="switches">473097638,473157638,473217638,473277638,473307638</string>
+</map>
+
+-- first write above had 32-bit-overflow stamps (script bug), rewritten before the crash:
+device clock used: 1795769675716
+BEFORE
+517052 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  157 2026-11-27 03:54 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="switches">473097638,473157638,473217638,473277638,473307638</string>
+</map>
+
+AFTER
+03:54:35.862 devicems=1795769675855
+517052 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  177 2026-11-27 03:54 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="switches">1795769435716,1795769495716,1795769555716,1795769615716,1795769645716</string>
+</map>
+
+-- after am crash, box up:
+03:54:46.941 devicems=1795769686934
+517052 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  177 2026-11-27 03:54 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="switches">1795769435716,1795769495716,1795769555716,1795769615716,1795769645716</string>
+</map>
+
+-- 5 s after the watch command started (before the new process):
+03:55:01.592 devicems=1795769701586
+517052 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  177 2026-11-27 03:54 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="switches">1795769435716,1795769495716,1795769555716,1795769615716,1795769645716</string>
+</map>
+
+pid=
+-- after the give-up (before freeing the budget):
+03:56:28.390 devicems=1795769788383
+517047 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  227 2026-11-27 03:55 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <long name="faultAt" value="1795769710948" />
+    <string name="switches">1795769435716,1795769495716,1795769555716,1795769615716,1795769645716</string>
+</map>
+
+-- budget freed: five stamps 31-35 min old (faultAt dropped by the same write):
+device clock used: 1795769788630
+BEFORE
+517047 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  227 2026-11-27 03:55 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <long name="faultAt" value="1795769710948" />
+    <string name="switches">1795769435716,1795769495716,1795769555716,1795769615716,1795769645716</string>
+</map>
+
+AFTER
+03:56:28.797 devicems=1795769788790
+517047 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  177 2026-11-27 03:56 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="switches">1795767688630,1795767748630,1795767808630,1795767868630,1795767928630</string>
+</map>
+

@@ -1,0 +1,17 @@
+04:02:37.519 devicems=1795770157512
+499791 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  213 2026-11-27 04:01 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <long name="faultAt" value="1795769944648" />
+    <string name="switches">1795769918593,1795769924614,1795769944638,1795770118410</string>
+</map>
+
+-- after:
+04:03:14.320 devicems=1795770194313
+499791 -rw-rw---- 1 u0_a235 u0_a235 u:object_r:app_data_file:s0:c235,c256,c512,c768  213 2026-11-27 04:01 /data/data/jp.net.seventhreeseven.dreamscape/shared_prefs/bars_heal.xml
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <long name="faultAt" value="1795769944648" />
+    <string name="switches">1795769918593,1795769924614,1795769944638,1795770118410</string>
+</map>
+

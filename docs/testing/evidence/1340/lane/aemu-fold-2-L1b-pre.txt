@@ -1,0 +1,16 @@
+== aemu-fold-2 L1b pre 2026-11-27T08:49:08Z
+03:49:08.468 pre pid=5953 bound=1 binding=0 crashed=0 acc=1
+uptime=896.17s sdk=37 release=17 model=sdk_gphone64_x86_64
+    versionCode=3632181 minSdk=31 targetSdk=36
+    versionName=1.0.3632181
+ens=jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+showFirstCrash=1
+      android.permission.WRITE_SECURE_SETTINGS
+      android.permission.WRITE_SECURE_SETTINGS: granted=true
+     Bound services:{Service[label=Melaton Bars, feedbackType[FEEDBACK_GENERIC], capabilities=169, eventTypes=[TYPE_WINDOW_STATE_CHANGED, TYPE_WINDOWS_CHANGED], notificationTimeout=200, requestA11yBtn=false]}
+     Enabled services:{{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}}
+     Binding services:{}
+     Crashed services:{}
+    topResumedActivity=ActivityRecord{203434485 u0 com.android.settings/.homepage.SettingsHomepageActivity t26}
+      topResumedActivity=ActivityRecord{225128585 u0 com.google.android.apps.nexuslauncher/com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher t25}
+shizuku: {"ok": true, "running": true, "pid": 4177, "uid": "shell", "installed": true, "appPermission": true}

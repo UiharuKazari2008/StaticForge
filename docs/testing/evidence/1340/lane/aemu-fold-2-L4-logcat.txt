@@ -1,0 +1,44 @@
+11-27 03:58:24.226 I/ActivityManager(  668): Killing 14548:jp.net.seventhreeseven.dreamscape/u0a235 (adj 100): crash
+11-27 03:58:34.305 I/ActivityManager(  668): Start proc 15677:jp.net.seventhreeseven.dreamscape/u0a235 for bound-service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+11-27 03:58:34.614 I/NativeBar(15677): task roles: []
+11-27 03:58:34.635 I/ActivityManager(  668): Start proc 15702:com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0/u0i11 for bound-service {jp.net.seventhreeseven.dreamscape/org.chromium.android_webview.js_sandbox.service.JsSandboxService0}
+11-27 03:58:37.087 I/MelatonBars(15677): early hold at process start (#1371)
+11-27 03:58:37.090 W/MelatonBars(15677): shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~S-gWGEzygMZQbn3b4bqqzw==/jp.net.seventhreeseven.dreamscape-7SOVXnFggDMXObR99CItUg==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven
+11-27 03:58:37.091 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #1 in a row
+11-27 03:58:38.588 I/BarsHeal(15677): check (process start)
+11-27 03:58:38.593 I/BarsHeal(15677): attempt 1: off and on
+11-27 03:58:38.594 W/MelatonBars(15677): shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~S-gWGEzygMZQbn3b4bqqzw==/jp.net.seventhreeseven.dreamscape-7SOVXnFggDMXObR99CItUg==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven
+11-27 03:58:38.594 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #2 in a row
+11-27 03:58:38.609 W/MelatonBars(15677): shell failed: settings put secure enabled_accessibility_services ''; sleep 1.5; settings put secure enabled_accessibility_services 'jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService'; settings put secure accessibility_enabled 1
+11-27 03:58:38.609 W/BarsHeal(15677): attempt 1 failed: direct: no permission; shell: command failed or no shell route
+11-27 03:58:43.598 W/MelatonBars(15677): shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~S-gWGEzygMZQbn3b4bqqzw==/jp.net.seventhreeseven.dreamscape-7SOVXnFggDMXObR99CItUg==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven
+11-27 03:58:43.598 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #3 in a row
+11-27 03:58:43.599 W/MelatonBars(15677): shell failed: cmd overlay list
+11-27 03:58:43.599 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 03:58:44.613 I/BarsHeal(15677): attempt 2: off and on
+11-27 03:58:44.622 W/MelatonBars(15677): shell failed: settings put secure enabled_accessibility_services ''; sleep 1.5; settings put secure enabled_accessibility_services 'jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService'; settings put secure accessibility_enabled 1
+11-27 03:58:44.634 W/BarsHeal(15677): attempt 2 failed: direct: no permission; shell: command failed or no shell route
+11-27 03:58:58.607 W/MelatonBars(15677): shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~S-gWGEzygMZQbn3b4bqqzw==/jp.net.seventhreeseven.dreamscape-7SOVXnFggDMXObR99CItUg==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven
+11-27 03:58:58.607 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #4 in a row
+11-27 03:58:58.608 W/MelatonBars(15677): shell failed: cmd overlay list
+11-27 03:58:58.609 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 03:59:04.590 W/MelatonBars(15677): Bars service not bound at its deadline, 30 s after the process start, with the 3-button row on: gesture navigation without a hint (#1331)
+11-27 03:59:04.591 W/MelatonBars(15677): shell failed: cmd overlay list
+11-27 03:59:04.591 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 03:59:04.636 I/BarsHeal(15677): attempt 3: off and on
+11-27 03:59:04.647 W/MelatonBars(15677): shell failed: settings put secure enabled_accessibility_services ''; sleep 1.5; settings put secure enabled_accessibility_services 'jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService'; settings put secure accessibility_enabled 1
+11-27 03:59:04.647 W/BarsHeal(15677): attempt 3 failed: direct: no permission; shell: command failed or no shell route
+11-27 03:59:04.647 W/BarsHeal(15677): Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed
+11-27 03:59:04.650 W/MelatonBars(15677): shell failed: cmd statusbar send-disable-flag none
+11-27 03:59:19.597 W/MelatonBars(15677): shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~S-gWGEzygMZQbn3b4bqqzw==/jp.net.seventhreeseven.dreamscape-7SOVXnFggDMXObR99CItUg==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven
+11-27 03:59:19.598 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #5 in a row
+11-27 03:59:19.599 W/MelatonBars(15677): shell failed: cmd overlay list
+11-27 03:59:19.599 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 03:59:34.606 W/MelatonBars(15677): shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~S-gWGEzygMZQbn3b4bqqzw==/jp.net.seventhreeseven.dreamscape-7SOVXnFggDMXObR99CItUg==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven
+11-27 03:59:34.606 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #6 in a row
+11-27 03:59:34.607 W/MelatonBars(15677): shell failed: cmd overlay list
+11-27 03:59:34.607 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list
+11-27 03:59:49.622 W/MelatonBars(15677): shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~S-gWGEzygMZQbn3b4bqqzw==/jp.net.seventhreeseven.dreamscape-7SOVXnFggDMXObR99CItUg==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven
+11-27 03:59:49.622 W/MelatonBars(15677): Android's row could not be emptied (no shell route, or the hold failed), #7 in a row
+11-27 03:59:49.623 W/MelatonBars(15677): shell failed: cmd overlay list
+11-27 03:59:49.624 W/MelatonBars(15677): gesture fallback: no shell route to read the overlay list

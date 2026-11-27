@@ -1,0 +1,166 @@
+{
+ "file": "data/fault-reports/fault_fa58499c5f55.json",
+ "mtimeMs": 1795769944938,
+ "newerThanL4Start": true,
+ "id": "fault_fa58499c5f55",
+ "count": 2,
+ "firstSeen": "2026-11-27T08:38:15.764Z",
+ "lastSeen": "2026-11-27T08:59:04.944Z",
+ "message": "Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed",
+ "latest": {
+  "surface": "mobile",
+  "kind": "logged",
+  "occurrenceId": "android-1795769944649-p0baaa",
+  "at": "2026-11-27T08:59:04.649Z",
+  "receivedAt": "2026-11-27T08:59:04.944Z",
+  "program": {
+   "key": "android:MelatonBarService",
+   "name": "Dreamscape (Android)",
+   "launchId": null,
+   "game": null,
+   "core": false,
+   "windowId": null,
+   "windowTitle": null
+  },
+  "errorName": "BarsServiceUnbound",
+  "message": "Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed",
+  "stack": "BarsServiceUnbound: Melaton Bars' accessibility service is enabled but Android does not bind it; 3 recovery attempts failed\n    Android 17 (SDK 37)\n    attempts: 3 of 3\n    attempt 1: direct: no permission; shell: command failed or no shell route\n    attempt 2: direct: no permission; shell: command failed or no shell route\n    attempt 3: direct: no permission; shell: command failed or no shell route\n    Shizuku granted: no\n    shell access usable: yes\n    WRITE_SECURE_SETTINGS held: no\n    other enabled accessibility services: 0\n    process started 30145 ms before this report",
+  "fileLine": "",
+  "source": "native",
+  "scripts": [],
+  "page": "",
+  "action": null,
+  "request": null,
+  "server": null,
+  "repeats": 1,
+  "extraFaults": [],
+  "client": {
+   "url": "android",
+   "userAgent": "Dreamscape Android 1.0.3632181 (3632181) Google sdk_gphone64_x86_64; Android 17",
+   "viewport": "",
+   "uptimeMs": 30147,
+   "desktopState": "",
+   "build": null,
+   "clientId": null,
+   "shell": "mobile",
+   "windows": []
+  }
+ },
+ "recentKeys": [
+  [
+   "action",
+   "at",
+   "errorName",
+   "fileLine",
+   "kind",
+   "message",
+   "occurrenceId",
+   "page",
+   "program",
+   "receivedAt",
+   "repeats",
+   "request",
+   "scripts",
+   "server",
+   "source",
+   "stack",
+   "surface"
+  ],
+  [
+   "action",
+   "at",
+   "errorName",
+   "fileLine",
+   "kind",
+   "message",
+   "occurrenceId",
+   "page",
+   "program",
+   "receivedAt",
+   "repeats",
+   "request",
+   "scripts",
+   "server",
+   "source",
+   "stack",
+   "surface"
+  ]
+ ],
+ "recentAt": [
+  "2026-11-27T08:59:04.649Z",
+  "2026-11-27T08:38:15.492Z"
+ ]
+}
+{
+ "file": "data/fault-reports/fault_8b5b2df24e4e.json",
+ "mtimeMs": 1795769711252,
+ "newerThanL4Start": false,
+ "id": "fault_8b5b2df24e4e",
+ "count": 1,
+ "firstSeen": "2026-11-27T08:55:11.254Z",
+ "lastSeen": "2026-11-27T08:55:11.254Z",
+ "message": "Melaton Bars' accessibility service keeps going unbound: switching it was started 5 times within 30 minutes (the limit is 5), so it is not switched again now",
+ "latest": {
+  "surface": "mobile",
+  "kind": "logged",
+  "occurrenceId": "android-1795769710949-pnb97k",
+  "at": "2026-11-27T08:55:10.949Z",
+  "receivedAt": "2026-11-27T08:55:11.254Z",
+  "program": {
+   "key": "android:MelatonBarService",
+   "name": "Dreamscape (Android)",
+   "launchId": null,
+   "game": null,
+   "core": false,
+   "windowId": null,
+   "windowTitle": null
+  },
+  "errorName": "BarsServiceUnbound",
+  "message": "Melaton Bars' accessibility service keeps going unbound: switching it was started 5 times within 30 minutes (the limit is 5), so it is not switched again now",
+  "stack": "BarsServiceUnbound: Melaton Bars' accessibility service keeps going unbound: switching it was started 5 times within 30 minutes (the limit is 5), so it is not switched again now\n    Android 17 (SDK 37)\n    stopped by the limit over all process starts: 5 switches within 30 minutes (limit 5)\n    attempts by this process: 0 of 3\n    Shizuku granted: yes\n    shell access usable: yes\n    WRITE_SECURE_SETTINGS held: yes\n    other enabled accessibility services: 0\n    process started 4081 ms before this report",
+  "fileLine": "",
+  "source": "native",
+  "scripts": [],
+  "page": "",
+  "action": null,
+  "request": null,
+  "server": null,
+  "repeats": 1,
+  "extraFaults": [],
+  "client": {
+   "url": "android",
+   "userAgent": "Dreamscape Android 1.0.3632181 (3632181) Google sdk_gphone64_x86_64; Android 17",
+   "viewport": "",
+   "uptimeMs": 4083,
+   "desktopState": "",
+   "build": null,
+   "clientId": null,
+   "shell": "mobile",
+   "windows": []
+  }
+ },
+ "recentKeys": [
+  [
+   "action",
+   "at",
+   "errorName",
+   "fileLine",
+   "kind",
+   "message",
+   "occurrenceId",
+   "page",
+   "program",
+   "receivedAt",
+   "repeats",
+   "request",
+   "scripts",
+   "server",
+   "source",
+   "stack",
+   "surface"
+  ]
+ ],
+ "recentAt": [
+  "2026-11-27T08:55:10.949Z"
+ ]
+}
