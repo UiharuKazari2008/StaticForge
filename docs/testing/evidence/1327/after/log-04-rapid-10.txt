@@ -1,0 +1,122 @@
+== log-rapid
+11-27 04:54:24.266  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:24.370  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:25.579  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:54:26.611 10803 10803 I QuickAccess: rapid 1 key delay 0 tile
+11-27 04:54:26.631  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:54:26.631  4482  4482 I OutputPanel: open: router started
+11-27 04:54:26.634  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:26.636  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:54:26.678  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:26.792  4482  4482 I MelatonBars: Back (key): closes output.1
+11-27 04:54:26.792  4482  4482 I OutputPanel: router stopped
+11-27 04:54:26.806 10814 10814 I QuickAccess: rapid 1 sent
+11-27 04:54:28.655  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:28.752  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:29.949  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:54:30.979 10882 10882 I QuickAccess: rapid 2 key delay 0 tile
+11-27 04:54:30.996  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:54:30.996  4482  4482 I OutputPanel: open: router started
+11-27 04:54:30.997  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:30.998  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:54:31.042  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:31.200  4482  4482 I MelatonBars: Back (key): closes output.1
+11-27 04:54:31.200  4482  4482 I OutputPanel: router stopped
+11-27 04:54:31.218 10896 10896 I QuickAccess: rapid 2 sent
+11-27 04:54:33.038  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:33.141  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:34.326  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:54:35.363 10965 10965 I QuickAccess: rapid 3 key delay 0.05 tile
+11-27 04:54:35.379  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:54:35.379  4482  4482 I OutputPanel: open: router started
+11-27 04:54:35.380  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:35.381  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:54:35.392  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:35.567  4482  4482 I MelatonBars: Back (key): closes output.1
+11-27 04:54:35.567  4482  4482 I OutputPanel: router stopped
+11-27 04:54:35.579 10976 10976 I QuickAccess: rapid 3 sent
+11-27 04:54:37.355  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:37.444  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:38.672  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:54:39.718 11045 11045 I QuickAccess: rapid 4 key delay 0.15 tile
+11-27 04:54:39.737  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:54:39.737  4482  4482 I OutputPanel: open: router started
+11-27 04:54:39.738  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:39.739  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:54:39.744  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:40.019  4482  4482 I MelatonBars: Back (key): closes output.1
+11-27 04:54:40.019  4482  4482 I OutputPanel: router stopped
+11-27 04:54:40.029 11056 11056 I QuickAccess: rapid 4 sent
+11-27 04:54:41.832  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:41.936  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:43.149  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:54:44.191 11129 11129 I QuickAccess: rapid 5 soft delay 0 tile
+11-27 04:54:44.209  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:54:44.210  4482  4482 I OutputPanel: open: router started
+11-27 04:54:44.211  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:44.212  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:54:44.219  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:44.258  4482  4482 I MelatonBars: popup soft key bar tap: closes output.1
+11-27 04:54:44.258  4482  4482 I OutputPanel: router stopped
+11-27 04:54:44.275 11139 11139 I QuickAccess: rapid 5 sent
+11-27 04:54:46.062  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:46.171  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:47.360  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:54:48.392 11207 11207 I QuickAccess: rapid 6 soft delay 0.1 tile
+11-27 04:54:48.411  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:54:48.412  4482  4482 I OutputPanel: open: router started
+11-27 04:54:48.413  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:48.415  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:54:48.424  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:48.552  4482  4482 I MelatonBars: popup soft key bar tap: closes output.1
+11-27 04:54:48.552  4482  4482 I OutputPanel: router stopped
+11-27 04:54:48.564 11217 11217 I QuickAccess: rapid 6 sent
+11-27 04:54:50.374  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:50.450  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:51.675  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:54:52.706 11288 11288 I QuickAccess: rapid 7 outside delay 0 tile
+11-27 04:54:52.725  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:54:52.725  4482  4482 I OutputPanel: open: router started
+11-27 04:54:52.725  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:52.727  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:54:52.733  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:52.776  4482  4482 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 04:54:52.776  4482  4482 I OutputPanel: router stopped
+11-27 04:54:52.795 11298 11298 I QuickAccess: rapid 7 sent
+11-27 04:54:54.587  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:54.701  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:55.893  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:54:56.925 11366 11366 I QuickAccess: rapid 8 key delay 0.3 tile
+11-27 04:54:56.941  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:54:56.941  4482  4482 I OutputPanel: open: router started
+11-27 04:54:56.942  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:56.943  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:54:56.950  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:57.374  4482  4482 I MelatonBars: Back (key): closes output.1
+11-27 04:54:57.375  4482  4482 I OutputPanel: router stopped
+11-27 04:54:57.392 11377 11377 I QuickAccess: rapid 8 sent
+11-27 04:54:59.180  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:54:59.283  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:55:00.487  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:55:01.518 11449 11449 I QuickAccess: rapid 9 redge delay 0 tile
+11-27 04:55:01.534  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:55:01.535  4482  4482 I OutputPanel: open: router started
+11-27 04:55:01.535  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:55:01.537  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:55:01.542  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:55:01.613  4482  4482 I MelatonBars: edge swipe on the popup: Back
+11-27 04:55:01.615  4482  4482 I MelatonBars: Back (edge swipe): closes output.1
+11-27 04:55:01.615  4482  4482 I OutputPanel: router stopped
+11-27 04:55:01.723 11461 11461 I QuickAccess: rapid 9 sent
+11-27 04:55:03.532  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:55:03.638  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:55:04.829  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:55:05.863 11529 11529 I QuickAccess: rapid 10 key delay 0 tile
+11-27 04:55:05.888  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:55:05.889  4482  4482 I OutputPanel: open: router started
+11-27 04:55:05.889  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:55:05.892  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:55:05.909  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:55:06.048  4482  4482 I MelatonBars: Back (key): closes output.1
+11-27 04:55:06.048  4482  4482 I OutputPanel: router stopped
+11-27 04:55:06.065 11540 11540 I QuickAccess: rapid 10 sent

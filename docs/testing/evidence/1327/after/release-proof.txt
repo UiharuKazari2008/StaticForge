@@ -1,0 +1,30 @@
+Release proof (server build job 38)
+{
+ "id": 38,
+ "versionCode": 3632251,
+ "versionName": "1.0.3632251",
+ "buildSha": "5745486cb75e96fdff08909cf468d7dc384198b0",
+ "sha256": "217a601d27d73bb885ad82750462baca19981a30e594028592097dac6c33d375",
+ "branches": [
+  {
+   "name": "claude/shake-torch-1104",
+   "sha": "3a0411192a4efac9845a70910b32217eb388a64c"
+  },
+  {
+   "name": "feat/1309-emu-shims",
+   "sha": "e3a231c8213fbf0478504af882db0fcd68a55bab"
+  },
+  {
+   "name": "feat/1327-output-panel",
+   "sha": "94d2420a527d95c367a530e2cf2312964d31bd52"
+  },
+  {
+   "name": "fix/1343-notice-above-keyboard",
+   "sha": "ec8cfd89617d8bad1615811ce626bc300d6392f4"
+  }
+ ]
+}
+aemu-fold-1 before: versionCode=3632141
+install-release 38: versionCodeBefore 3632141, versionCodeAfter 3632251, sha256 217a601d27d73bb885ad82750462baca19981a30e594028592097dac6c33d375
+installed base.apk sha256sum on the instance: 217a601d27d73bb885ad82750462baca19981a30e594028592097dac6c33d375 (lastUpdateTime 2026-11-27 04:35:40)
+page: wmQuickAccess.roles() lists output.0 .. output.8; wmOutputPanel.VERSION o1

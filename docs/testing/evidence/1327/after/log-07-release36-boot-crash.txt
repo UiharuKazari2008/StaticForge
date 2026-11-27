@@ -1,0 +1,16 @@
+--------- beginning of crash
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: Process: jp.net.seventhreeseven.dreamscape, PID: 1812
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException: Context.startForegroundService() did not then call Service.startForeground(): ServiceRecord{ea86171 u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at android.app.ActivityThread.generateForegroundServiceDidNotStartInTimeException(ActivityThread.java:2598)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2563)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(ActivityThread.java:0)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2950)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:296)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:397)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+11-27 04:33:44.496  1812  1812 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)

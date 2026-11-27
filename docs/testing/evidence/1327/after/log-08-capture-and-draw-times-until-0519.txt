@@ -1,0 +1,205 @@
+11-27 04:39:36.467   666  1934 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#337)/@0xfe8228f for 7426df0 MelatonQuickAccessTab
+11-27 04:39:36.741   666  1042 D WindowManager: captureDisplay
+11-27 04:40:42.965   666  1526 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#351)/@0xb4aceca for 7426df0 MelatonQuickAccessTab
+11-27 04:40:43.275   666  1526 D WindowManager: captureDisplay
+11-27 04:41:03.715   666   902 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#367)/@0x7c06b49 for 7426df0 MelatonQuickAccessTab
+11-27 04:41:03.992   666   738 D WindowManager: captureDisplay
+11-27 04:42:07.648   666  1216 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#406)/@0x9007fcd for 7426df0 MelatonQuickAccessTab
+11-27 04:42:07.940   666  1526 D WindowManager: captureDisplay
+11-27 04:42:45.565   666   901 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#453)/@0x9610c00 for 7426df0 MelatonQuickAccessTab
+11-27 04:42:45.860   666  1042 D WindowManager: captureDisplay
+11-27 04:43:14.932   666   902 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#495)/@0x9d78993 for 7426df0 MelatonQuickAccessTab
+11-27 04:43:15.225   666  1890 D WindowManager: captureDisplay
+11-27 04:43:44.882   666  1834 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#535)/@0xe4cf0c3 for 7426df0 MelatonQuickAccessTab
+11-27 04:43:45.176   666  1526 D WindowManager: captureDisplay
+11-27 04:44:21.699   666  1820 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#577)/@0x898dc12 for 7426df0 MelatonQuickAccessTab
+11-27 04:44:22.007   666  1893 D WindowManager: captureDisplay
+11-27 04:44:46.897   666  1172 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#621)/@0x2de6b4d for 7426df0 MelatonQuickAccessTab
+11-27 04:44:47.209   666  1172 D WindowManager: captureDisplay
+11-27 04:45:11.864   666  1977 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#671)/@0x4d93e8f for 7426df0 MelatonQuickAccessTab
+11-27 04:45:12.159   666  1893 D WindowManager: captureDisplay
+11-27 04:45:37.231   666  1893 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#711)/@0xfe8ab5c for 7426df0 MelatonQuickAccessTab
+11-27 04:45:37.508   666  1781 D WindowManager: captureDisplay
+11-27 04:46:06.632   666   680 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#755)/@0x44d3fce for 7426df0 MelatonQuickAccessTab
+11-27 04:46:06.925   666   681 D WindowManager: captureDisplay
+11-27 04:46:53.564   666  1909 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#808)/@0xf8c8343 for 7426df0 MelatonQuickAccessTab
+11-27 04:46:53.857   666  1131 D WindowManager: captureDisplay
+11-27 04:47:40.949   666  1977 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#863)/@0xc3da393 for 7426df0 MelatonQuickAccessTab
+11-27 04:47:41.226   666  1891 D WindowManager: captureDisplay
+11-27 04:48:28.681   666   736 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#913)/@0xc589971 for 7426df0 MelatonQuickAccessTab
+11-27 04:48:32.043   666  1891 D WindowManager: captureDisplay
+11-27 04:49:04.048   666  1910 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#956)/@0x8d0fbe5 for 7426df0 MelatonQuickAccessTab
+11-27 04:49:04.333   666  1626 D WindowManager: captureDisplay
+11-27 04:49:40.683   666  1781 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#977)/@0xf35082f for 7426df0 MelatonQuickAccessTab
+11-27 04:49:40.993   666   737 D WindowManager: captureDisplay
+11-27 04:50:02.715   666   737 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#984)/@0x5a0e5a7 for 7426df0 MelatonQuickAccessTab
+11-27 04:50:03.017   666   737 D WindowManager: captureDisplay
+11-27 04:50:24.931   666   737 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#994)/@0x9319858 for 7426df0 MelatonQuickAccessTab
+11-27 04:50:25.230   666  1172 D WindowManager: captureDisplay
+11-27 04:50:47.116   666   902 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1004)/@0x3bbd725 for 7426df0 MelatonQuickAccessTab
+11-27 04:50:47.410   666   737 D WindowManager: captureDisplay
+11-27 04:51:08.981   666  1626 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1014)/@0x1f1295d for 7426df0 MelatonQuickAccessTab
+11-27 04:51:09.274   666  1960 D WindowManager: captureDisplay
+11-27 04:51:59.332   666  1216 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1071)/@0x178b380 for 7426df0 MelatonQuickAccessTab
+11-27 04:51:59.633   666  1960 D WindowManager: captureDisplay
+11-27 04:52:23.482   666  1042 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1087)/@0xb8495e6 for 7426df0 MelatonQuickAccessTab
+11-27 04:52:23.762   666  1216 D WindowManager: captureDisplay
+11-27 04:52:39.971   666  1042 D WindowManager: captureDisplay
+11-27 04:53:07.665   666   737 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1125)/@0x18c767c for 7426df0 MelatonQuickAccessTab
+11-27 04:53:07.968   666  1638 D WindowManager: captureDisplay
+11-27 04:53:13.513  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:24.048   666   737 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1186)/@0x57230f1 for 7426df0 MelatonQuickAccessTab
+11-27 04:54:24.052  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#156(BLAST Consumer)156 with slotExpansion=1 for 64 slots
+11-27 04:54:24.282   666  1934 D WindowManager: captureDisplay
+11-27 04:54:24.370  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:26.678  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:28.381   666  1934 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1190)/@0x3930ced for 7426df0 MelatonQuickAccessTab
+11-27 04:54:28.382  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#159(BLAST Consumer)159 with slotExpansion=1 for 64 slots
+11-27 04:54:28.659   666  1888 D WindowManager: captureDisplay
+11-27 04:54:28.752  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:31.042  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:32.781   666   737 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1194)/@0x66350b7 for 7426df0 MelatonQuickAccessTab
+11-27 04:54:32.781  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#162(BLAST Consumer)162 with slotExpansion=1 for 64 slots
+11-27 04:54:33.041   666  1626 D WindowManager: captureDisplay
+11-27 04:54:33.141  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:35.392  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:37.132   666  1888 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1198)/@0x47fc0e4 for 7426df0 MelatonQuickAccessTab
+11-27 04:54:37.132  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#165(BLAST Consumer)165 with slotExpansion=1 for 64 slots
+11-27 04:54:37.375   666   737 D WindowManager: captureDisplay
+11-27 04:54:37.444  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:39.744  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:41.580   666  1526 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1202)/@0x450a3ca for 7426df0 MelatonQuickAccessTab
+11-27 04:54:41.581  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#168(BLAST Consumer)168 with slotExpansion=1 for 64 slots
+11-27 04:54:41.846   666  1837 D WindowManager: captureDisplay
+11-27 04:54:41.936  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:44.219  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:45.832   666  1934 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1206)/@0x7e7d9de for 7426df0 MelatonQuickAccessTab
+11-27 04:54:45.833  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#171(BLAST Consumer)171 with slotExpansion=1 for 64 slots
+11-27 04:54:46.064   666  1888 D WindowManager: captureDisplay
+11-27 04:54:46.171  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:48.424  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:50.132   666  1837 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1210)/@0x6ea04b2 for 7426df0 MelatonQuickAccessTab
+11-27 04:54:50.134  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#174(BLAST Consumer)174 with slotExpansion=1 for 64 slots
+11-27 04:54:50.376   666  1837 D WindowManager: captureDisplay
+11-27 04:54:50.450  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:52.733  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:54.348   666  1934 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1214)/@0xcee94be for 7426df0 MelatonQuickAccessTab
+11-27 04:54:54.349  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#177(BLAST Consumer)177 with slotExpansion=1 for 64 slots
+11-27 04:54:54.595   666  1839 D WindowManager: captureDisplay
+11-27 04:54:54.701  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:54:56.950  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:54:58.948   666  1839 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1218)/@0x4da45c7 for 7426df0 MelatonQuickAccessTab
+11-27 04:54:58.949  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#180(BLAST Consumer)180 with slotExpansion=1 for 64 slots
+11-27 04:54:59.194   666  1839 D WindowManager: captureDisplay
+11-27 04:54:59.283  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:55:01.542  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:55:03.281   666  1934 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1222)/@0xcaba305 for 7426df0 MelatonQuickAccessTab
+11-27 04:55:03.282  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#183(BLAST Consumer)183 with slotExpansion=1 for 64 slots
+11-27 04:55:03.535   666  1890 D WindowManager: captureDisplay
+11-27 04:55:03.638  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:55:05.909  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:56:10.698   666  1834 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1270)/@0xd34ac57 for 7426df0 MelatonQuickAccessTab
+11-27 04:56:10.699  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#190(BLAST Consumer)190 with slotExpansion=1 for 64 slots
+11-27 04:56:10.993   666  1638 D WindowManager: captureDisplay
+11-27 04:56:11.107  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:56:28.205  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:57:27.332   666   736 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1320)/@0xf251a38 for 7426df0 MelatonQuickAccessTab
+11-27 04:57:27.333  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#197(BLAST Consumer)197 with slotExpansion=1 for 64 slots
+11-27 04:57:27.619   666  1215 D WindowManager: captureDisplay
+11-27 04:57:27.819  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:57:38.963  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:58:04.732   666  1909 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1339)/@0xeeaa92 for 7426df0 MelatonQuickAccessTab
+11-27 04:58:04.733  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#202(BLAST Consumer)202 with slotExpansion=1 for 64 slots
+11-27 04:58:05.012   666  1888 D WindowManager: captureDisplay
+11-27 04:58:05.060  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:58:12.084  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 05:00:06.216   666  1977 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1437)/@0x33e06c9 for 7426df0 MelatonQuickAccessTab
+11-27 05:00:06.217  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#214(BLAST Consumer)214 with slotExpansion=1 for 64 slots
+11-27 05:00:06.495   666  1526 D WindowManager: captureDisplay
+11-27 05:00:06.612  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 05:00:11.405  4482  4482 I MelatonBars: bubble output.2 drawn here
+11-27 05:01:24.715   666   736 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1482)/@0x45b9331 for 7426df0 MelatonQuickAccessTab
+11-27 05:01:24.717  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#221(BLAST Consumer)221 with slotExpansion=1 for 64 slots
+11-27 05:01:25.031   666   736 D WindowManager: captureDisplay
+11-27 05:01:25.135  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 05:01:30.595  4482  4482 I MelatonBars: bubble output.2 drawn here
+11-27 05:02:34.715   666  1042 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1527)/@0x5999203 for 7426df0 MelatonQuickAccessTab
+11-27 05:02:34.719  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#228(BLAST Consumer)228 with slotExpansion=1 for 64 slots
+11-27 05:02:34.996   666  1042 D WindowManager: captureDisplay
+11-27 05:02:35.059  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 05:02:41.873  4482  4482 I MelatonBars: bubble output.2 drawn here
+11-27 05:03:45.798   666  1910 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1575)/@0x4384102 for 7426df0 MelatonQuickAccessTab
+11-27 05:03:45.799  4482  4482 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#235(BLAST Consumer)235 with slotExpansion=1 for 64 slots
+11-27 05:03:46.118   666  1891 D WindowManager: captureDisplay
+11-27 05:03:46.221  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 05:04:35.564   666   901 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1596)/@0xf78449 for d93702 MelatonQuickAccessTab
+11-27 05:04:35.569 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#7(BLAST Consumer)7 with slotExpansion=1 for 64 slots
+11-27 05:04:35.823   666  1893 D WindowManager: captureDisplay
+11-27 05:04:35.983 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:04:41.112 13834 13834 I MelatonBars: bubble output.2 drawn here
+11-27 05:05:08.616   666  1960 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1600)/@0x16f96f0 for d93702 MelatonQuickAccessTab
+11-27 05:05:08.618 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#10(BLAST Consumer)10 with slotExpansion=1 for 64 slots
+11-27 05:05:09.040   666  1960 D WindowManager: captureDisplay
+11-27 05:05:09.160 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:05:12.086 13834 13834 I MelatonBars: bubble output.2 drawn here
+11-27 05:05:19.564   666  1131 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1607)/@0x5c572b3 for d93702 MelatonQuickAccessTab
+11-27 05:05:19.566 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#13(BLAST Consumer)13 with slotExpansion=1 for 64 slots
+11-27 05:05:19.869   666  1131 D WindowManager: captureDisplay
+11-27 05:05:19.976 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:05:22.882 13834 13834 I MelatonBars: bubble output.2 drawn here
+11-27 05:05:30.615   666  1893 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1611)/@0x39735a2 for d93702 MelatonQuickAccessTab
+11-27 05:05:30.616 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#16(BLAST Consumer)16 with slotExpansion=1 for 64 slots
+11-27 05:05:30.895   666  1834 D WindowManager: captureDisplay
+11-27 05:05:30.985 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:05:33.909 13834 13834 I MelatonBars: bubble output.2 drawn here
+11-27 05:05:53.615 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#19(BLAST Consumer)19 with slotExpansion=1 for 64 slots
+11-27 05:05:53.626   666  1960 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1615)/@0x696442b for d93702 MelatonQuickAccessTab
+11-27 05:05:53.935   666  1834 D WindowManager: captureDisplay
+11-27 05:05:54.039 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:05:56.940 13834 13834 I MelatonBars: bubble output.2 drawn here
+11-27 05:06:31.231   666  1172 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1619)/@0x707ecd0 for d93702 MelatonQuickAccessTab
+11-27 05:06:31.232 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#22(BLAST Consumer)22 with slotExpansion=1 for 64 slots
+11-27 05:06:31.532   666  1934 D WindowManager: captureDisplay
+11-27 05:06:31.623 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:06:34.549 13834 13834 I MelatonBars: bubble output.2 drawn here
+11-27 05:06:43.324 13834 13834 I MelatonBars: bubble output.1 drawn here
+11-27 05:07:08.936   528  1160 W libbinder.Binder: Binder transaction to android.gui.ISurfaceComposer, function: captureDisplayById, code: 27, took 3322ms. Data bytes: 200 Reply bytes: 0 Flags: 17
+11-27 05:14:31.773   666   680 D WindowManager: captureDisplay
+11-27 05:14:32.087 13834 13834 I MelatonBars: bubble output.1 drawn here
+11-27 05:15:08.271   666  1042 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1791)/@0x20da49e for 993f023 MelatonQuickAccessTab
+11-27 05:15:08.283 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#54(BLAST Consumer)54 with slotExpansion=1 for 64 slots
+11-27 05:15:08.940   666  1042 D WindowManager: captureDisplay
+11-27 05:15:09.072 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:15:30.368   666  1957 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1803)/@0x7154cad for 993f023 MelatonQuickAccessTab
+11-27 05:15:30.419 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#60(BLAST Consumer)60 with slotExpansion=1 for 64 slots
+11-27 05:15:30.981   666  1215 D WindowManager: captureDisplay
+11-27 05:15:31.299 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:18:25.216   666  1042 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1846)/@0x39360fe for 993f023 MelatonQuickAccessTab
+11-27 05:18:25.216 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#68(BLAST Consumer)68 with slotExpansion=1 for 64 slots
+11-27 05:18:25.695   666  1215 D WindowManager: captureDisplay
+11-27 05:18:25.832 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:19:41.181   666  1891 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1883)/@0x304bb54 for 993f023 MelatonQuickAccessTab
+11-27 05:19:41.183 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#72(BLAST Consumer)72 with slotExpansion=1 for 64 slots
+11-27 05:19:41.557   666  1909 D WindowManager: captureDisplay
+11-27 05:19:41.716 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:19:51.649   666  1781 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1887)/@0x873d2be for 993f023 MelatonQuickAccessTab
+11-27 05:19:51.650 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#75(BLAST Consumer)75 with slotExpansion=1 for 64 slots
+11-27 05:19:52.069   666  1626 D WindowManager: captureDisplay
+11-27 05:19:52.192 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:20:02.181   666  1839 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1891)/@0x48b0424 for 993f023 MelatonQuickAccessTab
+11-27 05:20:02.181 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#78(BLAST Consumer)78 with slotExpansion=1 for 64 slots
+11-27 05:20:02.599   666  1933 D WindowManager: captureDisplay
+11-27 05:20:02.757 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:20:12.851   666   681 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1895)/@0x652eb4b for 993f023 MelatonQuickAccessTab
+11-27 05:20:12.852 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#81(BLAST Consumer)81 with slotExpansion=1 for 64 slots
+11-27 05:20:13.295   666  1933 D WindowManager: captureDisplay
+11-27 05:20:13.436 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:20:18.353 13834 13834 I MelatonBars: bubble output.1 drawn here
+11-27 05:20:39.881   666  1626 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1899)/@0x638f48f for 993f023 MelatonQuickAccessTab
+11-27 05:20:39.882 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#84(BLAST Consumer)84 with slotExpansion=1 for 64 slots
+11-27 05:20:40.349   666   736 D WindowManager: captureDisplay
+11-27 05:20:40.493 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:20:55.616   666  1781 D WindowManager: setClientSurface Surface(name=VRI-MelatonQuickAccessTab#1903)/@0x580def for 993f023 MelatonQuickAccessTab
+11-27 05:20:55.618 13834 13834 I Surface : Creating surface for consumer VRI[MelatonQuickAccessTab]#87(BLAST Consumer)87 with slotExpansion=1 for 64 slots
+11-27 05:20:56.047   666  1839 D WindowManager: captureDisplay
+11-27 05:20:56.236 13834 13834 I MelatonBars: bubble quickaccess drawn here

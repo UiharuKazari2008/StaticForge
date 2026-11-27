@@ -1,0 +1,10 @@
+== log-regression
+11-27 05:18:25.691 13834 13834 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:18:25.832 13834 13834 I MelatonBars: bubble quickaccess drawn here
+11-27 05:18:30.464 13834 13834 I MelatonBars: popup tap 1893,1855: box 9
+11-27 05:18:34.624 13834 13834 I MelatonBars: popup tap 1893,1881: box 12
+11-27 05:18:38.539 13834 13834 I MelatonBars: popup tap 1893,1221: box 4
+11-27 05:18:38.548 13834 13834 I QuickAccess: act rotation toggle
+11-27 05:18:43.703 13834 13834 I MelatonBars: popup tap 1893,1221: box 4
+11-27 05:18:43.710 13834 13834 I QuickAccess: act rotation toggle
+11-27 05:18:48.791 13834 13834 I MelatonBars: popup tap 901,1100: outside: closed

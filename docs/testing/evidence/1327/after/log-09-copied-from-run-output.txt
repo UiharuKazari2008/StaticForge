@@ -1,0 +1,50 @@
+These cases printed their log lines to the terminal and were not saved to a file on the day; the cold reboot at 05:25
+cleared logcat. The lines below are copied from the run's output (pid and tag columns kept where shown).
+
+== title bar corner, default "X goes Home" (04:46), over Settings
+11-27 04:46:59.422 MelatonBars: bubble output.1 drawn here
+11-27 04:47:03.185 MelatonBars: popup bar tap: corner (open: output.1)
+11-27 04:47:03.186 OutputPanel: router stopped
+   topResumedActivity before .SubSettings, after NexusLauncherActivity
+
+== title bar corner set to "ok goes Back" (04:47)
+11-27 04:47:46.775 MelatonBars: bubble output.1 drawn here
+11-27 04:47:50.573 MelatonBars: popup bar tap: corner (open: output.1)
+11-27 04:47:50.573 OutputPanel: router stopped
+   before .SubSettings, after .SubSettings; second ok -> .homepage.SettingsHomepageActivity
+
+== swipe up from the soft key bar
+11-27 04:48:42.014 MelatonBars: swipe up on output.1: Home
+11-27 04:48:42.014 OutputPanel: router stopped
+11-27 04:49:09.415 MelatonBars: swipe up on quickaccess: Home
+   both: before .SubSettings, after NexusLauncherActivity
+
+== two outputs, wide
+11-27 05:00:11.389 OutputPanel: rows: Lane Test Speaker*, Speakers
+11-27 05:00:11.405 MelatonBars: bubble output.2 drawn here
+11-27 05:00:23.769 OutputPanel: move media to com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= (Speakers)
+11-27 05:00:23.771 OutputPanel: rows: Lane Test Speaker, Speakers*
+11-27 05:00:23.805 OutputPanel: move to com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= done (moved)
+11-27 05:00:29.008 OutputPanel: move media to com.android.server.media/.SystemMediaRoute2Provider:03:00:00:00:00:00 (Lane Test Speaker)
+11-27 05:00:29.009 OutputPanel: rows: Lane Test Speaker*, Speakers
+11-27 05:00:29.035 OutputPanel: move to com.android.server.media/.SystemMediaRoute2Provider:03:00:00:00:00:00 done (moved)
+   dumpsys media_router selected route: [03:00:00:00:00:00] -> [ROUTE_ID_BUILTIN_SPEAKER;address=] -> [03:00:00:00:00:00]
+
+== two outputs, strip 1 column
+11-27 05:01:30.595 MelatonBars: bubble output.2 drawn here
+11-27 05:01:42.298 MelatonBars: popup tap 1893,440: box 1
+11-27 05:01:42.298 OutputPanel: move media to com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= (Speakers)
+11-27 05:01:42.346 OutputPanel: move to com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= done (moved)
+11-27 05:01:46.239 MelatonBars: popup tap 1893,260: box 0
+11-27 05:01:46.239 OutputPanel: move media to com.android.server.media/.SystemMediaRoute2Provider:03:00:00:00:00:00 (Lane Test Speaker)
+11-27 05:01:46.285 OutputPanel: move to com.android.server.media/.SystemMediaRoute2Provider:03:00:00:00:00:00 done (moved)
+   selected route: built-in speaker after the first tap, 03:00:00:00:00:00 after the second
+== two outputs, strip 2 columns
+11-27 05:02:41.856 OutputPanel: rows: Lane Test Speaker*, Speakers
+11-27 05:02:41.873 MelatonBars: bubble output.2 drawn here
+
+== after the cold reboot (05:31)
+11-27 05:31:32.429  1616 MelatonBars: bubble quickaccess drawn here
+11-27 05:31:38.416  1616 OutputPanel: open: router started
+11-27 05:31:38.418  1616 OutputPanel: rows: Speakers*
+11-27 05:31:38.424  1616 MelatonBars: bubble output.1 drawn here

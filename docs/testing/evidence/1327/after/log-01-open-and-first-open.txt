@@ -1,0 +1,48 @@
+== log-c1s
+11-27 04:40:03.872  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:40:03.872  4482  4482 I OutputPanel: open: router started
+11-27 04:40:03.876  4482  4482 W MediaOutputRouting: getInstance(jp.net.seventhreeseven.dreamscape): SecurityException: Must hold MEDIA_CONTENT_CONTROL or MEDIA_ROUTING_CONTROL permissions.
+11-27 04:40:03.876  4482  4482 I OutputPanel: media routing not allowed: asking the app's shell once
+11-27 04:40:03.880  4482  4482 W MediaOutputRouting: getInstance(jp.net.seventhreeseven.dreamscape): SecurityException: Must hold MEDIA_CONTENT_CONTROL or MEDIA_ROUTING_CONTROL permissions.
+11-27 04:40:03.921  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:40:03.924  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:40:03.932  4482  4482 I MelatonBars: bubble output.1 drawn here
+== log-c1h
+11-27 04:41:22.992  4482  4482 I MelatonBars: popup tap 1893,1815: box 11
+11-27 04:41:22.993  4482  4482 I OutputPanel: open: router started
+11-27 04:41:22.993  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:41:22.995  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:41:22.999  4482  4482 I MelatonBars: bubble output.1 drawn here
+== log-c1s2
+11-27 04:56:28.195  4482  4482 I MelatonBars: popup tap 1758,188: box 0
+11-27 04:56:28.195  4482  4482 I OutputPanel: open: router started
+11-27 04:56:28.196  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:56:28.197  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:56:28.205  4482  4482 I MelatonBars: bubble output.1 drawn here
+== log-c1ws
+11-27 04:57:38.910  4482  4482 I MelatonBars: popup tap 1671,690: box 6
+11-27 04:57:38.910  4482  4482 I OutputPanel: open: router started
+11-27 04:57:38.911  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:57:38.913  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:57:38.963  4482  4482 I MelatonBars: bubble output.1 drawn here
+== log-c1wh
+11-27 04:58:12.014  4482  4482 I MelatonBars: popup tap 1671,704: box 6
+11-27 04:58:12.014  4482  4482 I OutputPanel: open: router started
+11-27 04:58:12.015  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:58:12.017  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:58:12.084  4482  4482 I MelatonBars: bubble output.1 drawn here
+== log-c2-reset-strip
+11-27 04:48:32.039  4482  4482 W MediaOutputRouting: getInstance(jp.net.seventhreeseven.dreamscape): SecurityException: Must hold MEDIA_CONTENT_CONTROL or MEDIA_ROUTING_CONTROL permissions.
+11-27 04:48:32.135  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:48:35.009  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:48:37.550  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:48:37.550  4482  4482 I OutputPanel: open: router started
+11-27 04:48:37.552  4482  4482 W MediaOutputRouting: getInstance(jp.net.seventhreeseven.dreamscape): SecurityException: Must hold MEDIA_CONTENT_CONTROL or MEDIA_ROUTING_CONTROL permissions.
+11-27 04:48:37.552  4482  4482 I OutputPanel: media routing not allowed: asking the app's shell once
+11-27 04:48:37.559  4482  4482 W MediaOutputRouting: getInstance(jp.net.seventhreeseven.dreamscape): SecurityException: Must hold MEDIA_CONTENT_CONTROL or MEDIA_ROUTING_CONTROL permissions.
+11-27 04:48:37.595  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:48:37.597  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:48:37.604  4482  4482 I MelatonBars: bubble output.1 drawn here
+== log-c4s-outside
+11-27 04:40:27.244  4482  4482 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 04:40:27.244  4482  4482 I OutputPanel: router stopped

@@ -1,0 +1,91 @@
+== log-home-key
+11-27 04:49:40.989  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:49:41.068  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:49:43.971  4482  4482 I MelatonBars: popup tap 1893,1892: box 9
+11-27 04:49:46.510  4482  4482 I MelatonBars: popup tap 1893,1815: box 11
+11-27 04:49:46.510  4482  4482 I OutputPanel: open: router started
+11-27 04:49:46.511  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:49:46.512  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:49:46.516  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:49:51.295  4482  4482 I MelatonBars: Back (key): closes output.1
+11-27 04:49:51.295  4482  4482 I OutputPanel: router stopped
+== log-home-ledge
+11-27 04:50:03.015  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:50:03.074  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:50:06.004  4482  4482 I MelatonBars: popup tap 1893,1892: box 9
+11-27 04:50:08.544  4482  4482 I MelatonBars: popup tap 1893,1815: box 11
+11-27 04:50:08.545  4482  4482 I OutputPanel: open: router started
+11-27 04:50:08.545  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:50:08.546  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:50:08.549  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:50:13.229  4482  4482 I MelatonBars: edge swipe on the popup: Back
+11-27 04:50:13.231  4482  4482 I MelatonBars: Back (edge swipe): closes output.1
+11-27 04:50:13.231  4482  4482 I OutputPanel: router stopped
+== log-home-outside
+11-27 04:50:47.398  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:50:47.470  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:50:50.400  4482  4482 I MelatonBars: popup tap 1893,1892: box 9
+11-27 04:50:52.937  4482  4482 I MelatonBars: popup tap 1893,1815: box 11
+11-27 04:50:52.938  4482  4482 I OutputPanel: open: router started
+11-27 04:50:52.939  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:50:52.940  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:50:52.943  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:50:57.607  4482  4482 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 04:50:57.608  4482  4482 I OutputPanel: router stopped
+== log-home-redge
+11-27 04:50:25.215  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:50:25.321  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:50:28.218  4482  4482 I MelatonBars: popup tap 1893,1892: box 9
+11-27 04:50:30.757  4482  4482 I MelatonBars: popup tap 1893,1815: box 11
+11-27 04:50:30.757  4482  4482 I OutputPanel: open: router started
+11-27 04:50:30.758  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:50:30.760  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:50:30.762  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:50:35.430  4482  4482 I MelatonBars: edge swipe on the popup: Back
+11-27 04:50:35.431  4482  4482 I MelatonBars: Back (edge swipe): closes output.1
+11-27 04:50:35.431  4482  4482 I OutputPanel: router stopped
+== log-home-swipeup
+11-27 04:51:09.261  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:51:09.343  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:51:12.266  4482  4482 I MelatonBars: popup tap 1893,1892: box 9
+11-27 04:51:14.803  4482  4482 I MelatonBars: popup tap 1893,1815: box 11
+11-27 04:51:14.804  4482  4482 I OutputPanel: open: router started
+11-27 04:51:14.804  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:51:14.805  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:51:14.808  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:51:19.921  4482  4482 I MelatonBars: swipe up on output.1: Home
+11-27 04:51:19.923  4482  4482 I OutputPanel: router stopped
+== log-batt-home
+11-27 04:52:23.752  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:52:23.836  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:52:26.755  4482  4482 I MelatonBars: popup tap 1893,1892: box 9
+11-27 04:52:29.294  4482  4482 I MelatonBars: popup tap 1893,1815: box 11
+11-27 04:52:29.295  4482  4482 I OutputPanel: open: router started
+11-27 04:52:29.295  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:52:29.296  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:52:29.299  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:52:33.959  4482  4482 I MelatonBars: popup tap 1901,43: outside: closed
+11-27 04:52:33.959  4482  4482 I OutputPanel: router stopped
+== log-batt-set
+11-27 04:51:59.627  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:51:59.799  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:52:02.640  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:52:05.187  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:52:05.188  4482  4482 I OutputPanel: open: router started
+11-27 04:52:05.188  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:52:05.190  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:52:05.200  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:52:09.089  4482  4482 I MelatonBars: popup bar tap: battery (open: output.1)
+11-27 04:52:09.089  4482  4482 I OutputPanel: router stopped
+11-27 04:52:09.112  4482  4482 I MelatonBars: bubble battery drawn here
+11-27 04:52:12.997  4482  4482 I MelatonBars: popup tap 600,1500: outside: closed
+== log-screen
+11-27 04:53:07.966  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:53:08.056  4482  4482 I MelatonBars: bubble quickaccess drawn here
+11-27 04:53:10.966  4482  4482 I MelatonBars: popup tap 1893,1855: box 9
+11-27 04:53:13.505  4482  4482 I MelatonBars: popup tap 1893,1778: box 11
+11-27 04:53:13.505  4482  4482 I OutputPanel: open: router started
+11-27 04:53:13.506  4482  4482 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 04:53:13.507  4482  4482 I OutputPanel: rows: Speakers*
+11-27 04:53:13.513  4482  4482 I MelatonBars: bubble output.1 drawn here
+11-27 04:53:18.292  4482  4482 I OutputPanel: router stopped

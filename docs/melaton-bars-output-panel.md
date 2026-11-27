@@ -5,6 +5,8 @@ StaticForge #1327. Quick Access's Output tile (`qa:output`) and the media sessio
 definition the page writes down, so it opens and moves media with the page asleep (`cafeready-background`). Android's own
 Media output switcher is not opened. The layout definition is the rule `melaton-bars-native-layouts`; the full text of this
 one is the header comment of `public/scripts/comp/wmOutputPanel.js` (builder), `public/css/wm-output-panel.css` (look).
+For how the app presents, fits, closes and keeps the panel, this file is the current text: the header comment's lines on the
+name's inset and on closing after a row press are older (not edited here, so that no client update goes out for a comment).
 
 ## Roles
 
@@ -29,14 +31,31 @@ It takes Quick Access's place.
 
 | Field | Meaning |
 | --- | --- |
-| `out-name:<i>` | the output's name (the page's sample is only for the box; strip: centred on `cx`, wide: from `x`) |
+| `out-name:<i>` | the output's name (the page's sample is only for the box; strip: centred on `cx`, wide: from `x`). The app keeps it inside the row's box: in the strip the box is the row's hit box less 1u each side, two lines when the row has room, else an ellipsis (a single word that is too wide is cut with an ellipsis, not split) |
 | `out-g:<i>:<glyph>` | the row's picture: the app draws the one of the output's kind (`wmShell` `outputGlyph`) |
 | `out-sel:<i>` | the highlight box and the check: drawn only for the output media plays on |
 | `out-empty` | `output.0`'s text |
 
+## Presentation (#1395)
+
+The app presents the panel as Quick Access is presented: a drawer, with the program under it pushed aside by its width (a
+still of a program; over Melaton Mobile its page pushes its own content) and the wallpaper blurred under the glass. From
+the Output tile it is the next page of the open Quick Access, in the same window over the same still. From the media
+session button (nothing open) it comes in like Quick Access. It is drawn once, when the app has its rows (600 ms at the
+latest).
+
 ## Message handling
 
 While up, the app updates the rows from its route list (switching to the role of the new row count when outputs come or go)
-and the current mark after a move. A press outside the panel, Home or Back closes it, as Quick Access; a row press closes it
-once the move is done or has failed. The page is asked for the layouts again when the workspace colour, side, layout or
-columns change, or `wmOutputPanel.VERSION` is bumped (`wmQuickAccess.signature(role)`).
+and the current mark after a move. A row press moves media and **the panel stays up**, so the mark is seen to move.
+
+It closes, and the media router stops (after a move still under way is done), on: a press outside the panel; Back (a Back
+key that goes through Android's input pipeline, the app's soft key Back, a side edge swipe, also one that starts on the
+panel, and the title bar's ok when that is Back); Home, also by swiping up from the bottom; another popup, program, Start
+or the Android tray; screen off, lock, or the bars going off. A Back is not also passed to the program under the panel.
+Quick Access closes the same ways. A key injected with `adb shell input keyevent 4` does not reach an accessibility
+service's key filter, so it does not close either panel: test Back with the soft key, an edge swipe, or a real key.
+The other bar popups (volume, status bubbles, notes, soft key menus) do not take Back.
+
+The page is asked for the layouts again when the workspace colour, side, layout or columns change, or
+`wmOutputPanel.VERSION` is bumped (`wmQuickAccess.signature(role)`).
