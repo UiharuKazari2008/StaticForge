@@ -1,0 +1,12 @@
+{
+ "sources": {
+  "app-update-waiting": {
+   "area": "modules/androidAppUpdatePush.js tellFleet (modules/fleetNotices.js routine kind appUpdate): the phone's staged app update waits for a silent install route (Shizuku / ADB 5555); the server inbox notice app-update-waiting:<device>:<versionCode>",
+   "trigger": "server-push",
+   "action": "a tap opens Fleet's Devices page (data.page devices, like the phone consent notices); the notice is what an agent or Yukimi acts on: start Shizuku or turn 5555 back on, the app then installs by itself",
+   "sound": false,
+   "switch": "Fleet Manager > Notifications > An app update waits on a phone (settings.notify.appUpdate, default OFF: the Supervisor is told in the Manager Session's inbox, the phone and desktop only when she switches it on)",
+   "note": "N1/N4/N5 ok: a call to action for whoever runs Fleet (a phone cannot install its update until Shizuku or 5555 is back), default silent to Yukimi's devices; N2 ok: a wait, not an echo of her action; N6: one notice per phone + versionCode + reason (the delivery record 'waiting' with the same reason is not told again, the app repeats the report whenever its link returns); N7: alert false, no sound; N9: one id per phone and versionCode, updated in place, lives 4 h; N10: the reason is in the words (which route is missing). Replaces the Android installer prompt, which is gone from the app (#1309)."
+  }
+ }
+}

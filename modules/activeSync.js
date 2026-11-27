@@ -1191,9 +1191,10 @@ function event(globalResources, wsServer, clientInfo, data) {
     const test = me.kind === 'device' && isTestDevice(me.id);
     if (test && name !== 'inbox.posted' && /^notify\./.test(name)) return 0;
     // server modules that take a device's news themselves (Melaton Videos imports notify.posted, #861)
-    if (me.kind === 'device') for (const tap of deviceEventTaps) { if (test && name !== 'inbox.posted') continue; try { tap(name, src.detail == null ? null : src.detail, me); } catch (_) { /* the tap's own fault */ } }
+    // the app's report that its staged update waits for a silent install route (modules/androidAppUpdatePush.js, #1309) is heard from a test device too: the lane proves it
+    if (me.kind === 'device') for (const tap of deviceEventTaps) { if (test && name !== 'inbox.posted' && name !== 'apps.updateWaiting') continue; try { tap(name, src.detail == null ? null : src.detail, me); } catch (_) { /* the tap's own fault */ } }
     // news for the server only: a notice's delivery confirmation (notificationInbox, #908) goes to no computer
-    if (me.kind === 'device' && name === 'inbox.posted') return 0;
+    if (me.kind === 'device' && (name === 'inbox.posted' || name === 'apps.updateWaiting')) return 0;
     let detail = src.detail == null ? null : src.detail;
     // the partnership's notification filter (#979): a notification it does not send to computers stops here (the
     // server's own modules above still took it), the rest carry whether they show in the notification area

@@ -65,7 +65,7 @@ function accountLoginOn(gr) {
 }
 
 // the data.kind of a routine notice already in the inbox -> the Fleet Manager switch that governs it
-const ROUTINE_KINDS = { maintenance: 'maintenance', 'usage-flag': 'usage' };
+const ROUTINE_KINDS = { maintenance: 'maintenance', 'usage-flag': 'usage', 'app-update-waiting': 'appUpdate' };
 
 function clearNotice(id) {
     try { return inbox.clear(USER, id, 'server'); } catch (_) { return false; }
@@ -185,7 +185,7 @@ function sweepRoutine(gr) {
             if (off(d) && clearNotice(r.id)) { n += 1; return; }
             // a notice from before the lives were set (Nov 26 2026, #1291: two days for "is done" looked like never; one row per
             // item, never stacked): it goes once its kind's life is over, counted from when it was raised
-            const life = { 'work-done': LIFE.done, 'work-attention': LIFE.attention, 'account-login': LIFE.login, maintenance: LIFE.routine, 'usage-flag': LIFE.routine }[d.kind];
+            const life = { 'work-done': LIFE.done, 'work-attention': LIFE.attention, 'account-login': LIFE.login, maintenance: LIFE.routine, 'usage-flag': LIFE.routine, 'app-update-waiting': LIFE.routine }[d.kind];
             const raised = Number(r.createdAt) || 0;
             if (life && raised && Date.now() - raised > life && Number(r.expiresAt) > raised + life && clearNotice(r.id)) n += 1;
         });

@@ -1311,7 +1311,8 @@
         ['workDone', 'A work item I started is done'],
         ['workAttention', 'A work item needs me (a question for me, or it stopped)'],
         ['maintenance', 'Fleet maintenance reports (daily checks and cleanup)'],
-        ['usage', 'Usage and cost flags']
+        ['usage', 'Usage and cost flags'],
+        ['appUpdate', 'An app update waits on a phone (Shizuku or ADB 5555 is down)']
     ];
     function notifyHtml() {
         const n = qsnap.notify && typeof qsnap.notify === 'object' ? qsnap.notify : {};

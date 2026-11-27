@@ -161,7 +161,8 @@ function maxReportedVersionCode() {
     return max;
 }
 
-const DELIVERY_STATES = ['sending', 'staged', 'failed', 'installed'];
+// 'waiting': the app has the update staged and waits for a silent install route (Shizuku / 5555), #1309; detail { attempts, why }
+const DELIVERY_STATES = ['sending', 'staged', 'waiting', 'failed', 'installed'];
 function recordDelivery(deviceId, versionCode, state, detail) {
     const id = String(deviceId || '');
     if (!id || !DELIVERY_STATES.includes(state)) return;

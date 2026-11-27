@@ -17,8 +17,14 @@
  * { temp, name, versionCode, versionName, sha256, size, buildId, sha } asks the phone to check and stage it.
  * Pushed only when: the phone is online with a connection, its background service answers apps.update (the
  * hello's ops), its reported versionCode is > 0 and < the release's (an app without +<code> is an old build
- * with no apps.update), and no delivery for this versionCode is staged / sending / installed. One at a time
+ * with no apps.update), and no delivery for this versionCode is staged / sending / waiting / installed. One at a time
  * per phone. A 'failed' delivery is tried again at the phone's next hello or the next release, nothing else.
+ *
+ * The app never opens Android's installer (StaticForge #1309): when no silent route (Shizuku, local ADB 5555) is up at
+ * Restart Now, or every route failed, the staged update WAITS on the phone and installs by itself when one is back. The app
+ * tells the server why once (as_event apps.updateWaiting): the delivery becomes 'waiting' with the reason, and Fleet is told
+ * quietly, once per phone + versionCode + reason (fleetNotices kind appUpdate: the Supervisor's manager note; the phone only
+ * when that switch is on in Fleet Manager). The phone's next hello at the new versionCode makes it 'installed'.
  */
 'use strict';
 
@@ -148,14 +154,21 @@ async function sendServerFile(globalResources, deviceId, filePath, opts = {}) {
  * coord setting 'androidUpdates' { hold: true } stops all deliveries until it is lifted (Fleet / a work item that proved the
  * silent install on the emulator lane lifts it). Default: held.
  */
-function held() {
+function isTest(deviceId) {
+    try { return require('./testDevices').isTestDevice(deviceId); } catch (_) { return false; }
+}
+
+function held(deviceId) {
     if (process.env.ANDROID_UPDATES_TEST_UNHELD === '1') return false; // the delivery tests; never set in the server
+    // a marked test device (the emulator lane, modules/testDevices.js) is never held: the lane proves the real delivery path
+    // and the silent install on emulators, and no person's phone is in it (#1309)
+    if (deviceId && isTest(deviceId)) return false;
     try { const s = require('./agentCoord/store').getSetting('androidUpdates'); return !(s && s.hold === false); } catch (_) { return true; }
 }
 
 async function consider(deviceId, release) {
     if (!ctx || !release || !deviceId || inflight.has(deviceId)) return null;
-    if (held()) return null;
+    if (held(deviceId)) return null;
     const have = versionOf(deviceId);
     const code = Number(release.versionCode) || 0;
     if (!(have.versionCode > 0 && have.versionCode < code)) return null;
@@ -168,7 +181,7 @@ async function consider(deviceId, release) {
     let prior = null;
     try { prior = ctx.builds.deliveryOf(deviceId); } catch (_) { prior = null; }
     // 'sending' with nothing running here is a delivery cut by a restart: not a reason to stop
-    if (prior && prior.versionCode === code && (prior.state === 'staged' || prior.state === 'installed')) return null;
+    if (prior && prior.versionCode === code && (prior.state === 'staged' || prior.state === 'waiting' || prior.state === 'installed')) return null;
     // at most MAX_ATTEMPTS per versionCode (a 'sending' cut by a restart was counted when it began)
     const before = attemptsOf(prior, code);
     if (before >= MAX_ATTEMPTS) {
@@ -196,6 +209,62 @@ async function consider(deviceId, release) {
     }
 }
 
+// ---------------------------------------------------------------- the update that waits for a silent route (#1309)
+
+const OWN_PACKAGE = 'jp.net.seventhreeseven.dreamscape';
+const WAITING_EVENT = 'apps.updateWaiting';
+const noticed = new Set();              // `${deviceId}|${versionCode}|${why}` already told to Fleet in this process (the delivery record covers a restart)
+
+/** One line of the app's reason: single spaced, cut. */
+function cleanWhy(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, 150); }
+
+/**
+ * The app says its staged update waits (as_event apps.updateWaiting { package, versionCode, versionName, state: 'waiting', why,
+ * tries }). The delivery is recorded 'waiting' with the reason, and Fleet is told ONCE per phone + versionCode + reason: the app
+ * repeats the report whenever its link comes back, so a report equal to the stored one is not told again.
+ * @returns {'told'|'recorded'|null}
+ */
+function onWaiting(name, detail, me) {
+    if (!ctx || name !== WAITING_EVENT || !me || !me.id || !detail || typeof detail !== 'object') return null;
+    if (detail.package !== OWN_PACKAGE || detail.state !== 'waiting') return null;
+    const code = Number(detail.versionCode) || 0;
+    const why = cleanWhy(detail.why);
+    if (code <= 0 || !why) return null;
+    const deviceId = me.id;
+    let prior = null;
+    try { prior = ctx.builds.deliveryOf(deviceId); } catch (_) { prior = null; }
+    const same = !!prior && prior.versionCode === code && prior.state === 'waiting' && detailOf(prior).why === why;
+    const key = `${deviceId}|${code}|${why}`;
+    // a phone already at this version (installed) is not waiting any more: a late report changes nothing
+    const have = versionOf(deviceId);
+    if (have.versionCode >= code) return null;
+    if (!same) record(deviceId, code, 'waiting', JSON.stringify({ attempts: attemptsOf(prior, code), why }));
+    if (same || noticed.has(key)) return 'recorded';
+    noticed.add(key);
+    if (noticed.size > 500) noticed.clear();
+    tellFleet(deviceId, code, why, detail.versionName);
+    return 'told';
+}
+
+/**
+ * ONE quiet Fleet notice (fleetNotices.routine kind 'appUpdate', switch appUpdate in Fleet Manager, default off): the Supervisor
+ * hears of it in the Manager Session's inbox; the phone / desktop only when she switched the kind on. No sound (alert false).
+ * Its tap opens the Devices page (data.page 'devices', like the phone consent notices).
+ */
+function tellFleet(deviceId, code, why, versionName) {
+    let name = deviceId.slice(0, 8);
+    try { const r = ctx.as.deviceRow(ctx.globalResources, deviceId); if (r && r.name) name = String(r.name).slice(0, 60); } catch (_) { /* the id */ }
+    try {
+        // notice: app-update-waiting
+        require('./fleetNotices').routine('appUpdate', {
+            id: `app-update-waiting:${deviceId}:${code}`, alert: false,
+            title: `${name}: update ${versionName || code} waits`,
+            text: `${why}. It installs by itself when Shizuku or ADB 5555 is back.`,
+            data: { app: 'claudedesk', kind: 'app-update-waiting', deviceId, versionCode: code, page: 'devices' }, ttlMs: 4 * 3600 * 1000
+        });
+    } catch (error) { ctx.log(`waiting notice: ${error.message}`); }
+}
+
 /** A phone said hello (the tap in activeSync.hello runs after its row holds the hello's app string). */
 async function onHello(d) {
     if (!ctx || !d || !d.id) return null;
@@ -211,7 +280,6 @@ async function onHello(d) {
             if (prior && prior.versionCode > 0 && prior.versionCode <= have.versionCode && prior.state !== 'installed') record(deviceId, prior.versionCode, 'installed', `reported ${have.versionCode}`);
         } catch (_) { /* no delivery */ }
     }
-    if (d.test) return null;
     let latest = null;
     try { latest = ctx.builds.latestRelease(); } catch (_) { latest = null; }
     return consider(deviceId, latest);
@@ -227,7 +295,7 @@ async function onRelease(release) {
     try { devices = ctx.as.list(ctx.globalResources, null).devices || []; } catch (_) { devices = []; }
     const jobs = [];
     for (const dev of devices) {
-        if (!dev.online || dev.platform === 'cafeready' || dev.test) continue;
+        if (!dev.online || dev.platform === 'cafeready') continue;
         jobs.push(consider(dev.deviceId, latest));
     }
     return Promise.all(jobs);
@@ -265,7 +333,12 @@ function start(globalResources, deps = {}) {
     const guard = (p) => { Promise.resolve(p).catch((error) => log(error.message)); };
     const helloTap = (d) => { setImmediate(() => guard(onHello(d))); };
     const releaseTap = (release) => { setImmediate(() => guard(onRelease(release))); };
-    if (!tappedOn.has(as)) { tappedOn.add(as); as.onDeviceHello(helloTap); }
+    if (!tappedOn.has(as)) {
+        tappedOn.add(as);
+        as.onDeviceHello(helloTap);
+        // the app's report that its staged update waits for Shizuku / 5555 (the tap checks ctx: it has no unregister)
+        if (typeof as.onDeviceEvent === 'function') as.onDeviceEvent((name, detail, me) => { try { onWaiting(name, detail, me); } catch (error) { log(error.message); } });
+    }
     builds.events.on('release', releaseTap);
     const handle = { stop() { builds.events.off('release', releaseTap); ctx = null; } };
     ctx = { globalResources, builds, as, sendFile, log, handle };
@@ -276,6 +349,7 @@ function resetForTests() {
     ctx = null;
     inflight.clear();
     supports.clear();
+    noticed.clear();
 }
 
-module.exports = { start, deliveriesSnapshot, parseApp, sendServerFile, _test: { onHello, onRelease, consider, resetForTests } };
+module.exports = { start, deliveriesSnapshot, parseApp, sendServerFile, _test: { onHello, onRelease, consider, onWaiting, resetForTests } };

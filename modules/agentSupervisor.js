@@ -223,7 +223,7 @@ function cleanReviewer(r, base) {
 // What Fleet may put on Yukimi's phone (#1196): a work item she started is done, or one needs her (Input Required / failed).
 // Routine alerts (maintenance, usage flags, ...) go to the Supervisor first and reach the phone only when switched on.
 // Default is no notification: a key not listed here, or a new alert source, never notifies.
-const NOTIFY_DEFAULTS = { workDone: true, workAttention: true, maintenance: false, usage: false, accountLogin: true };
+const NOTIFY_DEFAULTS = { workDone: true, workAttention: true, maintenance: false, usage: false, appUpdate: false, accountLogin: true };
 function cleanNotify(n, base) {
     const src = n && typeof n === 'object' ? n : {};
     const out = {};
