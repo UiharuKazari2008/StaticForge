@@ -86,8 +86,13 @@ function publishHold(h, now) {
             alert: false,
             digest: `hold:${h.leaseId || ''}:${endsAt || 0}`,
             title: clip(`${label} is in use by ${who}`, 120),
-            text: clip(`${clip(h.why, 160) || 'In use'}.${until}`, 300),
-            data: { app: APP, kind: 'device-hold', device, leaseId: h.leaseId, page: 'devices' },
+            text: clip(`${clip(h.why, 160) || 'In use'}.${until} End takes the phone back now.`, 300),
+            // a call to action (Yukimi, Nov 26 2026: "your notification has no call to action"): End takes the phone back
+            actions: [{ id: 'end', label: 'End' }],
+            data: {
+                app: APP, kind: 'device-hold', device, leaseId: h.leaseId, page: 'devices',
+                buttons: [{ id: 'end', label: 'End' }], answerType: 'device_consent_answer'
+            },
             expiresAt
         });
     } catch (_) { return false; }

@@ -266,6 +266,20 @@ t('a lease an older process granted (consent none) is asked about at its first g
     assert.ok(/needs Yukimi's Allow/.test(lastSteer('a')), lastSteer('a'));
 });
 
+t('endHold: End on the in-use notice takes the phone back, tells the holder, hands on', () => {
+    clearDevice('a53');
+    const r = dq.request('a', 'a53', { why: 'end me' });
+    assert.strictEqual(dc.answer(r.lease.id, 'allow', 'test').ok, true);
+    const rb = dq.request('b', 'a53', { why: 'next' });
+    assert.strictEqual(rb.granted, false);
+    const e = dc.endHold('a53', 'household:test');
+    assert.strictEqual(e.ok, true);
+    assert.strictEqual(row(r.lease.id).state, 'released');
+    assert.ok(/ended by household:test/.test(lastSteer('a')), lastSteer('a'));
+    assert.strictEqual(dq.snapshotConsent().holds.length, 0, 'no hold left');
+    assert.strictEqual(dq.snapshotConsent().asks.length, 1, 'the next in line is asked about now');
+});
+
 t('an older process sweeping the table (code from before consent: ends_at <= now means run out) leaves a pending ask alone', () => {
     clearDevice('a53');
     const r = dq.request('a', 'a53', { why: 'old sweep' });

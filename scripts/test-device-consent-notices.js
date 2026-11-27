@@ -32,6 +32,8 @@ const cn = require('../modules/deviceConsentNotices');
 
 // a stubbed modules/deviceConsent.js (P1 writes the real one): answers recorded, the file need not exist
 const answers = [];
+const ends = [];
+let nextEnd = { ok: true };
 const patches = [];
 let nextResult = { ok: true };
 const stubPath = path.resolve(__dirname, '../modules/deviceConsent.js');
@@ -40,7 +42,7 @@ Module._resolveFilename = function (req, parent, ...rest) {
     if (parent && /296-deviceConsentHandler\.js$/.test(parent.filename || '') && /deviceConsent$/.test(req)) return stubPath;
     return origResolve.call(this, req, parent, ...rest);
 };
-require.cache[stubPath] = { id: stubPath, filename: stubPath, loaded: true, exports: { answer: (id, a, by) => { answers.push([id, a, by]); return nextResult; }, settings: () => ({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }), setSettings: (p) => { patches.push(p); if (p.onTimeout === 'bogus') throw new Error('onTimeout must be wait, deny, allow'); return Object.assign({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }, p); } } };
+require.cache[stubPath] = { id: stubPath, filename: stubPath, loaded: true, exports: { endHold: (device, by) => { ends.push([device, by]); return nextEnd; }, answer: (id, a, by) => { answers.push([id, a, by]); return nextResult; }, settings: () => ({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }), setSettings: (p) => { patches.push(p); if (p.onTimeout === 'bogus') throw new Error('onTimeout must be wait, deny, allow'); return Object.assign({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }, p); } } };
 
 const loud = () => sent.filter((m) => m && m.type === 'inbox_updated' && m.data.reason === 'new' && m.data.notice.alert).length;
 const mark = () => { sent.length = 0; toPhones.length = 0; };
@@ -115,7 +117,7 @@ async function test(name, f) {
         const n = mine()[0];
         assert.strictEqual(n.id, 'device-hold:fold');
         assert.strictEqual(n.title, 'Fold is in use by Claude 4');
-        assert.ok(/^build check\. Until \d\d:\d\d\.$/.test(n.text), n.text);
+        assert.ok(/^build check\. Until \d\d:\d\d\. End takes the phone back now\.$/.test(n.text), n.text);
         assert.deepStrictEqual({ kind: n.data.kind, device: n.data.device, leaseId: n.data.leaseId }, { kind: 'device-hold', device: 'fold', leaseId: 'L2' });
         assert.strictEqual(n.expiresAt, h.endsAt + 5 * 60000);
         // the device changes hands: still one row, new text, still silent
@@ -163,6 +165,26 @@ async function test(name, f) {
         assert.strictEqual(replies[0].type, 'device_consent_answer_response');
         assert.strictEqual(replies[0].requestId, 'r1');
         assert.deepStrictEqual(mine().map((n) => n.id), ['device-hold:fold']);
+    });
+
+    await test('the in-use notice carries an End button (a call to action) and the app link sends it', async () => {
+        cn.sync({ asks: [], holds: [hold()] }, {}, {});
+        const n = mine().find((x) => x.id === 'device-hold:fold');
+        assert.ok(n && n.data && n.data.answerType === 'device_consent_answer');
+        assert.deepStrictEqual(n.data.buttons, [{ id: 'end', label: 'End' }]);
+        assert.deepStrictEqual(n.actions, [{ id: 'end', label: 'End' }]);
+        ends.length = 0;
+        await call({ data: { id: 'device-hold:fold', answer: 'end' } }, { userType: 'admin', clientId: 'c1' });
+        assert.deepStrictEqual(ends.map((e) => e[0]), ['fold']);
+        assert.ok(/^household:/.test(ends[0][1]));
+        assert.deepStrictEqual(replies[0].data, { ok: true });
+        assert.strictEqual(mine().filter((x) => x.id === 'device-hold:fold').length, 0, 'its notice is cleared');
+        nextEnd = { ok: false, error: 'Nobody holds that device any more' };
+        await call({ id: 'device-hold:fold', answer: 'end' }, { userType: 'admin', clientId: 'c1' });
+        assert.strictEqual(replies[0].data.ok, false);
+        nextEnd = { ok: true };
+        await call({ id: 'device-hold:fold', answer: 'allow' }, { userType: 'admin', clientId: 'c1' });
+        assert.strictEqual(replies[0].data.ok, false, 'only End answers a hold');
     });
 
     await test('handler: bare lease id, deny, fields in data (the app link)', async () => {

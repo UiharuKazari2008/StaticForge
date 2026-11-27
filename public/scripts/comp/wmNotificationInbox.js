@@ -404,12 +404,14 @@
      */
     function answerKeys(notice) {
         const d = (notice && notice.data) || {};
-        if (d.answerType !== 'device_consent_answer' || !Array.isArray(d.buttons) || d.buttons.length < 2) return null;
+        if (d.answerType !== 'device_consent_answer' || !Array.isArray(d.buttons) || !d.buttons.length) return null;
         const key = (b) => ({ label: String(b.label || b.id).slice(0, 20), action: () => {
             const c = client();
             if (c && typeof c.sendMessage === 'function') void Promise.resolve(c.sendMessage('device_consent_answer', { id: notice.id, answer: String(b.id) }, false)).catch(() => { /* the notice stays: tap again */ });
             close(notice.id);
         } });
+        // the in-use notice has one button (End): Dismiss beside it
+        if (d.buttons.length === 1) return { left: key(d.buttons[0]), right: { label: 'Dismiss', icon: 'dismiss', action: () => { ack(notice.id, 'cleared'); close(notice.id); } } };
         return { left: key(d.buttons[0]), right: key(d.buttons[1]) };
     }
 

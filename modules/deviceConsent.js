@@ -204,6 +204,16 @@ function answer(leaseId, ans, by) {
     return { ok: true, lease: r.lease };
 }
 
+/** End on the in-use notice: the holder of the device loses it now (it is told) and the next in line is asked about. */
+function endHold(device, by) {
+    let dev = '';
+    try { dev = dq.normalise(device); } catch (e) { return { ok: false, error: e.message }; }
+    let r;
+    try { r = dq.forceRelease(dev, by || 'Yukimi'); } catch (e) { return { ok: false, error: e.message }; }
+    changed(dev);
+    return r && r.released ? { ok: true, device: dev } : { ok: false, error: 'Nobody holds that device any more' };
+}
+
 // ---------------------------------------------------------------- the gate
 
 /** Which queue device a target is: a table to extend (name / model patterns), else the id when it is listed. */
@@ -318,4 +328,4 @@ function _reset() {
     lastSig = '';
 }
 
-module.exports = { settings, setSettings, changed, resync, start, answer, check, deviceFor, isReadOnlyShell, DEFAULTS, TARGET_MATCHERS, _setNotices, _reset };
+module.exports = { settings, setSettings, changed, resync, start, answer, endHold, check, deviceFor, isReadOnlyShell, DEFAULTS, TARGET_MATCHERS, _setNotices, _reset };

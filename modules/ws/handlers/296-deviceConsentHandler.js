@@ -14,6 +14,7 @@ const inbox = require('../../notificationInbox');
 //     packet (admin / dev_admin, never the test lane); the set is destructive. Read when Fleet's page opens and after a save.
 
 const ASK_PREFIX = 'device-ask:';
+const HOLD_PREFIX = 'device-hold:';
 const canUse = (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || '')));
 // the household's range for the loud wait (the lease logic itself accepts 1..3600)
 const MIN_WAIT_SEC = 10;
@@ -35,8 +36,19 @@ function registerPackets(handlersCtx) {
         const f = m.data && typeof m.data === 'object' && !Array.isArray(m.data) ? Object.assign({}, m.data, m) : m;
         if (inbox.userOf(ctx.clientInfo) === 'test') { reply(ctx.ws, m, { ok: false, error: 'test device' }); return; }
         let leaseId = String(f.id || f.leaseId || '').trim();
-        if (leaseId.startsWith(ASK_PREFIX)) leaseId = leaseId.slice(ASK_PREFIX.length);
         const answer = String(f.answer || '').toLowerCase();
+        // End on the in-use notice (device-hold:<device>): the holder loses the phone now
+        if (leaseId.startsWith(HOLD_PREFIX) && answer === 'end') {
+            const ci0 = ctx.clientInfo || {};
+            const by0 = `household:${ci0.as && ci0.as.id ? String(ci0.as.id).slice(0, 8) : String(ci0.clientId || ci0.userType || 'client').slice(0, 24)}`;
+            let r0;
+            try { r0 = require('../../deviceConsent').endHold(leaseId.slice(HOLD_PREFIX.length), by0) || { ok: false, error: 'no answer' }; } catch (e) { r0 = { ok: false, error: e.message }; }
+            try { inbox.clear('admin', leaseId, 'server'); } catch (_) { /* gone */ }
+            reply(ctx.ws, m, r0.ok ? { ok: true } : { ok: false, error: r0.error || 'refused' });
+            return;
+        }
+        if (leaseId.startsWith(HOLD_PREFIX)) { reply(ctx.ws, m, { ok: false, error: 'bad request' }); return; } // only End answers a hold
+        if (leaseId.startsWith(ASK_PREFIX)) leaseId = leaseId.slice(ASK_PREFIX.length);
         if (!leaseId || (answer !== 'allow' && answer !== 'deny')) { reply(ctx.ws, m, { ok: false, error: 'bad request' }); return; }
         const ci = ctx.clientInfo || {};
         const by = `household:${ci.as && ci.as.id ? String(ci.as.id).slice(0, 8) : String(ci.clientId || ci.userType || 'client').slice(0, 24)}`;
