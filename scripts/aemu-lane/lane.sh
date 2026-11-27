@@ -16,6 +16,7 @@
 #   lane.sh <id> kill-page | kill-app | start-app | stop-app | home | other | doze on|off | screen on|off
 #   lane.sh <id> net on|off|hang|slow|flaky
 #   lane.sh <id> install-release [buildId] | shizuku start|stop|status | adbd status|tcpip|wireless on|off
+#   lane.sh <id> update state | restart-now | proof [secs]    the app's own silent update (the page's Restart Now bridge)
 #   lane.sh <id> cdp | eval '<js>' | tap X Y | key KEYCODE | text 'str' | tap-text '<regex>' | sh '<cmd>' | adb <args>
 #
 # Caller identity for the coord lease check: --agent <id> or env COORD_AGENT_ID (else AGENT_COORD_ID, else
@@ -476,6 +477,14 @@ page_forward() { # forward the app's DevTools to localhost:$CDP (through the tun
   echo "$p"
 }
 cdp_js() { NODE_PATH=${NODE_PATH:-/home/kanmi/staticforge/node_modules} node "$HERE/lib/cdp.js" "$CDP" "$@"; }
+cdp_val() { # cdp_val '<js>' : the page's result value as plain text (a string result is printed as is, anything else as JSON)
+  cdp_js eval "$1" 2>/dev/null | tail -1 | python3 -c "
+import json,sys
+try: d=json.loads(sys.stdin.read())
+except Exception: sys.exit(1)
+v=d.get('value') if d.get('ok') else None
+print(v if isinstance(v,str) else json.dumps(v))"
+}
 ui_dump() { # ui_dump -> path of a local uiautomator dump of the window hierarchy
   local f=$STATE/ui-$ID.xml
   S uiautomator dump /data/local/tmp/lane-ui.xml >/dev/null 2>&1 && A pull /data/local/tmp/lane-ui.xml "$f" >/dev/null 2>&1 && echo "$f"
@@ -977,6 +986,35 @@ $(lane_probe_ps "$ID" 0)") || die_unreachable
         meta_set ext_sf ""; meta_set ext_logical ""; meta_set ext_method ""
         J ok=b:true removed=b:true;;
       *) die "display add-external [WxH@dpi] | remove-external" 2;;
+    esac;;
+  update)
+    # The app's own silent update, as a person's Restart Now does it (StaticForge #1309 part 3). The page's bridge answers, never Android.
+    #   update state        installed versionCode, the app's own staged / waiting state (page bridge), the SERVER's delivery record of this device
+    #   update restart-now  window.MelatonAppUpdate.restartNow() in the page: { state: installing, via } | { state: waiting, why } | ...
+    #   update proof [secs] ApkInstall log lines, installed versionCode, how many packageinstaller activities / notifications exist now
+    case "${1:-state}" in
+      state)
+        dev=$(meta_get device_id); [ -n "$dev" ] || dev=$(dev_id)
+        page=null; page_forward >/dev/null 2>&1 && page=$(cdp_val 'window.MelatonAppUpdate&&MelatonAppUpdate.state?MelatonAppUpdate.state():"null"')
+        case "$page" in \{*) ;; *) page=null;; esac
+        dl=$(api GET /api/android-builds | python3 -c "
+import json,sys
+d=json.load(sys.stdin); x=(d.get('deliveries') or {}).get(sys.argv[1]); v=(d.get('devices') or {}).get(sys.argv[1])
+print(json.dumps({'delivery':x,'reported':v,'latestVersionCode':max([b['versionCode'] for b in d.get('builds',[])] or [0])}))" "$dev" 2>/dev/null) || dl='{}'
+        J ok=b:true "id=$ID" "installedVersionCode=n:$(app_version)" "page=j:$page" "server=j:$dl";;
+      restart-now)
+        page_forward >/dev/null || die "the app is not running"
+        r=$(cdp_val 'window.MelatonAppUpdate&&MelatonAppUpdate.restartNow?MelatonAppUpdate.restartNow():"{\"state\":\"no bridge\"}"')
+        case "$r" in \{*) ;; *) r="{\"raw\":\"$r\"}";; esac
+        J ok=b:true "id=$ID" "answer=j:$r";;
+      proof)
+        secs=${2:-300}; nowd=$(SR date +%s)
+        SR "logcat -d -v epoch -b main -b system" | awk -v from=$(( nowd - secs )) '{ t=$1+0; if (t >= from) print }' | grep -E 'ApkInstall|packageinstaller|PackageInstaller' | cut -c1-260 > "$STATE/update-$ID.log"
+        pi=$(SR 'dumpsys activity activities' | grep -ci packageinstaller)
+        pn=$(SR 'dumpsys notification --noredact' | grep -ci 'pkg=com.google.android.packageinstaller\|pkg=com.android.packageinstaller')
+        J ok=b:true "id=$ID" "installedVersionCode=n:$(app_version)" "packageinstallerActivities=n:${pi:-0}" "packageinstallerNotifications=n:${pn:-0}" "lastUpdateTime=$(SR dumpsys package "$PKG" | sed -n 's/^ *lastUpdateTime=//p' | head -1)" "logFile=$STATE/update-$ID.log"
+        cat "$STATE/update-$ID.log";;
+      *) die "update state | restart-now | proof [secs]" 2;;
     esac;;
   now) J ok=b:true "deviceMs=n:$(SR 'date +%s%3N')" "localMs=n:$(now_ms)" "skewMs=n:$(dev_skew)";;
   notifs)

@@ -15,6 +15,14 @@ shade and external display shots, a 2 GB A53 guest (a53-3: the first-start downl
 three times while Ruiko was at 100 % CPU, so the app never reached its page), real audio capture (not possible with
 `-no-audio`), `aemu-fold-3/4` and `aemu-a53-4` (not created by me; other agents created some of them with this script).
 
+**Written Nov 27 2026 00:15 (part A2, #1309) but not yet run on any instance, because Ruiko's CPU stayed at 94-100 % from 22:49
+to this line (the guard answers exit 5; no guard was raised):** `lane.sh <id> update state|restart-now|proof` (the app's own silent
+update), `lane.sh <id> app-port`, `reset` restoring the app's port to 5555, the adb re-registration of an unlisted emulator
+(see Gotchas), `scripts/aemu-lane/tests/accept-1272.sh` (the example acceptance, see "Example acceptance: #1272"). Still to run:
+`reset` from golden, `posture closed|half` (the black display 0), the fold shade and external-display shots, the two update proofs
+(Shizuku route; waiting, then installing by itself), the #1272 run. The `app-update-waiting` Fleet notice cannot be seen on a lane
+instance: since #1334 a test device raises no notice, by design; its delivery record (`waiting` + why) is the lane evidence.
+
 ## Rules of the lane (HARD)
 
 - **Never Ruiko's speakers.** Ruiko is Yukimi's desktop PC. Every start carries `-no-audio`
@@ -135,6 +143,8 @@ Release the instance when your test ends. Leave it running: the reaper stops it 
 | `$L $I install-release [buildId] [--force]` | newest server release (`GET /api/android-builds`), sha256 checked, `adb install -r -g` on this emulator only, once per build |
 | `$L $I shizuku start\|stop\|grant\|status` | Shizuku as the shell user |
 | `$L $I adbd status\|tcpip [port]\|usb\|gate on\|off\|wireless on\|off` | the guest's adbd: 5555, wireless debugging; `gate` is the manual shim below |
+| `$L $I update state\|restart-now\|proof [secs]` | the app's own silent update (#1309 part 3): `state` = installed versionCode + the page bridge's staged / waiting state + the SERVER's delivery record of this device; `restart-now` = `window.MelatonAppUpdate.restartNow()` in the page (what Restart Now does); `proof` = the `ApkInstall` log lines, installed versionCode, how many packageinstaller activities / notifications exist (must be 0) |
+| `$L $I app-port [N]` | the app's local-ADB port preference (Advanced Tools > Port), default 5555; only the port changes. `reset` does it by itself |
 | `$L $I cdp` / `eval '<js>'` | the page's DevTools pages / run JavaScript in the page |
 | `$L $I tap X Y` / `key KEYCODE` / `text 'str'` / `tap-text '<regex>'` | input on display 0; `tap-text` taps an Android view by its text (uiautomator) |
 | `$L $I sh '<cmd>'` / `su '<script>'` / `adb <args>` | shell / root shell (userdebug `su`) / adb, pinned to the serial |
@@ -262,6 +272,27 @@ sound are told apart by the four log sources above.
 
 ## Gotchas
 
+- **An emulator that booted but adb does not list it** (`emulator-<port> not found`, or `offline` for ever): Ruiko's adb server was restarted
+  after the emulator started, or was not up at its start, so the emulator's own registration is lost. Do NOT stop the process
+  (that kills a boot another agent is waiting for). `wait_boot` and `status` register it again: they send the server's smart socket
+  `host:emulator:<console port + 1>` through the instance's own tunnel, which is what the emulator does at its start. **Not yet proven
+  on an unlisted booted emulator** (one try by hand on `aemu-fold-1` at 23:23 sent the line, got an empty answer and the serial
+  stayed unlisted 4 s later; that instance was stopped by its next holder before it could be tried again). Only when the register
+  call does not bring it back is the process stopped and started again (`up` does that after waiting 240 s for a boot in progress).
+- **A tunnel that forwards an old console port.** The tunnel (`ssh -L <tunnel>:5037 -L <console> -L <cdp>`) is one per instance and is
+  kept across commands. An instance that moved ports (fold-1 left console 5600 for its pool row 5556) kept a tunnel to 5600, so every
+  console command failed. `tunnel()` now checks the ssh command line against the pool row and replaces it.
+- **One agent id can hold a lease several parts asked for.** Parts of one planner session share one coord id, so a queue row asked for
+  by part B is granted to "you" in another part. Read the row's `why` (`coord_devices`) before you drive an instance, and never run a
+  retry loop of `up` or `create` on an instance whose lease is not clearly yours: `up` stops a process adb does not list.
+- **After `reset`, or after a reboot test, the app's local-ADB port may be 5556.** The reboot test (`tests/reboot-recovery.sh`) moves it
+  because the emulator's own adbd always listens on 5555. `reset` puts it back to 5555 (`appPort5555Restored` in its answer); by hand
+  `lane.sh <id> app-port`.
+- **Ruiko's CPU is the bottleneck, not its memory.** Two legacy emulators of other sessions (`fold7-test` 5570 and `DSFold7` 5580)
+  take about 22 % of the machine each, a Gradle build 10-30 %, one lane instance about 22 %. With those running `lane.sh up` answers
+  exit 5 for an hour (CPU mean 94-100 %, limit 85 %). Nothing in the lane may raise the guard on its own; the agent that needs the
+  instance asks the planner, or waits.
+
 - **A first provision needs the app's ~211 MB page pack and fails while Ruiko is saturated.** At 100 % CPU the guest
   pings its host at 300-500 ms and the download crawls (35 KB/s) or ends in "Couldn't download updates"; the server also
   rebuilds the pack on every publish. `provision` presses RETRY by itself and waits up to 25 minutes; when it still fails,
@@ -290,6 +321,33 @@ sound are told apart by the four log sources above.
   launches no emulator process (`start.cmd` ran, nothing appeared within 30 s) is reported at once and `up` tries a second
   start. `up` on an id whose emulator process is already starting waits for it (up to 4 minutes): after a shell timeout during
   a slow first boot run `up` again, it does not kill the boot.
+
+## Example acceptance: #1272 (a text notice sounds with the event's sound while the page is killed)
+
+**Status: written, not yet run (Nov 27 2026 00:15).** This is the shape every later phone acceptance copies: one instance, one lease,
+one script, evidence files, PASS / FAIL per check. Replace step 3 (the notice) and the asserts; keep the rest.
+
+```
+# 1. the instance (coord: the real id, one at a time; see "Check out an instance")
+node -e 'require("/home/kanmi/staticforge/modules/agentCoord/deviceQueue").request("<your id>","aemu-a53-1",{minutes:40,why:"#1272 acceptance"})'
+export COORD_AGENT_ID=<your id>; L=scripts/aemu-lane/lane.sh
+$L aemu-a53-1 up                       # exit 4 / 5 = Ruiko is short of memory / CPU: wait, never raise the guard
+# 2. the whole acceptance, evidence in /tmp/accept-1272-<id>-<time>/ (or --out DIR)
+scripts/aemu-lane/tests/accept-1272.sh aemu-a53-1
+# 3. down + release
+$L aemu-a53-1 down; node -e 'require("/home/kanmi/staticforge/modules/agentCoord/deviceQueue").release("<your id>","aemu-a53-1")'
+```
+
+What `accept-1272.sh` runs, by hand (so a failing step can be run alone):
+
+| step | command | what it must show |
+| --- | --- | --- |
+| page killed | `$L $I kill-app`, then `sh 'pidof jp.net.seventhreeseven.dreamscape'` until a pid is back | the app restarted for its services only: a pid, no `sandboxed_process` / `webview_service`, no activity of the app in `dumpsys activity activities` (`topResumedActivity`), `$L $I cdp` finds no page; server: `GET /api/test-devices` says `service: true, pageInFront: false` |
+| mark | `NOW=$($L $I now \| jq .localMs)` | the server's clock in ms |
+| one text | `$L $I notice push '{"id":"sms:lane-acct:lane-chat-1272","cls":"sms","app":"messaging","alert":true,"title":"New Text Message","text":"From: ...","actions":["reply"],"data":{"app":"messaging","kind":"sms","accountId":"lane-acct","chatGuid":"lane-chat-1272","from":"...","text":"..."}}'` | `POST /api/test-devices/<device id>/notice`: stored in the test lane, then that device's catch-up only (`sent: 1`). The real shape (`cls: sms`, `data.kind: sms`, id `sms:<account>:<chat>`) is what makes the app take the TextMessageNotifier path and what lets the server clear remove its Android notification (memory #316) |
+| shade | `$L $I notifs`, `$L $I shade shade.png` | the app's posted notification (channel `text_messages_wm`); read the PNG: the text is in the shade |
+| sound | `$L $I sound --since $NOW` | `count: 1` (exactly one decision), `sounds[0].file` is the sms event's sound as the page chose it (the default `online.mp3`; never `Alarm*`), `alarmLikeStarted: 0`. The lane runs `-no-audio` with the ringer silent, so the app logs what it would play (`NoteAlerts: sms: ringer 0, sound online.mp3?v=<sha256 prefix>`) and plays nothing: the decision line is the proof, as on the A53 (memory #316) |
+| server clear | `$L $I notice clear sms:lane-acct:lane-chat-1272`, then `notifs` and `shade` again | `{"success":true}`, the notification is gone from `notifs` and from the shade |
 
 ## The A53, our real Samsung
 
