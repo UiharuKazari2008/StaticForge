@@ -28,8 +28,9 @@
  * The tray icon (#nightshadeSyncTrayIcon in app.html: Sync Center's own, SyncCenter.dll's art) shows what all
  * partnerships report together: the turning arrows while any one syncs, then conflict, error, done. It is shown once
  * any partnership has synced on this computer. Balloons (SyncCenter.dll.mui 6980-6987) come from each partnership's
- * changes after it registered: its first completed sync ("<name> is now set up to sync"; once per partnership per
- * computer), new conflicts, new errors. Desktop pages only; nothing here asks the server anything.
+ * changes after it registered: new conflicts and new errors only (the icon may be tucked behind the chevron, and these
+ * need the user). Its first completed sync only shows the icon, with no balloon (N11). Desktop pages only; nothing here
+ * asks the server anything.
  */
 (function (root) {
     'use strict';
@@ -42,7 +43,6 @@
     const KEY = 'melatonSyncCenter';
     // SyncCenter.dll.mui 6980-6987
     const WORDS = {
-        setUp: (name) => [`${name} is now set up to sync`, 'Check this icon anytime for sync status, or click to open Sync Center.'],
         conflicts: ['Sync conflicts have occurred', 'When you see this icon, click it to open Sync Center and check the conflicts.'],
         errors: ['Sync errors have occurred', 'When you see this icon, click it to open Sync Center and check the errors.']
     };
@@ -100,11 +100,11 @@
         for (const [id, e] of parts) {
             const s = snap(e.p);
             if (!s) continue;
-            const name = s.name || id;
+            // a first completed sync only shows the icon (paintTray reveals it once a partnership is set up): never a
+            // balloon, the icon appearing is its own change (notification-discipline N11, N2, #1299)
             if (synced(s) && !setUp.has(id)) {
                 setUp.add(id);
                 setUpChanged = true;
-                balloon('info', WORDS.setUp(name), '');
             }
             const c = s.conflicts || 0;
             const r = s.errors || 0;
@@ -180,6 +180,7 @@
     function balloon(type, words, view) {
         const el = trayIcon();
         if (!el || !root.PopoverManager || typeof root.PopoverManager.showPopover !== 'function') return;
+        // notice: sync-center-balloon
         root.PopoverManager.showPopover(el, type, esc(words[0]), esc(words[1]), false, 10000,
             `<img src="${ART}/sync-center-32.png" alt="" width="32" height="32">`, null,
             { popupId: 'sync-center', position: 'top', arrowPosition: 'bottom-right', onClick: () => open(view || '') });

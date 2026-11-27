@@ -6,9 +6,11 @@
  *
  *   icon      click: Device Center; right-click: Open, each device, and the icon's own options (open
  *             Device Center for a new device, connect / disconnect balloons, the device's notifications)
- *   balloons  a device connected / disconnected (HKCU\...\Melaton Mobile Device Center\NotifyOnConnect),
- *             battery low (15% and under, not charging, once until it charges again), battery fully
- *             charged (100% while charging, once per charge); a click opens Device Center at that device
+ *   balloons  a new device that waits for its setup while a primary device is set (HKCU\...\Melaton Mobile Device
+ *             Center\NotifyOnConnect), battery low (15% and under, not charging, once until it charges again), battery fully
+ *             charged (100% while charging, once per charge); a click opens Device Center at that device.
+ *             A device connecting or leaving is never a balloon: the icon lights or greys and its tooltip lists
+ *             the devices (notification-discipline N11, #1299)
  *   new device   one that waits for the choice opens Device Center (OpenOnConnect); with a primary device set (#979) a
  *                new device never takes Device Center over: a balloon says it connected, and a click opens it there
  *   primary      the icon is the primary device's: green while it is connected, grey while it is away (other
@@ -42,6 +44,7 @@
 
     function balloon(type, title, text, deviceId) {
         if (!icon || !root.PopoverManager || typeof root.PopoverManager.showPopover !== 'function') return;
+        // notice: activesync-tray-balloon
         root.PopoverManager.showPopover(icon, type, esc(title), esc(text), false, 8000, `<img src="${ART}/activesync-32.png" alt="" width="32" height="32">`, null,
             { popupId: 'activesync', position: 'top', arrowPosition: 'bottom-right', onClick: () => openCenter(deviceId) });
     }
@@ -74,7 +77,7 @@
                         // what this icon does on its own (Device Center's Connection Settings is WMDC's dialog and has no place for these)
                         s.items.push({ separator: true },
                             { text: 'Open Device Center when a new device connects', action: 'opt:OpenOnConnect', showIndicator: true, indicatorMark: 'check', checked: setting('OpenOnConnect') },
-                            { text: 'Tell me when a device connects or disconnects', action: 'opt:NotifyOnConnect', showIndicator: true, indicatorMark: 'check', checked: setting('NotifyOnConnect') },
+                            { text: 'Tell me when a new device needs to be set up', action: 'opt:NotifyOnConnect', showIndicator: true, indicatorMark: 'check', checked: setting('NotifyOnConnect') },
                             { text: 'Tell me when a device\'s battery is low or fully charged', action: 'opt:NotifyBattery', showIndicator: true, indicatorMark: 'check', checked: setting('NotifyBattery') },
                             { text: 'Show the device\'s notifications here', action: 'opt:ShowNotifications', showIndicator: true, indicatorMark: 'check', checked: setting('ShowNotifications') });
                     }
@@ -128,11 +131,10 @@
                 if (d.online && !(was && was.online)) {
                     // a primary device is set and this is another one: it joins the list, Device Center stays (#979)
                     const other = st.devices.some((x) => x.primary && x.deviceId !== d.deviceId);
+                    // only a device that waits for its setup is a call to action; one that connected or left is the icon's
+                    // own change (it lights or greys, its tooltip lists the devices) and is never a balloon (N11, N2)
                     if (d.session === 'pending' && !other) { if (setting('OpenOnConnect')) openCenter(d.deviceId); }
                     else if (d.session === 'pending') { if (setting('OpenOnConnect') || setting('NotifyOnConnect')) balloon('info', 'New device connected', `${d.name} is connected. Click here to set it up in Device Center.`, d.deviceId); }
-                    else if (setting('NotifyOnConnect')) balloon('success', 'Device connected', `${d.name} is connected.`, d.deviceId);
-                } else if (!d.online && was && was.online && was.session !== 'pending') {
-                    if (setting('NotifyOnConnect')) balloon('info', 'Device disconnected', `${d.name} is no longer connected.`, d.deviceId);
                 }
             }
             const b = d.online && d.status && d.status.battery;

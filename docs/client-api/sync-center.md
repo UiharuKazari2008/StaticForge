@@ -8,8 +8,9 @@ Everything the desktop syncs is a Sync Center partnership, as on Vista. One page
 - Sync Center's tray icon (`#nightshadeSyncTrayIcon`, SyncCenter.dll's art): the green arrows turning while any
   partnership syncs, then conflict, error or done for all of them together; right-click Open Sync Center, Sync All,
   View sync conflicts, View sync results;
-- Sync Center's balloons (SyncCenter.dll.mui 6980-6987): "<name> is now set up to sync" (a partnership's first completed
-  sync on this computer, once), "Sync conflicts have occurred", "Sync errors have occurred".
+- Sync Center's balloons (SyncCenter.dll.mui 6980-6987): "Sync conflicts have occurred" and "Sync errors have occurred"
+  only (the icon may be tucked behind the chevron and these need the user). A partnership's first completed sync on this
+  computer only shows the icon; the icon appearing is never a balloon (notification discipline N11, #1299).
 
 Partnerships today: `nightshade-profile` (the user's profile on the domain controller, `nightshadeProfileSync.js`).
 `offline-files` is reserved for Offline Files (CaféReady's client-side caching on DreamOS); while it is not registered,
@@ -36,7 +37,7 @@ melatonSyncCenter.open(view)    // Control Panel > Sync Center: '' (partnerships
 {
   id: 'offline-files',                 // unique and stable
   partnership: () => ({                // synchronous, from memory: never a request (it is read on every redraw)
-    name: 'Offline Files',             // the row's name, the balloons' "<name> is now set up to sync"
+    name: 'Offline Files',             // the row's name
     status: 'Last sync on 11/20/2026 2:30 AM',   // Vista's words: 'Ready for first sync', 'Sync in progress',
                                        //   'Sync completed with 1 conflict', 'Sync failed with 1 error', 'Last sync on %1'
     busy: false,                       // a sync is running: the tray's arrows turn, the row shows its bar

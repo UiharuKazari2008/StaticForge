@@ -68,6 +68,7 @@ async function checkSubscriptionExpiration(options = {}) {
         }
         if (!showSubscriptionExpirationToast) {
             const message = `Your NovelAI ${subName} subscription will renew in ${renewalData.timeRemaining}! (${renewalData.renewalDateTimeStr})`;
+            // notice: account-subscription-renewal
             showGlassToast('warning', 'NovelAI Subscription Status', message, false, 15000);
             showSubscriptionExpirationToast = true;
         }
@@ -94,6 +95,7 @@ async function checkFixedTrainingSteps(options = {}) {
             return;
         }
         if (!showFixedTrainingStepsToast) {
+            // notice: account-fixed-anlas-expiring
             showGlassToast('info', 'Account Fixed Anlas Expiring',
                 `You have <i class="nai-anla"></i> ${fixedSteps} Fixed Anlas remaining that will expire.<br/>
                 Consider burning <i class="nai-anla"></i> ${pacingSuggestion} over the next ${renewalData.timeRemaining}.`, false, 300000, '<i class="nai-anla"></i>');
@@ -185,55 +187,6 @@ async function updateSubscriptionNotifications() {
 
     // Update subscription renewal indicator
     updateSubscriptionRenewalIndicator();
-}
-
-/**
- * Test function to show a receipt popover on the wallet tray icon
- * Call this from the browser console: testCreditsIndicatorPopover()
- */
-function testCreditsIndicatorPopover() {
-    if (!window.PopoverManager) {
-        console.error('PopoverManager not available');
-        return;
-    }
-
-    const indicator = document.getElementById('walletTrayIcon');
-    if (!indicator) {
-        console.error('walletTrayIcon not found');
-        return;
-    }
-
-    // Test with mock generation receipt
-    const balance = window.optionsData?.balance;
-    const fixedCredits = balance?.fixedTrainingStepsLeft || 250;
-    const totalCredits = balance?.totalCredits || 350;
-
-    console.log('Testing credits indicator popover with generation receipt');
-    const popoverMessage1 = `<i class="nai-anla"></i> -5 fixed<br>Free: ${fixedCredits}<br>Total: ${totalCredits}`;
-    // a click opens Account Manager's Status, as the wallet's own balloons do (toastManager.js _trayBalloonTarget)
-    const openWallet = () => { if (window.walletTray && typeof window.walletTray.showFlyout === 'function') window.walletTray.showFlyout(indicator, 'status'); };
-    const walletImg = '<img src="/static_images/vista-icons/account-manager-32.png" alt="" width="32" height="32">';
-    showPopover(indicator, 'success', 'Generation Complete', popoverMessage1, false, false, walletImg, null, {
-        position: 'top',
-        arrowPosition: 'bottom-right',
-        popupId: 'generation-complete',
-        onClick: openWallet
-    });
-    startPopoverAutoHideTimer(indicator);
-
-    // Also test balance change after a delay
-    setTimeout(() => {
-        console.log('Testing credits indicator popover with balance change');
-        const messageParts = ['-5 free', `Free: 250`, `Paid: 100`, `Total: 350`];
-        const popoverMessage2 = `<i class="nai-anla"></i> -5 free<br>Free: 250<br>Paid: 100<br>Total: 350`;
-        showPopover(indicator, 'info', 'Balance Updated', popoverMessage2, false, false, walletImg, null, {
-            position: 'top',
-            arrowPosition: 'bottom-right',
-            popupId: 'balance-updated',
-            onClick: openWallet
-        });
-        startPopoverAutoHideTimer(indicator);
-    }, 4000);
 }
 
 // The NovelAI credits and subscription-renewal tray icons are rows and alerts of the wallet tray

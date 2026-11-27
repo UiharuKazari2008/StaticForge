@@ -1,0 +1,36 @@
+{
+  "sources": {
+    "activesync-tray-balloon": {
+      "area": "desktop tray: ActiveSync icon (activeSyncTray.js)",
+      "trigger": "server-push",
+      "action": "a click opens Melaton Mobile Device Center at that device (openCenter(deviceId))",
+      "sound": false,
+      "switch": "Taskbar and Start Menu Properties > Notification Area > Customize (Mobile devices popup, trayPopupHidden 'activesync'); the icon's own menu: 'Tell me when a new device needs to be set up' (NotifyOnConnect) and 'Tell me when a device's battery is low or fully charged' (NotifyBattery)",
+      "note": "N11 satisfied: a device connecting or leaving is never a balloon any more (the icon lights or greys, the tooltip lists devices). What is left is a call to action: a new device that waits for its setup while a primary device is set, and a phone's battery low (plug it in) or fully charged. N4: click opens Device Center. N6: popupId 'activesync' is one balloon at a time, newest wins. Needs a decision: 'Battery fully charged' is on by default (NotifyBattery defaults on)."
+    },
+    "sync-center-balloon": {
+      "area": "desktop tray: Sync Center icon (syncCenter.js)",
+      "trigger": "server-push",
+      "action": "a click opens Control Panel > Sync Center on the conflicts or results page (open(view))",
+      "sound": false,
+      "switch": "Taskbar and Start Menu Properties > Notification Area > Customize (Sync Center popup, trayPopupHidden 'sync-center')",
+      "note": "N11 satisfied: the 'is now set up to sync' balloon is gone (the icon appearing is its own change, N2). Conflicts and errors stay: they need the user and the icon is tucked behind the chevron by default, so the balloon is the only way the condition reaches her; one balloon per rise, N6 popupId 'sync-center'."
+    },
+    "account-subscription-renewal": {
+      "area": "desktop tray: Account Manager (wallet) icon balloon via the toast policy (trayIndicators.js checkSubscriptionExpiration)",
+      "trigger": "boot",
+      "action": "a click on the balloon opens Account Manager > Status (toastManager _trayBalloonTarget)",
+      "sound": false,
+      "switch": "Taskbar and Start Menu Properties > Notification Area > Customize (popup keyed by its title, trayPopupHidden); Melaton Mobile drops it and the Accounts program's Options own the renewal notice (wmAccounts, #829)",
+      "note": "N1/N4/N5 satisfied: a renewal within 7 days is money leaving her account and she can act (open Status). Once per page session (showSubscriptionExpirationToast). Needs a decision: the wallet icon already carries the same fact as an alert row (N11), so it could drop the balloon."
+    },
+    "account-fixed-anlas-expiring": {
+      "area": "desktop tray: Account Manager (wallet) icon balloon via the toast policy (trayIndicators.js checkFixedTrainingSteps)",
+      "trigger": "boot",
+      "action": "a click on the balloon opens Account Manager > Status (toastManager _trayBalloonTarget)",
+      "sound": false,
+      "switch": "Taskbar and Start Menu Properties > Notification Area > Customize (popup keyed by its title, trayPopupHidden); Melaton Mobile drops it and the Accounts program raises its own",
+      "note": "N1/N4/N5 satisfied: free Anlas about to expire is use-it-or-lose-it with a pace suggestion in the text. Once per page session and only inside the 15 day window with more than 500 left. Needs a decision: 5 minute timeout, and the wallet icon carries the same fact (N11)."
+    }
+  }
+}
