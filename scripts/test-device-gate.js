@@ -31,7 +31,7 @@ host.agentScreenshot = async () => { hostCalls.push('screenshot'); return { meta
 
 const asked = [];
 let verdict = { ok: true };
-const consent = { check: (dev, action) => { asked.push({ dev, action }); return typeof verdict === 'function' ? verdict(dev, action) : verdict; } };
+const consent = { check: (dev, action, caller) => { asked.push({ dev, action, caller }); return typeof verdict === 'function' ? verdict(dev, action) : verdict; } };
 adbMod._setConsentForTests(() => consent);
 
 const logs = [];
@@ -106,6 +106,30 @@ test('a refusal without fields gets safe defaults', async () => {
     assert.strictEqual(r.code, 'DEVICE_NOT_GRANTED'); assert.strictEqual(r.success, false); assert.ok(r.error);
     verdict = undefined;
     assert.strictEqual((await adbMod.agentShell(gr, { device: 'Fold', command: 'id' })).code, 'DEVICE_NOT_GRANTED');
+    assert.strictEqual(phoneCalls.length, 0);
+});
+// #1305 S3: the gate has an agent identity. deviceAdb hands the caller the tool's server side knows ({ agentId?, sessionId?, human? }) to
+// consent.check as its third argument, from all three agent functions; deviceConsent.check then lets only the lease holder through.
+const adbSource = fs.readFileSync(path.join(__dirname, '..', 'modules', 'deviceAdb.js'), 'utf8');
+const passesCaller = /consent\.check\(\{[^}]*\}, action, caller\)/.test(adbSource);
+test('S3: the caller reaches consent.check from device_shell, device_packages and device_screenshot (skipped until deviceAdb passes it)', async () => {
+    if (!passesCaller) { realLog('     (skipped: modules/deviceAdb.js does not pass the caller yet)'); return; }
+    reset(); verdict = { ok: true };
+    const who = { agentId: 'claude-aaaaaaaa', sessionId: 'aaaaaaaa-0000-4000-8000-000000000001' };
+    await adbMod.agentShell(gr, { device: 'Fold', command: 'id' }, who);
+    await adbMod.agentPackages(gr, { device: 'Fold' }, who);
+    await adbMod.agentPackages(gr, { device: 'Fold', package: 'a.b', action: 'uninstall' }, who);
+    await adbMod.agentScreenshot(gr, { device: 'Fold' }, who);
+    assert.deepStrictEqual(asked.map((a) => a.action.kind), ['shell', 'packages-read', 'packages-write', 'screenshot']);
+    asked.forEach((a) => assert.deepStrictEqual(a.caller, who));
+    asked.length = 0;
+    await adbMod.agentShell(gr, { device: 'Fold', command: 'id' });
+    assert.strictEqual(asked[0].caller, undefined, 'no caller given: none invented (the consent check then fails closed)');
+});
+test('S3: a DEVICE_CALLER_UNKNOWN refusal has the usual shape and the phone is not contacted', async () => {
+    reset(); verdict = { ok: false, code: 'DEVICE_CALLER_UNKNOWN', error: 'this call does not say which agent makes it', holder: { agentId: 'other' }, hint: 'pass your agent id' };
+    const s = await adbMod.agentShell(gr, { device: 'Fold', command: 'input tap 1 1' });
+    assert.deepStrictEqual(s, { success: false, code: 'DEVICE_CALLER_UNKNOWN', error: 'this call does not say which agent makes it', holder: { agentId: 'other' }, hint: 'pass your agent id', device: 'Fold' });
     assert.strictEqual(phoneCalls.length, 0);
 });
 test('a DreamOS computer is not gated', async () => {

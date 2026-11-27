@@ -26,6 +26,8 @@ const store = require('./store');
 const DEFAULT_MIN = 15;
 const MAX_MIN = 60;
 const IDLE_MS = 10 * 60 * 1000;
+/** After Yukimi denies an agent's ask for a phone, that agent may not ask for it again for this long (#1305 S12). */
+const DENY_HOLD_MS = 10 * 60 * 1000;
 
 const KNOWN = {
     a53: { name: 'A53 phone', aliases: ['a53', 'samsung-a53', 'galaxy-a53', 'a53-phone', 'phone'] },
@@ -97,11 +99,38 @@ function consentDevices() {
     return out;
 }
 
-/** True for a53, fold and any other phone Yukimi listed (settings consentDevices); never for the test browsers. */
+/** Ids from the settings list testConsentDevices (#1305 S1): test devices that go through the FULL consent flow, off by default. */
+function testConsentDevices() {
+    let list = [];
+    try {
+        const s = store.getSetting('deviceConsent');
+        if (s && Array.isArray(s.testConsentDevices)) list = s.testConsentDevices;
+    } catch (_) { /* no settings yet: none */ }
+    const out = [];
+    list.forEach((x) => { try { out.push(normalise(x)); } catch (_) { /* a blank entry */ } });
+    return out;
+}
+
+/** The Fold (Yukimi's own phone) and the test browsers can never be a test-lane device: their asks must reach her, never a test client. */
+function canBeTestLane(device) {
+    let id;
+    try { id = normalise(device); } catch (_) { return false; }
+    return !!id && !OFF_LIMITS.has(id) && !NEVER_CONSENT.has(id);
+}
+
+/** True for a test device (the a53 test phone, an emulator) Yukimi's settings put through the full consent flow on the test lane. */
+function isTestLane(device) {
+    let id;
+    try { id = normalise(device); } catch (_) { return false; }
+    return canBeTestLane(id) && testConsentDevices().includes(id);
+}
+
+/** True for a53, fold and any other phone Yukimi listed (settings consentDevices); a test-lane device always; never for the test browsers. */
 function needsConsent(device) {
     let id;
     try { id = normalise(device); } catch (_) { return false; }
     if (NEVER_CONSENT.has(id)) return false;
+    if (isTestLane(id)) return true; // listed for the consent test lane: asks like a real phone, on the test lane only
     if (TEST_PHONES.has(id) && process.env.DEVICE_QUEUE_TEST_PHONES !== '1') return false; // the test phone never asks Yukimi
     return consentDevices().includes(id);
 }
@@ -148,7 +177,10 @@ function say(agentId, body) {
         if (notifier && agent && agent.status !== 'gone') {
             let how = '';
             try { how = notifier(agent, body, msg) || ''; } catch (_) { how = ''; }
-            if (how && how !== true) store.markDelivered(msg.id, String(how));
+            if (how && typeof how.then === 'function') {
+                // an async notifier (the server's steer): delivered only once it succeeded; a failure leaves the message unread for coord_inbox
+                how.then((v) => { if (v && v !== true) { try { store.markDelivered(msg.id, String(v)); } catch (_) { /* unread stays */ } } }, () => { /* unread stays */ });
+            } else if (how && how !== true) store.markDelivered(msg.id, String(how));
         }
     } catch (_) { /* the grant stands; the waiter sees it in coord_devices */ }
 }
@@ -185,7 +217,13 @@ function sweepRaw(only) {
     const freed = new Set();
     held.forEach((h) => {
         const why = h.consent === 'pending' ? pendingLost(h, t) : (h.ends_at <= t ? 'lease ran out' : lostReason(h.agent_id, h, t));
-        if (why) { finish(h.id, 'expired', why, t); freed.add(h.device); touch(h.device); }
+        if (why) {
+            finish(h.id, 'expired', why, t); freed.add(h.device); touch(h.device);
+            // the holder is told why it lost the device (a normal release says nothing: the agent did it)
+            say(h.agent_id, h.consent === 'pending'
+                ? `Your request for device ${h.device} ended (${why}) before Yukimi answered. Nothing was allowed: do NOT touch the device; request it again if you still need it.`
+                : `Your lease on device ${h.device} ended (${why}). Stop testing on it; request it again if you still need it.`);
+        }
     });
     // waiters whose session is gone leave the queue
     (only ? d.prepare("SELECT * FROM device_queue WHERE state = 'waiting' AND device = ?").all(only) : d.prepare("SELECT * FROM device_queue WHERE state = 'waiting'").all()).forEach((w) => {
@@ -208,6 +246,11 @@ function sweep(only) {
 
 function mine(agentId, device, state) {
     return db().prepare('SELECT * FROM device_queue WHERE device = ? AND agent_id = ? AND state = ? ORDER BY id LIMIT 1').get(device, String(agentId), state);
+}
+
+/** A denial by a person (not a timeout) of this agent's ask for this device inside DENY_HOLD_MS, or undefined. */
+function recentDenial(agentId, dev, t) {
+    return db().prepare("SELECT * FROM device_queue WHERE agent_id = ? AND device = ? AND state = 'denied' AND end_reason LIKE 'denied by %' AND ended_at > ? ORDER BY id DESC LIMIT 1").get(String(agentId), dev, t - DENY_HOLD_MS);
 }
 
 function holderInfo(h) {
@@ -242,6 +285,14 @@ function request(agentId, device, opts = {}) {
         return { granted: true, device: dev, lease: row(d.prepare('SELECT * FROM device_queue WHERE id = ?').get(have.id)), renewed: true };
     }
     let w = mine(agentId, dev, 'waiting');
+    if (!w && !noAsk && needsConsent(dev)) {
+        // Yukimi said no: the same agent does not ask again for the same phone right away (it asks her in chat first)
+        const den = recentDenial(agentId, dev, t);
+        if (den) {
+            flush();
+            throw new Error(`Yukimi denied your request for ${KNOWN[dev] ? KNOWN[dev].name : dev} ${Math.max(1, Math.round((t - den.ended_at) / 60000))} min ago. Do not ask again for ${DENY_HOLD_MS / 60000} minutes: ask her in chat first, or carry on without the device.`);
+        }
+    }
     if (!w) {
         const r = d.prepare("INSERT INTO device_queue (device, agent_id, session_id, why, minutes, state, requested_at) VALUES (?, ?, ?, ?, ?, 'waiting', ?)").run(dev, String(agentId), text(opts.sessionId, 60), text(opts.why, 200), minutes, t);
         w = d.prepare('SELECT * FROM device_queue WHERE id = ?').get(r.lastInsertRowid);
@@ -316,13 +367,21 @@ function renew(agentId, device, minutes) {
     return { renewed: true, device: dev, lease: row(db().prepare('SELECT * FROM device_queue WHERE id = ?').get(h.id)) };
 }
 
-/** Frees one device by force (Yukimi in Fleet): the holder loses it and the next in line gets it. */
-function forceRelease(device, by) {
+/**
+ * Frees one device by force (Yukimi in Fleet): the holder loses it and the next in line gets it.
+ * opts.leaseId (the End on an in-use notice, #1305 S2): only that lease, and only while it is still the held, allowed one - a stale
+ * End never takes a newer holder's lease or ask. Without it the device's holder goes (Fleet's own Release).
+ */
+function forceRelease(device, by, opts) {
     const dev = normalise(device);
     const t = store.now();
-    const h = db().prepare("SELECT * FROM device_queue WHERE device = ? AND state = 'held'").get(dev);
+    const o = opts || {};
+    const h = o.leaseId != null
+        ? db().prepare("SELECT * FROM device_queue WHERE id = ? AND device = ? AND state = 'held' AND consent = 'allowed'").get(Number(o.leaseId), dev)
+        : db().prepare("SELECT * FROM device_queue WHERE device = ? AND state = 'held'").get(dev);
     if (!h) return { released: false, device: dev };
-    finish(h.id, 'released', `freed by ${text(by || 'an admin', 40)}`, t);
+    const res = db().prepare("UPDATE device_queue SET state = 'released', ended_at = ?, end_reason = ? WHERE id = ? AND state = 'held'").run(t, text(`freed by ${text(by || 'an admin', 40)}`, 120), h.id);
+    if (!res.changes) return { released: false, device: dev };
     touch(dev);
     say(h.agent_id, `Your hold on device ${dev} was ended by ${text(by || 'an admin', 40)}. Stop testing on it; request it again if you still need it.`);
     const next = promote(dev, t);
@@ -377,11 +436,17 @@ function requireConsent(leaseId) {
     const t = store.now();
     const r = d.prepare('SELECT * FROM device_queue WHERE id = ?').get(Number(leaseId));
     if (!r || r.state !== 'held' || (r.consent || 'none') !== 'none' || !needsConsent(r.device)) return r || null;
-    d.prepare("UPDATE device_queue SET consent = 'pending', consent_at = ?, started_at = NULL, ends_at = ? WHERE id = ?").run(t, t + PENDING_PLACEHOLDER_MS, r.id);
+    if (!d.prepare("UPDATE device_queue SET consent = 'pending', consent_at = ?, started_at = NULL, ends_at = ? WHERE id = ? AND state = 'held' AND consent = 'none'").run(t, t + PENDING_PLACEHOLDER_MS, r.id).changes) return d.prepare('SELECT * FROM device_queue WHERE id = ?').get(r.id);
     touch(r.device);
     flush();
     say(r.agent_id, `Device ${r.device} needs Yukimi's Allow on the phone first (your lease was granted before that rule existed). Do NOT touch it until a steer message says it is allowed.`);
     return d.prepare('SELECT * FROM device_queue WHERE id = ?').get(r.id);
+}
+
+/** The answer for a lost race: the ask was answered (or ended) by someone else between our read and our write. */
+function notPending(d, id) {
+    const r = d.prepare('SELECT * FROM device_queue WHERE id = ?').get(id) || {};
+    return { ok: false, error: 'That ask is no longer pending', state: r.state, consent: r.consent || 'none' };
 }
 
 /**
@@ -398,14 +463,15 @@ function setConsent(leaseId, answer, by) {
     const timedOut = by === 'timeout';
     const who = text(by || 'Yukimi', 40);
     if (answer === 'allowed') {
-        d.prepare("UPDATE device_queue SET consent = 'allowed', consent_at = ?, started_at = ?, ends_at = ? WHERE id = ?").run(t, t, t + r.minutes * 60000, r.id);
+        // guarded: another process may have answered between the read and this write (#1305 S16)
+        if (!d.prepare("UPDATE device_queue SET consent = 'allowed', consent_at = ?, started_at = ?, ends_at = ? WHERE id = ? AND state = 'held' AND consent = 'pending'").run(t, t, t + r.minutes * 60000, r.id).changes) return notPending(d, r.id);
         const lease = row(d.prepare('SELECT * FROM device_queue WHERE id = ?').get(r.id));
         say(lease.agentId, `Device ${lease.device} is allowed until ${fmtClock(lease.endsAt)} (${lease.why || 'no reason given'}). Run your test now and release it with coord_device_release when done.`);
         touch(lease.device);
         flush();
         return { ok: true, lease };
     }
-    d.prepare("UPDATE device_queue SET state = 'denied', consent = 'denied', consent_at = ?, ended_at = ?, end_reason = ? WHERE id = ?").run(t, t, timedOut ? 'denied: no answer in time' : text(`denied by ${who}`, 120), r.id);
+    if (!d.prepare("UPDATE device_queue SET state = 'denied', consent = 'denied', consent_at = ?, ended_at = ?, end_reason = ? WHERE id = ? AND state = 'held' AND consent = 'pending'").run(t, t, timedOut ? 'denied: no answer in time' : text(`denied by ${who}`, 120), r.id).changes) return notPending(d, r.id);
     const lease = row(d.prepare('SELECT * FROM device_queue WHERE id = ?').get(r.id));
     say(lease.agentId, timedOut
         ? `Nobody answered the ask for device ${lease.device} in time, so it was denied. Do NOT touch it. Carry on without the device, or ask Yukimi before requesting it again.`
@@ -421,11 +487,14 @@ function snapshotConsent() {
     const t = store.now();
     const rows = db().prepare("SELECT * FROM device_queue WHERE state = 'held' AND consent IN ('pending', 'allowed') ORDER BY id").all().map(row);
     const nameOf = (id) => { const a = store.getAgent(id); return a ? (a.name || a.id) : id; };
-    const base = (r) => ({ leaseId: r.id, device: r.device, label: KNOWN[r.device] ? KNOWN[r.device].name : r.device, agentId: r.agentId, agentName: nameOf(r.agentId), why: r.why });
+    const lanes = new Map();
+    const laneOf = (dev) => { if (!lanes.has(dev)) lanes.set(dev, isTestLane(dev) ? 'test' : 'admin'); return lanes.get(dev); };
+    // lane 'test': a lease on a test-lane device (testConsentDevices); its notice goes to the test lane only, never to Yukimi's phones
+    const base = (r) => Object.assign({ leaseId: r.id, device: r.device, label: KNOWN[r.device] ? KNOWN[r.device].name : r.device, agentId: r.agentId, agentName: nameOf(r.agentId), why: r.why }, laneOf(r.device) === 'test' ? { lane: 'test' } : {});
     return {
         asks: rows.filter((r) => r.consent === 'pending').map((r) => Object.assign(base(r), { minutes: r.minutes, requestedAt: r.requestedAt, consentSince: r.consentAt || r.requestedAt })),
         holds: rows.filter((r) => r.consent === 'allowed' && (!r.endsAt || r.endsAt > t)).map((r) => Object.assign(base(r), { startedAt: r.startedAt, endsAt: r.endsAt }))
     };
 }
 
-module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, setConsent, requireConsent, snapshotConsent, KNOWN, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, foldApproval, DEFAULT_MIN, MAX_MIN, IDLE_MS };
+module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, isTestLane, canBeTestLane, setConsent, requireConsent, snapshotConsent, KNOWN, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, foldApproval, DEFAULT_MIN, MAX_MIN, IDLE_MS, DENY_HOLD_MS };

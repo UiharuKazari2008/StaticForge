@@ -162,11 +162,18 @@ function briefBuild(g) {
 }
 
 // a waiter granted a device from the server side (Release in the window, a session that ended) is told in its terminal
-deviceQueue.setNotifier((agent, body) => {
+// The answer is a promise (#1305 S7): the message counts as delivered only once launcher.steer succeeded; a failure (NEEDS_TAKEOVER, a
+// dialog on its screen, no pane) answers '' and the message stays unread for coord_inbox. deviceQueue.say never waits for it.
+async function steerNotifier(agent, body) {
     if (!agent || !agent.sessionId) return '';
-    launcher.steer(agent.sessionId, `[steering from agent-coord] ${body}`).catch(() => { /* its inbox holds the message */ });
-    return 'tmux';
-});
+    try {
+        await launcher.steer(agent.sessionId, `[steering from agent-coord] ${body}`);
+        return 'tmux';
+    } catch (_) {
+        return ''; // its inbox holds the message
+    }
+}
+deviceQueue.setNotifier(steerNotifier);
 
 /** The shared test devices (holders, queues; expiry is settled when this is read, on the window's own feed tick). */
 function devicesSummary() {
@@ -1216,4 +1223,4 @@ function registerPackets(handlersCtx) {
     reg('claude_fleet_engines', handleEngines);
 }
 
-module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor, handleTasks }, _sessionsPage: sessionsPage, _ownerOf: ownerOf, _buildAgentsList: buildAgentsList, _workMap: buildWorkMap };
+module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor, handleTasks }, _sessionsPage: sessionsPage, _steerNotifier: steerNotifier, _ownerOf: ownerOf, _buildAgentsList: buildAgentsList, _workMap: buildWorkMap };

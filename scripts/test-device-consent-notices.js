@@ -40,6 +40,8 @@ const cn = require('../modules/deviceConsentNotices');
 const answers = [];
 const ends = [];
 let nextEnd = { ok: true };
+const lanesAsk = {}; // lease id -> 'test' for the stub's askLane
+const lanesDev = {}; // device -> 'test' for the stub's laneOfDevice
 const patches = [];
 let nextResult = { ok: true };
 const stubPath = path.resolve(__dirname, '../modules/deviceConsent.js');
@@ -48,7 +50,7 @@ Module._resolveFilename = function (req, parent, ...rest) {
     if (parent && /296-deviceConsentHandler\.js$/.test(parent.filename || '') && /deviceConsent$/.test(req)) return stubPath;
     return origResolve.call(this, req, parent, ...rest);
 };
-require.cache[stubPath] = { id: stubPath, filename: stubPath, loaded: true, exports: { endHold: (device, by) => { ends.push([device, by]); return nextEnd; }, answer: (id, a, by) => { answers.push([id, a, by]); return nextResult; }, settings: () => ({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }), setSettings: (p) => { patches.push(p); if (p.onTimeout === 'bogus') throw new Error('onTimeout must be wait, deny, allow'); return Object.assign({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }, p); } } };
+require.cache[stubPath] = { id: stubPath, filename: stubPath, loaded: true, exports: { endHold: (device, by, opts) => { ends.push([device, by, opts]); return nextEnd; }, answer: (id, a, by, opts) => { answers.push([id, a, by, opts]); return nextResult; }, askLane: (id) => lanesAsk[id] || 'admin', laneOfDevice: (d) => lanesDev[d] || 'admin', settings: () => ({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }), setSettings: (p) => { patches.push(p); if (p.onTimeout === 'bogus') throw new Error('onTimeout must be wait, deny, allow'); return Object.assign({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }, p); } } };
 
 const loud = () => sent.filter((m) => m && m.type === 'inbox_updated' && m.data.reason === 'new' && m.data.notice.alert).length;
 const mark = () => { sent.length = 0; toPhones.length = 0; asked.length = 0; };
@@ -58,7 +60,7 @@ const hold = (over = {}) => Object.assign({ leaseId: 'L2', device: 'fold', label
 
 let failed = 0;
 async function test(name, f) {
-    try { inbox._test.reset(); cn._reset(); for (const x of ['', '-wal', '-shm']) fs.rmSync(process.env.NOTIFICATION_INBOX_DB + x, { force: true }); mark(); answers.length = 0; nextResult = { ok: true }; await f(); console.log(`ok   ${name}`); } catch (e) { failed += 1; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 6).join('\n     ')}`); }
+    try { inbox._test.reset(); cn._reset(); for (const x of ['', '-wal', '-shm']) fs.rmSync(process.env.NOTIFICATION_INBOX_DB + x, { force: true }); mark(); answers.length = 0; ends.length = 0; nextEnd = { ok: true }; nextResult = { ok: true }; for (const k of Object.keys(lanesAsk)) delete lanesAsk[k]; for (const k of Object.keys(lanesDev)) delete lanesDev[k]; await f(); console.log(`ok   ${name}`); } catch (e) { failed += 1; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 6).join('\n     ')}`); }
 }
 
 (async () => {
@@ -318,9 +320,141 @@ async function test(name, f) {
         assert.strictEqual(mine().length, 1);
     });
 
-    // ---- the settings packets ----
     const callS = async (type, message, clientInfo) => { replies.length = 0; errors.length = 0; patches.length = 0; await registry.getWsPacketEntry(type).handler({ ws: {}, message: Object.assign({ type, requestId: 'r2' }, message), clientInfo }); };
     const ADMIN = { userType: 'admin', clientId: 'c1' };
+    const bridge = require('../modules/agentClientBridge');
+    const asTest = async (fn) => { const td = require('../modules/testDevices'); const orig = td.isTestInfo; td.isTestInfo = () => true; try { await fn(); } finally { td.isTestInfo = orig; } };
+    const mineOn = (user) => inbox.list(user).filter((n) => /^device-(ask|hold):/.test(n.id));
+
+    await test('#1305 S1 lane: a test client answers a test-lane ask (accepted, its notice cleared); a household ask stays refused for it', async () => {
+        cn.sync({ asks: [ask({ leaseId: 'T1', lane: 'test', device: 'emulator-5554' }), ask({ leaseId: 'L1' })], holds: [] }, {}, {});
+        assert.strictEqual(mineOn('test').length, 1);
+        assert.strictEqual(mineOn('admin').length, 1);
+        lanesAsk.T1 = 'test';
+        await asTest(async () => {
+            await call({ id: 'device-ask:T1', answer: 'allow' }, { userType: 'admin', clientId: 'tst' });
+            assert.deepStrictEqual(replies[0].data, { ok: true });
+            assert.deepStrictEqual(answers.map((a) => [a[0], a[1], a[3]]), [['T1', 'allow', { clientLane: 'test' }]]);
+            assert.strictEqual(mineOn('test').length, 0, 'the test-lane notice came down');
+            assert.strictEqual(mineOn('admin').length, 1, 'the household notice is untouched');
+            answers.length = 0;
+            await call({ id: 'L1', answer: 'allow' }, { userType: 'admin', clientId: 'tst' });
+            assert.deepStrictEqual(replies[0].data, { ok: false, error: 'test device' });
+            assert.deepStrictEqual(answers, [], 'a test client never answers a household ask');
+            assert.strictEqual(mineOn('admin').length, 1, 'the question is still open');
+        });
+    });
+
+    await test('#1305 S1 lane: an admin client answers a test-lane ask too', async () => {
+        cn.sync({ asks: [ask({ leaseId: 'T1', lane: 'test', device: 'emulator-5554' })], holds: [] }, {}, {});
+        lanesAsk.T1 = 'test';
+        await call({ id: 'T1', answer: 'deny' }, { userType: 'admin', clientId: 'c1' });
+        assert.deepStrictEqual(replies[0].data, { ok: true });
+        assert.deepStrictEqual(answers.map((a) => [a[0], a[1], a[3]]), [['T1', 'deny', { clientLane: 'admin' }]]);
+        assert.strictEqual(mineOn('test').length, 0);
+    });
+
+    await test('#1305 S1 lane: End on a test-lane hold from a test client; a household hold refused for it', async () => {
+        cn.sync({ asks: [], holds: [hold({ leaseId: 11, device: 'emulator-5554', lane: 'test' }), hold({ leaseId: 12 })] }, {}, {});
+        lanesDev['emulator-5554'] = 'test';
+        await asTest(async () => {
+            await call({ id: 'device-hold:emulator-5554', answer: 'end' }, { userType: 'admin', clientId: 'tst' });
+            assert.deepStrictEqual(replies[0].data, { ok: true });
+            assert.deepStrictEqual(ends.map((e) => [e[0], e[2]]), [['emulator-5554', { leaseId: '11', clientLane: 'test' }]]);
+            assert.strictEqual(mineOn('test').length, 0);
+            ends.length = 0;
+            await call({ id: 'device-hold:fold', answer: 'end' }, { userType: 'admin', clientId: 'tst' });
+            assert.deepStrictEqual(replies[0].data, { ok: false, error: 'test device' });
+            assert.deepStrictEqual(ends, []);
+            assert.strictEqual(mineOn('admin').length, 1, 'the household hold stays');
+        });
+    });
+
+    await test('#1305 S2: End carries the lease its notice was about: a stale End reaches the server with the OLD lease id, never a newer one', async () => {
+        cn.sync({ asks: [], holds: [hold({ leaseId: 21 })] }, {}, {});
+        cn.sync({ asks: [], holds: [] }, {}, {}); // A released: its notice is cleared (the row stays, with leaseId 21)
+        cn.sync({ asks: [ask({ leaseId: 22, device: 'fold' })], holds: [] }, {}, {}); // B pending
+        await call({ id: 'device-hold:fold', answer: 'end' }, { userType: 'admin', clientId: 'c1' });
+        assert.deepStrictEqual(ends.map((e) => [e[0], e[2].leaseId]), [['fold', '21']], 'the stale lease, so the server refuses it');
+        assert.strictEqual(mineOn('admin').filter((x) => x.id === 'device-ask:22').length, 1, "B's ask untouched");
+    });
+
+    await test('#1305 S2: End with no notice at all, or a packet lease id that is not the notice\'s, ends nothing: That hold is over', async () => {
+        await call({ id: 'device-hold:fold', answer: 'end' }, { userType: 'admin', clientId: 'c1' });
+        assert.deepStrictEqual(replies[0].data, { ok: false, error: 'That hold is over' });
+        assert.deepStrictEqual(ends, []);
+        cn.sync({ asks: [], holds: [hold({ leaseId: 31 })] }, {}, {});
+        await call({ id: 'device-hold:fold', answer: 'end', leaseId: 30 }, { userType: 'admin', clientId: 'c1' });
+        assert.deepStrictEqual(replies[0].data, { ok: false, error: 'That hold is over' });
+        assert.deepStrictEqual(ends, [], 'the client saw lease 30, the hold now is 31');
+        assert.strictEqual(mineOn('admin').length, 1, 'the notice of the new hold stays');
+        await call({ data: { id: 'device-hold:fold', answer: 'end', leaseId: 31 } }, { userType: 'admin', clientId: 'c1' });
+        assert.deepStrictEqual(replies[0].data, { ok: true });
+        assert.deepStrictEqual(ends.map((e) => e[2].leaseId), ['31']);
+    });
+
+    const markDriven = (id) => { const info = { userType: 'admin', clientId: id }; bridge._test.noteAgentDriven(info, 'run_client_js'); return info; };
+
+    await test('#1305 S4: a client an agent ran script on is refused for answers, End and settings sets (logged); a person\'s client and settings get are not', async () => {
+        cn.sync({ asks: [ask()], holds: [hold()] }, {}, {});
+        const warns = [];
+        const w = console.warn;
+        console.warn = (...a) => { warns.push(a.join(' ')); };
+        try {
+            const info = markDriven('agentdrv1');
+            await call({ id: 'device-ask:L1', answer: 'allow' }, info);
+            assert.deepStrictEqual(replies[0].data, { ok: false, error: 'An agent cannot answer for Yukimi' });
+            await call({ id: 'device-hold:fold', answer: 'end' }, info);
+            assert.deepStrictEqual(replies[0].data, { ok: false, error: 'An agent cannot answer for Yukimi' });
+            assert.deepStrictEqual(answers, []);
+            assert.deepStrictEqual(ends, []);
+            assert.strictEqual(mine().length, 2, 'both notices still there');
+            assert.strictEqual(warns.filter((x) => /refused an answer from an agent-driven client agentdrv1/.test(x)).length, 2, warns.join('|'));
+            await callS('device_consent_settings_set', { patch: { onTimeout: 'allow' } }, info);
+            assert.deepStrictEqual(replies[0].data, { ok: false, error: 'An agent cannot answer for Yukimi' });
+            assert.deepStrictEqual(patches, [], 'an agent cannot set onTimeout allow');
+            assert.ok(warns.some((x) => /refused a settings change from an agent-driven client agentdrv1/.test(x)));
+            await callS('device_consent_settings_get', {}, info);
+            assert.strictEqual(replies[0].data.ok, true, 'reading the settings is fine');
+            // a different client (a person's tab) answers as before
+            await call({ id: 'device-ask:L1', answer: 'allow' }, { userType: 'admin', clientId: 'person1' });
+            assert.deepStrictEqual(replies[0].data, { ok: true });
+            // the marking is by client id too: the same tab after a reload (a new socket info) is still an agent's for 120 s
+            await call({ id: 'device-hold:fold', answer: 'end' }, { userType: 'admin', clientId: 'agentdrv1' });
+            assert.strictEqual(replies[0].data.error, 'An agent cannot answer for Yukimi');
+            // 120 s on, it is a person's again
+            bridge._test.agentDrivenAt.set('agentdrv1', Date.now() - 121000);
+            await call({ id: 'device-hold:fold', answer: 'end' }, { userType: 'admin', clientId: 'agentdrv1' });
+            assert.deepStrictEqual(replies[0].data, { ok: true });
+        } finally { console.warn = w; }
+    });
+
+    await test('#1305 S4: the bridge marks a client only when an agent ran script on it (run_client_js, inspect_elements), for 120 s', async () => {
+        const WebSocket = require('ws');
+        const info = { clientId: 'brdg00000001', authenticated: true };
+        const ws = { readyState: WebSocket.OPEN };
+        const sentTo = [];
+        const gr = { getWebSocketServer: () => ({ clients: new Map([[ws, info]]), sendToClient: (w2, m) => sentTo.push(m) }) };
+        assert.strictEqual(bridge.isAgentDrivenClient(info), false);
+        for (const cmd of ['get_state', 'get_windows', 'apply_studio', 'open_image', 'client_restart']) {
+            bridge.sendClientCommand(gr, 'brdg00000001', cmd, {}, 50).catch(() => {});
+            assert.strictEqual(bridge.isAgentDrivenClient(info), false, `${cmd} is no script`);
+        }
+        bridge.sendClientCommand(gr, 'brdg00000001', 'run_client_js', { script: '1' }, 50).catch(() => {});
+        assert.strictEqual(bridge.isAgentDrivenClient(info), true);
+        assert.strictEqual(bridge.isAgentDrivenClient(info, Date.now() + 119000), true);
+        assert.strictEqual(bridge.isAgentDrivenClient(info, Date.now() + 121000), false);
+        assert.strictEqual(bridge.isAgentDrivenClient({ clientId: 'brdg00000001' }), true, 'by client id, across a reload');
+        const info2 = { clientId: 'brdg00000002', authenticated: true };
+        gr.getWebSocketServer = () => ({ clients: new Map([[ws, info2]]), sendToClient: () => {} });
+        bridge.sendClientCommand(gr, 'brdg00000002', 'inspect_elements', { selectors: [] }, 50).catch(() => {});
+        assert.strictEqual(bridge.isAgentDrivenClient(info2), true);
+        assert.strictEqual(bridge.isAgentDrivenClient(null), false);
+        assert.strictEqual(bridge.isAgentDrivenClient({ clientId: 'someone-else' }), false);
+        await new Promise((r) => setTimeout(r, 120)); // the 50 ms command timeouts settle
+    });
+
+    // ---- the settings packets ----
 
     await test('settings packets registered: get plain, set destructive', () => {
         assert.ok(registry.getWsPacketEntry('device_consent_settings_get'));

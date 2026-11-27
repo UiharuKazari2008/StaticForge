@@ -47,7 +47,8 @@ const steersTo = (id) => steers.filter((s) => s.to === id).map((s) => s.body);
 const lastSteer = (id) => steersTo(id).slice(-1)[0] || '';
 
 const syncs = [];
-dc._setNotices({ sync(snapshot, cfg, opts) { syncs.push({ snapshot: JSON.parse(JSON.stringify(snapshot)), cfg, quiet: [...opts.quiet] }); } });
+const recorder = { sync(snapshot, cfg, opts) { syncs.push({ snapshot: JSON.parse(JSON.stringify(snapshot)), cfg, quiet: [...opts.quiet] }); } };
+dc._setNotices(recorder);
 const lastSync = () => syncs[syncs.length - 1];
 
 const hookCalls = [];
@@ -55,7 +56,7 @@ dq.setChangeHook((dev) => { hookCalls.push(dev); dc.changed(dev); });
 
 const row = (id) => store.open().prepare('SELECT * FROM device_queue WHERE id = ?').get(id);
 const pidA = agent('a'); agent('b'); agent('c');
-const reset = (cfg) => { dc._reset(); dc.setSettings(Object.assign({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }, cfg || {})); };
+const reset = (cfg) => { dc._setNotices(recorder); dc._reset(); dc.setSettings(Object.assign({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }, cfg || {})); };
 function clearDevice(dev) {
     ['a', 'b', 'c'].forEach((id) => dq.release(id, dev));
     store.open().prepare("UPDATE device_queue SET state = 'cancelled' WHERE device = ? AND state IN ('held', 'waiting')").run(dev);
@@ -64,7 +65,7 @@ function clearDevice(dev) {
 
 t('settings: defaults, patching, validation', () => {
     const s = dc.settings();
-    assert.deepStrictEqual(s, { timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] });
+    assert.deepStrictEqual(s, { timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'], testConsentDevices: [] });
     assert.strictEqual(dc.setSettings({ timeoutSec: 30 }).timeoutSec, 30);
     assert.strictEqual(dc.settings().onTimeout, 'wait', 'a patch keeps the other fields');
     assert.throws(() => dc.setSettings({ onTimeout: 'grant' }), /onTimeout/);
@@ -165,7 +166,7 @@ t('allow: the lease starts, the agent gets a steer message, the hold shows', () 
 });
 
 t('the gate: allowed lease -> ok with the lease', () => {
-    const v = dc.check({ deviceId: 'a53' }, { kind: 'screenshot' });
+    const v = dc.check({ deviceId: 'a53' }, { kind: 'screenshot' }, { agentId: 'a' });
     assert.strictEqual(v.ok, true);
     assert.strictEqual(v.lease.agentId, 'a');
     assert.strictEqual(v.lease.consent, 'allowed');
@@ -218,7 +219,7 @@ t('deny: the lease ends, the agent is told, the next waiter becomes the pending 
     const v = dc.check({ deviceId: 'a53' }, { kind: 'shell', command: 'ls' });
     assert.strictEqual(v.code, 'DEVICE_PENDING', 'the next waiter holds a pending lease now');
     dc.answer(ask[0].leaseId, 'allow');
-    assert.strictEqual(dc.check({ deviceId: 'a53' }, { kind: 'shell', command: 'ls' }).ok, true);
+    assert.strictEqual(dc.check({ deviceId: 'a53' }, { kind: 'shell', command: 'ls' }, { agentId: 'b' }).ok, true);
     dq.release('b', 'a53');
 });
 
@@ -273,7 +274,7 @@ t('endHold: End on the in-use notice takes the phone back, tells the holder, han
     assert.strictEqual(dc.answer(r.lease.id, 'allow', 'test').ok, true);
     const rb = dq.request('b', 'a53', { why: 'next' });
     assert.strictEqual(rb.granted, false);
-    const e = dc.endHold('a53', 'household:test');
+    const e = dc.endHold('a53', 'household:test', { leaseId: r.lease.id });
     assert.strictEqual(e.ok, true);
     assert.strictEqual(row(r.lease.id).state, 'released');
     assert.ok(/ended by household:test/.test(lastSteer('a')), lastSteer('a'));
@@ -510,6 +511,296 @@ t('MCP tool round trip: the answer says pending; descriptions tell the agent to 
     assert.strictEqual(mcp.run('coord_device_release', { device: 'fold' }).released, true);
     const text = mcp.handle ? JSON.stringify(mcp.TOOLS.map((x) => x.description)) : '';
     assert.ok(/phone/.test(text));
+});
+
+
+// ---------------------------------------------------------------- #1305 server consent core
+
+const withRealRules = async (fn) => {
+    // the server's own rules: the a53 never asks, the Fold is off limits (these tests otherwise model both as asking phones)
+    const prev = process.env.DEVICE_QUEUE_TEST_PHONES;
+    delete process.env.DEVICE_QUEUE_TEST_PHONES;
+    try { await fn(); } finally { if (prev !== undefined) process.env.DEVICE_QUEUE_TEST_PHONES = prev; }
+};
+const wipe = () => { store.open().prepare("UPDATE device_queue SET state = 'cancelled' WHERE state IN ('held', 'waiting')").run(); store.open().prepare("UPDATE device_queue SET ended_at = ? WHERE state = 'denied'").run(Date.now() - 60 * 60000); };
+
+t('S1 settings: testConsentDevices defaults to [], is normalised and validated; the Fold and the browsers are refused', () => {
+    reset();
+    assert.deepStrictEqual(dc.settings().testConsentDevices, []);
+    assert.deepStrictEqual(dc.setSettings({ testConsentDevices: ['Emulator 5554', 'AEMU-Fold-1', 'emulator-5554'] }).testConsentDevices, ['emulator-5554', 'aemu-fold-1']);
+    assert.deepStrictEqual(dc.setSettings({ timeoutSec: 45 }).testConsentDevices, ['emulator-5554', 'aemu-fold-1'], 'a patch keeps the list');
+    assert.throws(() => dc.setSettings({ testConsentDevices: 'a53' }), /testConsentDevices must be a list/);
+    assert.throws(() => dc.setSettings({ testConsentDevices: ['a53', 'Fold'] }), /cannot include fold/);
+    assert.throws(() => dc.setSettings({ testConsentDevices: ['ruiko'] }), /cannot include ruiko-chrome/);
+    assert.deepStrictEqual(dc.settings().testConsentDevices, ['emulator-5554', 'aemu-fold-1'], 'a refused patch saved nothing');
+    assert.deepStrictEqual(dc.setSettings({ testConsentDevices: [] }).testConsentDevices, []);
+    // a stored bad value reads as the safe subset
+    store.setSetting('deviceConsent', Object.assign({}, store.getSetting('deviceConsent'), { testConsentDevices: ['fold', 'a53'] }));
+    assert.deepStrictEqual(dc.settings().testConsentDevices, ['a53']);
+    reset();
+});
+
+t('S1 lane: an emulator on the test lane goes through the full flow (gate pending, then holder only), its ask and hold are lane test; a normal ask has no lane', async () => {
+    await withRealRules(async () => {
+        wipe(); reset();
+        const emu = { deviceId: 'emulator-5554', name: 'aemu', model: 'sdk_gphone64_x86_64' };
+        // off by default: the emulator is open, nothing asks
+        assert.strictEqual(dc.check(emu, { kind: 'shell', command: 'input tap 1 1' }).emulator, true);
+        assert.strictEqual(dq.request('a', 'emulator-5554', {}).granted, true);
+        dq.release('a', 'emulator-5554');
+        dc.setSettings({ testConsentDevices: ['emulator-5554'] });
+        syncs.length = 0;
+        const r = dq.request('a', 'emulator-5554', { why: 'lane test', minutes: 5 });
+        assert.strictEqual(r.consent, 'pending');
+        const ls = lastSync();
+        assert.strictEqual(ls.snapshot.asks.length, 1);
+        assert.strictEqual(ls.snapshot.asks[0].lane, 'test');
+        const v = dc.check(emu, { kind: 'shell', command: 'input tap 1 1' }, { agentId: 'a' });
+        assert.strictEqual(v.ok, false, 'the emulator bypass is off for a test-lane device');
+        assert.strictEqual(v.code, 'DEVICE_PENDING');
+        assert.strictEqual(dc.askLane(r.lease.id), 'test');
+        assert.strictEqual(dc.laneOfDevice('emulator-5554'), 'test');
+        // a test-lane client answers its own lane's ask; the household's ask stays refused for it
+        const ok = dc.answer(r.lease.id, 'allow', 'test-client', { clientLane: 'test' });
+        assert.strictEqual(ok.ok, true);
+        assert.strictEqual(lastSync().snapshot.holds[0].lane, 'test');
+        assert.strictEqual(dc.check(emu, { kind: 'shell', command: 'input tap 1 1' }, { agentId: 'a' }).ok, true);
+        dq.release('a', 'emulator-5554');
+        // an admin client may answer a test-lane ask too
+        const r2 = dq.request('a', 'emulator-5554', { why: 'admin answers' });
+        assert.strictEqual(dc.answer(r2.lease.id, 'deny', 'admin', { clientLane: 'admin' }).ok, true);
+        wipe();
+        // a normal ask: no lane, and a test-lane client may not answer it
+        dc.setSettings({ consentDevices: ['pixel-9'], testConsentDevices: ['emulator-5554'] });
+        const n = dq.request('a', 'pixel-9', { why: 'household' });
+        assert.strictEqual(n.consent, 'pending');
+        assert.strictEqual(lastSync().snapshot.asks[0].lane, undefined);
+        assert.strictEqual(dc.askLane(n.lease.id), 'admin');
+        const refused = dc.answer(n.lease.id, 'allow', 'test-client', { clientLane: 'test' });
+        assert.deepStrictEqual(refused, { ok: false, error: 'test device' });
+        assert.strictEqual(row(n.lease.id).consent, 'pending', 'still pending');
+        assert.strictEqual(dc.answer(n.lease.id, 'allow', 'admin', { clientLane: 'admin' }).ok, true);
+        dq.release('a', 'pixel-9');
+        wipe(); reset();
+    });
+});
+
+t('S1 lane: End on a test-lane hold by a test client; a test client never ends a household hold', async () => {
+    await withRealRules(async () => {
+        wipe(); reset({ consentDevices: ['pixel-9'], testConsentDevices: ['emulator-5554'] });
+        const t1 = dq.request('a', 'emulator-5554', { why: 'lane end' });
+        dc.answer(t1.lease.id, 'allow', 'x', { clientLane: 'test' });
+        assert.deepStrictEqual(dc.endHold('emulator-5554', 'household:t', { leaseId: t1.lease.id, clientLane: 'test' }), { ok: true, device: 'emulator-5554' });
+        const h1 = dq.request('b', 'pixel-9', { why: 'household hold' });
+        dc.answer(h1.lease.id, 'allow', 'x');
+        assert.deepStrictEqual(dc.endHold('pixel-9', 'household:t', { leaseId: h1.lease.id, clientLane: 'test' }), { ok: false, error: 'test device' });
+        assert.strictEqual(row(h1.lease.id).state, 'held');
+        assert.strictEqual(dc.endHold('pixel-9', 'household:t', { leaseId: h1.lease.id, clientLane: 'admin' }).ok, true);
+        wipe(); reset();
+    });
+});
+
+t('S1: the Fold stays off limits and a53 off the lane never asks (hard rule)', async () => {
+    await withRealRules(async () => {
+        wipe(); reset({ consentDevices: ['fold'] });
+        assert.throws(() => dq.request('a', 'fold', { why: 'explore' }), /off limits/);
+        assert.strictEqual(dq.request('a', 'a53', { why: 'test phone' }).granted, true, 'the A53 test phone is open');
+        dq.release('a', 'a53');
+        assert.throws(() => dc.setSettings({ testConsentDevices: ['fold'] }), /cannot include fold/);
+        // what she can see or feel stays closed; a screenshot / read-only shell is open (Yukimi, Nov 27: test-fold-off-limits.js)
+        const v = dc.check({ deviceId: 'fold' }, { kind: 'shell', command: 'input tap 1 1' }, { agentId: 'a' });
+        assert.strictEqual(v.code, 'DEVICE_OFF_LIMITS');
+        assert.strictEqual(dc.check({ deviceId: 'fold' }, { kind: 'screenshot' }, { agentId: 'a' }).ok, true);
+        wipe(); reset();
+    });
+});
+
+t('S2: a stale End ends nothing: A allowed, B queued, A released, B pending, End of A\'s lease leaves B alone', () => {
+    clearDevice('a53'); wipe(); reset();
+    const a = dq.request('a', 'a53', { why: 'A' });
+    dc.answer(a.lease.id, 'allow', 'h');
+    dq.request('b', 'a53', { why: 'B' });
+    dq.release('a', 'a53'); // B is a pending ask now
+    const bId = lastSync().snapshot.asks[0].leaseId;
+    const before = steersTo('b').length;
+    const stale = dc.endHold('a53', 'household:x', { leaseId: a.lease.id });
+    assert.deepStrictEqual(stale, { ok: false, error: 'That hold is over' });
+    assert.strictEqual(row(bId).state, 'held');
+    assert.strictEqual(row(bId).consent, 'pending', 'B untouched');
+    assert.strictEqual(steersTo('b').length, before, 'B was told nothing');
+    // no lease id (an old client): nothing ends either
+    assert.deepStrictEqual(dc.endHold('a53', 'household:x'), { ok: false, error: 'That hold is over' });
+    assert.strictEqual(row(bId).consent, 'pending');
+    // B's own lease id while it is only pending: not an allowed hold
+    assert.deepStrictEqual(dc.endHold('a53', 'household:x', { leaseId: bId }), { ok: false, error: 'That hold is over' });
+    // a lease id of another device does not end this one
+    dc.answer(bId, 'allow', 'h');
+    assert.deepStrictEqual(dc.endHold('fold', 'household:x', { leaseId: bId }), { ok: false, error: 'That hold is over' });
+    assert.strictEqual(row(bId).consent, 'allowed');
+    // a lease that ran out is over, not endable
+    store.open().prepare('UPDATE device_queue SET ends_at = ? WHERE id = ?').run(Date.now() - 1000, bId);
+    assert.deepStrictEqual(dc.endHold('a53', 'household:x', { leaseId: bId }), { ok: false, error: 'That hold is over' });
+    clearDevice('a53');
+});
+
+t('S3: an allowed lease is its holder\'s alone; a call that names nobody, or somebody else, is refused', () => {
+    clearDevice('a53'); wipe(); reset();
+    store.upsertAgent({ id: 'a', sessionId: 'aaaaaaaa-0000-4000-8000-000000000001' });
+    const a = dq.request('a', 'a53', { why: 'holder', sessionId: '' });
+    dc.answer(a.lease.id, 'allow', 'h');
+    const tgt = { deviceId: 'a53' };
+    const act = { kind: 'shell', command: 'input tap 1 1' };
+    assert.strictEqual(dc.check(tgt, act, { agentId: 'a' }).ok, true, 'the holder');
+    assert.strictEqual(dc.check(tgt, act, { agentId: 'A ' }).ok, true, 'ids compare trimmed and case-insensitive');
+    assert.strictEqual(dc.check(tgt, act, { sessionId: 'aaaaaaaa-0000-4000-8000-000000000001' }).ok, true, 'its registered session');
+    const other = dc.check(tgt, act, { agentId: 'b' });
+    assert.strictEqual(other.ok, false, 'another agent does not pass on a holder\'s lease');
+    assert.strictEqual(other.code, 'DEVICE_NOT_GRANTED');
+    assert.ok(/allowed to a-name, not to you/.test(other.error), other.error);
+    assert.strictEqual(other.holder.agentId, 'a');
+    assert.strictEqual(dc.check(tgt, act, { sessionId: 'bbbbbbbb-0000-4000-8000-000000000002' }).ok, false);
+    for (const unknown of [null, {}, { agentId: '' }, { agentId: '  ', sessionId: '' }, 'a']) {
+        const v = dc.check(tgt, act, unknown);
+        assert.strictEqual(v.ok, false, JSON.stringify(unknown));
+        assert.strictEqual(v.code, 'DEVICE_CALLER_UNKNOWN', JSON.stringify(unknown));
+    }
+    // a call site from before S3 (no caller argument at all) keeps the old rule until deviceAdb passes one; an empty caller is refused
+    assert.strictEqual(dc.check(tgt, act).ok, true, 'legacy call site (no caller argument): old rule');
+    assert.strictEqual(dc.check(tgt, act, {}).code, 'DEVICE_CALLER_UNKNOWN', 'a caller naming nobody: fail closed');
+    assert.strictEqual(dc.check(tgt, act, { human: true }).ok, true, 'Yukimi\'s own UI action (set by server code only)');
+    assert.strictEqual(dc.check(tgt, act, { human: 'true' }).code, 'DEVICE_CALLER_UNKNOWN', 'only the boolean true counts');
+    // pending / no lease: the caller does not matter, the old codes stay
+    dq.release('a', 'a53');
+    assert.strictEqual(dc.check(tgt, act, { agentId: 'a' }).code, 'DEVICE_NOT_GRANTED');
+    const p = dq.request('b', 'a53', { why: 'pending' });
+    assert.strictEqual(p.consent, 'pending');
+    assert.strictEqual(dc.check(tgt, act).code, 'DEVICE_PENDING');
+    assert.strictEqual(dc.check(tgt, act, { agentId: 'a' }).code, 'DEVICE_PENDING');
+    clearDevice('a53');
+});
+
+t('S3: a read-only command without a lease needs no caller (readOnly allow), a write does', () => {
+    clearDevice('a53'); wipe(); reset({ readOnly: 'allow' });
+    assert.strictEqual(dc.check({ deviceId: 'a53' }, { kind: 'shell', command: 'dumpsys battery' }).ok, true);
+    assert.strictEqual(dc.check({ deviceId: 'a53' }, { kind: 'shell', command: 'input tap 1 1' }, { agentId: 'a' }).code, 'DEVICE_NOT_GRANTED');
+    reset();
+});
+
+t('S11: a pending ask whose agent died is swept by one timer within the window (no poke needed), notice picture cleared', async () => {
+    clearDevice('a53'); wipe(); reset();
+    agent('dead1');
+    const dead = store.getAgent('dead1').pid;
+    dc._setPendingSweepMs(200);
+    let sweeps = 0;
+    const realSweep = dq.sweep;
+    dq.sweep = (...a) => { sweeps += 1; return realSweep.apply(dq, a); };
+    try {
+        const r = dq.request('dead1', 'a53', { why: 'dies waiting' });
+        assert.strictEqual(r.consent, 'pending');
+        alive.delete(dead); // the agent session dies and its MCP process never pokes again
+        assert.strictEqual(row(r.lease.id).state, 'held');
+        await sleep(1500); // the timer is floored at 1 s
+        assert.strictEqual(row(r.lease.id).state, 'expired', 'swept by the server timer');
+        assert.ok(/session/.test(row(r.lease.id).end_reason), row(r.lease.id).end_reason);
+        assert.ok(sweeps >= 1);
+        assert.strictEqual(lastSync().snapshot.asks.length, 0, 'its notice picture was cleared');
+        // a live ask keeps one timer going: it sweeps again while pending
+        const live = dq.request('a', 'a53', { why: 'alive and waiting' });
+        assert.strictEqual(live.consent, 'pending');
+        sweeps = 0;
+        await sleep(2400);
+        assert.ok(sweeps >= 2, `re-armed while an ask is pending (sweeps ${sweeps})`);
+        assert.strictEqual(row(live.lease.id).consent, 'pending', 'a live ask is never dropped');
+        dq.release('a', 'a53');
+        sweeps = 0;
+        await sleep(1500);
+        assert.strictEqual(sweeps, 0, 'no ask pending: no timer');
+        // an ask already older than the window (found at a server start): one sweep soon, then one per window - never a loop
+        dc._reset();
+        dc._setPendingSweepMs(5000);
+        const old = dq.request('a', 'a53', { why: 'old ask' });
+        store.open().prepare('UPDATE device_queue SET consent_at = ? WHERE id = ?').run(Date.now() - 60 * 60000, old.lease.id);
+        dc.resync();
+        sweeps = 0;
+        await sleep(2600);
+        assert.strictEqual(sweeps, 1, `one sweep for an old ask, not a 1 s loop (sweeps ${sweeps})`);
+        dq.release('a', 'a53');
+    } finally {
+        dq.sweep = realSweep;
+        dc._setPendingSweepMs(0);
+        alive.add(dead);
+    }
+});
+
+t('S11: the MCP change hook poke retries twice with 1 s / 4 s backoff (test: scaled), only while no later poke got through', async () => {
+    const keep = setInterval(() => {}, 50); // the retry timers are unref'd (the MCP process lives on its stdin); the test needs the loop alive
+    const calls = [];
+    let fails = 2;
+    const ask = async (req) => { calls.push(Date.now()); if (fails > 0) { fails -= 1; throw new Error('ECONNREFUSED'); } return { ok: true }; };
+    assert.deepStrictEqual(mcp._pokeServer && 1, 1, 'exported for the test');
+    const t0 = Date.now();
+    assert.strictEqual(await mcp._pokeServer('a53', { ask, delays: [40, 80] }), true);
+    assert.strictEqual(calls.length, 3, 'one try and two retries');
+    assert.ok(calls[1] - calls[0] >= 35 && calls[2] - calls[1] >= 75, 'with backoff');
+    // gives up after the retries
+    calls.length = 0; fails = 99;
+    assert.strictEqual(await mcp._pokeServer('a53', { ask, delays: [10, 20] }), false);
+    assert.strictEqual(calls.length, 3);
+    // a later poke that got through covers an earlier one: no more retries for it
+    calls.length = 0; fails = 1;
+    const first = mcp._pokeServer('a53', { ask, delays: [60, 120] }); // fails, waits 60 ms
+    await sleep(5);
+    assert.strictEqual(await mcp._pokeServer('fold', { ask, delays: [60, 120] }), true); // gets through
+    assert.strictEqual(await first, false);
+    assert.strictEqual(calls.length, 2, 'the first poke did not retry');
+    // the real defaults are 1 s and 4 s
+    const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'agentCoord', 'mcpServer.js'), 'utf8');
+    assert.ok(/POKE_DELAYS_MS = \[1000, 4000\]/.test(src));
+    assert.ok(Date.now() - t0 < 2000);
+    clearInterval(keep);
+});
+
+t('S13: read-only shell: dumpsys only for allowlisted services without flags; every injection stays refused', () => {
+    const ro = dc.isReadOnlyShell;
+    ['dumpsys battery', 'dumpsys window', 'dumpsys window windows', 'dumpsys window displays | grep mCurrentFocus', 'dumpsys display', 'dumpsys activity activities', 'dumpsys notification', 'dumpsys power', 'dumpsys SurfaceFlinger',
+        'dumpsys battery | grep level', 'ip addr show wlan0', 'ip route', 'ls | tail -n 5', 'ls | grep -F foo', 'ls | cut -d: -f2'].forEach((c) => assert.strictEqual(ro(c), true, c));
+    ['dumpsys procstats --clear', 'dumpsys sensorservice restrict com.x', 'dumpsys batterystats --reset', 'dumpsys battery set level 5', 'dumpsys battery reset', 'dumpsys activity broadcasts', 'dumpsys activity service x',
+        'dumpsys deviceidle force-idle', 'dumpsys gfxinfo com.x reset', 'dumpsys', 'dumpsys window --proto', 'dumpsys window windows foo', 'dumpsys notification --noredact', 'dumpsys SurfaceFlinger --latency-clear',
+        'dumpsys media_session', 'ip addr flush', 'ip route flush', 'ip link set wlan0 down', 'ls | tail -f', 'ls | grep -f /x', 'ls | grep -rn x /data', 'dumpsys battery;reboot', 'dumpsys battery && input tap 1 1', 'dumpsys battery | sh', 'dumpsys battery > /sdcard/x', 'dumpsys $(reboot)', 'dumpsys battery `reboot`', 'dumpsys battery\nreboot', 'dumpsys battery &'
+    ].forEach((c) => assert.strictEqual(ro(c), false, JSON.stringify(c)));
+    ['input tap 1 1', 'settings put global x 1', 'ls; reboot', 'ls > /x', 'ls $(reboot)', 'cat /proc/../data/x', 'pm uninstall com.x'].forEach((c) => assert.strictEqual(ro(c), false, c));
+});
+
+t('S14: the emulator bypass is the adb serial or a model string, never the free-form name', () => {
+    clearDevice('a53'); wipe(); reset();
+    const emu = dc.isEmulatorTarget;
+    assert.strictEqual(emu({ deviceId: 'emulator-5554' }), true);
+    assert.strictEqual(emu({ deviceId: 'Emulator-5580', name: 'x' }), true);
+    ['sdk_gphone64_x86_64', 'Ranchu', 'goldfish', 'aemu-fold-1', 'google_sdk'].forEach((m) => assert.strictEqual(emu({ deviceId: 'abc', model: m }), true, m));
+    ['emulator', 'my emulator', 'AVD phone', 'aemu', 'Fold emulator', 'goldfish phone'].forEach((nm) => assert.strictEqual(emu({ deviceId: '192.168.1.5:5555', name: nm, model: 'SM-F966' }), false, `name ${nm}`));
+    assert.strictEqual(emu({ deviceId: 'emulator', name: 'emulator' }), false, 'a serial must be emulator-NNNN');
+    // a real phone called "emulator" does not skip the gate
+    const real = dc.check({ deviceId: 'R5CT1', name: 'Galaxy A53 emulator', model: 'SM-A536B' }, { kind: 'shell', command: 'input tap 1 1' }, { agentId: 'a' });
+    assert.strictEqual(real.ok, false);
+    assert.strictEqual(real.code, 'DEVICE_NOT_GRANTED');
+    assert.ok(!real.emulator);
+    const unknown = dc.check({ deviceId: 'abc123', name: 'emulator', model: 'Pixel 8' }, { kind: 'shell', command: 'id' }, { agentId: 'a' });
+    assert.strictEqual(unknown.ok, false, 'an unlisted phone named emulator is closed');
+});
+
+t('S17: the tool descriptions and server instructions state the real rule (Fold off limits, A53 test phone, emulators the test lane)', () => {
+    const tool = (n) => mcp.TOOLS.find((x) => x.name === n);
+    const ins = mcp.INSTRUCTIONS;
+    assert.ok(/Fold is Yukimi\'s own phone and OFF LIMITS/.test(ins) && /final-install/.test(ins) && /fold-off-limits/.test(ins), 'instructions: the Fold');
+    assert.ok(/A53 is your own test phone/.test(ins) && /emulators are the test lane/.test(ins) && /without asking Yukimi/.test(ins), 'instructions: the A53 and the emulators');
+    assert.ok(!/A53 phone, Fold,/.test(ins), 'no a53 / fold in one breath');
+    assert.ok(!/(a53, fold, any phone Yukimi listed) also needs her consent/.test(ins), 'the old a53 / fold wait-for-Allow rule is gone');
+    assert.ok(!/wait for Allow on the phone/i.test(ins));
+    const req = tool('coord_device_request');
+    assert.ok(/off limits/.test(req.description) && /final-install/.test(req.description) && /test lane/.test(req.description) && /never ask Yukimi/.test(req.description));
+    assert.ok(/consent pending/.test(req.description) && /do NOT touch/i.test(req.description));
+    assert.ok(!/a53 \| fold/.test(JSON.stringify(req.inputSchema)), 'the device argument no longer lists fold as a normal choice');
+    assert.ok(/waits for an Allow/.test(tool('coord_device_renew').description));
 });
 
 (async () => {

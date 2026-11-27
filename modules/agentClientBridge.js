@@ -24,6 +24,13 @@ const CLIENT_COMMAND_DEFAULT_TIMEOUT_MS = 15000;
 const CLIENT_SETTLE_MS = 800;
 const BIND_IDLE_MS = 15 * 60 * 1000;
 
+// A client an agent drives (#1305 S4, device consent): one an agent ran script on (run_client_js, the /agent/session/js route, the
+// inspect commands) in the last AGENT_DRIVEN_MS. Its answers to a phone-consent ask are never Yukimi's (modules/ws/handlers/296).
+// The mark is on the socket's info and, by clientId, survives a reload of that tab (the id is resumed).
+const AGENT_DRIVEN_MS = 120 * 1000;
+const AGENT_SCRIPT_COMMANDS = new Set(['run_client_js', 'inspect_elements']);
+const agentDrivenAt = new Map(); // clientId -> ms of the last script an agent ran on it
+
 const shareCodes = new Map(); // code -> { clientId, expiresAt }
 const pendingResults = new Map(); // requestId -> { resolve, reject, timer, clientId }
 const bindSessions = new Map(); // bindKey -> { clientId, lastInteractionAt, boundAt, actorName }
@@ -99,6 +106,29 @@ function studioGetStatePayload(bindKey, input) {
 
 function generateClientId() {
     return crypto.randomBytes(6).toString('hex');
+}
+
+/** Notes that an agent ran script on this client now (a no-op for the commands that only read or apply structured changes). */
+function noteAgentDriven(info, command, now) {
+    if (!info || !AGENT_SCRIPT_COMMANDS.has(command)) return;
+    const t = Number.isFinite(now) ? now : Date.now();
+    info.agentDrivenAt = t;
+    const id = info.clientId;
+    if (!id) return;
+    agentDrivenAt.set(id, t);
+    if (agentDrivenAt.size > 200) {
+        for (const [k, v] of agentDrivenAt) if (t - v >= AGENT_DRIVEN_MS) agentDrivenAt.delete(k);
+        while (agentDrivenAt.size > 200) agentDrivenAt.delete(agentDrivenAt.keys().next().value);
+    }
+}
+
+/** True when an agent ran script on this client (its socket, or its resumed client id) within AGENT_DRIVEN_MS. */
+function isAgentDrivenClient(info, now) {
+    if (!info) return false;
+    const t = Number.isFinite(now) ? now : Date.now();
+    if (Number(info.agentDrivenAt) && t - Number(info.agentDrivenAt) < AGENT_DRIVEN_MS) return true;
+    const at = info.clientId ? agentDrivenAt.get(info.clientId) : 0;
+    return !!at && t - at < AGENT_DRIVEN_MS;
 }
 
 function isAgentClientId(value) {
@@ -1135,6 +1165,7 @@ function sendBoundCommandOnce(globalResources, command, payload, timeoutMs, bind
     const boundId = getBoundClientId(key);
     const wsServer = getWsServer(globalResources);
     const requestId = crypto.randomUUID();
+    noteAgentDriven(bound.info, command);
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
             pendingResults.delete(requestId);
@@ -1289,6 +1320,7 @@ function sendClientCommand(globalResources, clientId, command, payload, timeoutM
         throw err;
     }
     const requestId = crypto.randomUUID();
+    noteAgentDriven(found.info, command);
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
             pendingResults.delete(requestId);
@@ -2406,6 +2438,7 @@ module.exports = {
     parseAgentClientIdQuery,
     resumeAgentClientId,
     isAgentClientId,
+    isAgentDrivenClient,
     pickNearestClient,
     claimTestingClient,
     prepareBoundClientUpdate,
@@ -2478,6 +2511,9 @@ module.exports = {
         CLIENT_SETTLE_MS,
         pendingRestarts,
         isAgentClientId,
+        isAgentDrivenClient,
+        noteAgentDriven,
+        agentDrivenAt,
         parseAgentClientIdQuery,
         resumeAgentClientId,
         adoptDeadPrimary,

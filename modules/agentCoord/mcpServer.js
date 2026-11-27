@@ -48,7 +48,7 @@ const INSTRUCTIONS = [
     'Before editing files, coord_claim them (paths relative to the repo, folders and globs allowed); the claim also plants your .agent-<id> busy lock. If a claim conflicts, do not edit those files: coord_inspect or coord_post the holder, or pick other work.',
     'Before touching a file you did not claim, coord_check it (claims) and coord_editors it (who changed it lately).',
     'Before ANY build, install, deploy, service-worker notify or server restart: coord_build_request a gate for it, wait until coord_build_status says canBegin (everyone ready), then coord_build_begin, and coord_build_end when it is over. Never build past a pending or not-ready agent without force and a reason.',
-    'Shared test devices (A53 phone, Fold, Ruiko\'s headful Chrome, the headless test browser, any other shared hardware): request one with coord_device_request BEFORE any test, install, reboot, screenshot run or tap-through on it; wait for the grant (a steer message tells you it is yours) instead of using it; release it with coord_device_release as soon as the test ends; never take a device someone else holds. coord_devices shows holders and queues. A phone (a53, fold, any phone Yukimi listed) also needs her consent: the grant answers consent pending and she taps Allow or Deny on the phone; do NOT touch it (no adb, device_shell, device_screenshot, device_packages, taps) until a steer message says it is allowed, and carry on without it when she denies.',
+    'Shared test devices (the A53 test phone, the emulators, Ruiko\'s headful Chrome, the headless test browser, any other shared hardware): request one with coord_device_request BEFORE any test, install, reboot, screenshot run or tap-through on it; wait for the grant (a steer message tells you it is yours) instead of using it; release it with coord_device_release as soon as the test ends; never take a device someone else holds. coord_devices shows holders and queues. The A53 is your own test phone and the emulators are the test lane: request them and use them without asking Yukimi. The Fold is Yukimi\'s own phone and OFF LIMITS (rule fold-off-limits): only for the final install step of finished, tested work (coord_device_request fold with purpose final-install), or when she approved it or named it a priority now; never explore or test on it. Only when a device is on the consent test lane (or she approved the Fold with purpose approval) does the grant answer consent pending: then do NOT touch it (no adb, device_shell, device_screenshot, device_packages, taps) until a steer message says it is allowed, carry on without it when it is denied, and do not ask for it again within 10 minutes of a denial. The phone tools work only for the holder of an allowed lease.',
     'When a build gate asks you (a question naming coord_build_ready), answer it as soon as your files are in a state that builds, or say why not.',
     'Keep coord_set_task current. Release claims (coord_release) when you are done; they also lapse with their lease and when your process ends.',
     'When an answer says you have unread messages, call coord_inbox. Steering from Yozora, Menma or Yukimi arrives as kind steer.',
@@ -186,7 +186,34 @@ function typeInto(agent, from, body) {
 devices.setNotifier((agent, body) => typeInto(agent, 'agent-coord', body));
 // every queue change reaches the Dreamscape server (notices for Yukimi on the phone, ask timeouts); fire and forget: the server
 // may be down, the lease stands, and the server re-syncs from the DB when it starts
-devices.setChangeHook((device) => { supervisorAsk({ op: 'device-consent', device }, 5000).catch(() => { /* the server re-syncs at start */ }); });
+devices.setChangeHook((device) => { pokeServer(device); });
+
+const POKE_DELAYS_MS = [1000, 4000];
+let pokeSeq = 0;
+let pokeOkSeq = 0;
+/**
+ * One poke of the Dreamscape server about a queue change (#1305 S11): a failed poke is tried again after 1 s and after 4 s, unless a
+ * later poke got through meanwhile (the server re-reads the whole queue, so the later one carries this change too). Never throws,
+ * never blocks the caller; the retry timers are unref'd. opts.ask / opts.delays are test hooks. Resolves true once one attempt got through.
+ */
+function pokeServer(device, opts) {
+    const o = opts || {};
+    const ask = o.ask || supervisorAsk;
+    const delays = o.delays || POKE_DELAYS_MS;
+    pokeSeq += 1;
+    const mySeq = pokeSeq;
+    const attempt = (n) => Promise.resolve().then(() => ask({ op: 'device-consent', device }, 5000)).then(() => {
+        pokeOkSeq = Math.max(pokeOkSeq, mySeq);
+        return true;
+    }, () => {
+        if (n >= delays.length || pokeOkSeq > mySeq) return false; // out of retries (the server re-syncs at start), or a later poke covered it
+        return new Promise((resolve) => {
+            const t = setTimeout(() => resolve(pokeOkSeq > mySeq ? false : attempt(n + 1)), delays[n]); // a later poke may have got through while it waited
+            if (t.unref) t.unref();
+        });
+    });
+    return attempt(0).catch(() => false);
+}
 
 // ---------------------------------------------------------------- tools
 
@@ -207,9 +234,9 @@ const TOOLS = [
     { name: 'coord_inspect', description: 'What another agent is doing: busy / idle, task, model, account, claims, the files it edited (by edit tool, or by shell while still uncommitted), its recent shell commands, its last message, and the uncommitted files in its folder.', inputSchema: S({ agent: str('Agent id, name or session id (coord_agents)'), limit: { type: 'number', description: 'Files to list (default 100)' }, git: { type: 'boolean', description: 'Include git status of its folder (default true)' } }, ['agent']) },
     { name: 'coord_editors', description: 'Which agents edited these paths (repo-relative), from their transcripts. Use before changing a file you did not claim.', inputSchema: S({ paths: strs('Paths'), all: { type: 'boolean', description: 'Also agents that are gone' } }, ['paths']) },
     { name: 'coord_locks', description: 'Every .agent-* busy lock in the repo root: made by agent-coord (with the agent\'s state) or by an agent outside it (with its age; stale = older than 3 h: report it, never delete someone else\'s).', inputSchema: S({ repo_root: str('Absolute repo root (default: yours)') }) },
-    { name: 'coord_device_request', description: 'Request exclusive use of a shared test device BEFORE any test, install, reboot, screenshot run or tap-through on it. Answers granted (lease with its end time) or your place in the queue and who holds it; when queued do NOT use the device, a steer message says when it is yours. The A53 is the agents\' own test phone: request it and use it, never ask Yukimi (its PIN is in ~/.secrets/ruiko-windows-pin.token; memory #300). The FOLD is Yukimi\'s own phone (rule fold-off-limits): refused unless purpose is final-install (the last install step of finished, tested work), Fleet holds her approval or a priority she named, or purpose approval (she is asked on the phone; only when she said she wants it): that answer says consent pending - do NOT touch the device until a steer message says she tapped Allow. Never take a device someone else holds. Release it with coord_device_release as soon as the test ends.', inputSchema: S({ device: str('a53 | fold | ruiko-chrome | headless-chrome | an emulator id | another shared device name'), why: str('What you test, one line'), minutes: { type: 'number', description: 'How long you need it (default 15, max 60)' }, purpose: str('Only for the Fold: final-install | approval') }, ['device']) },
+    { name: 'coord_device_request', description: 'Request exclusive use of a shared test device BEFORE any test, install, reboot, screenshot run or tap-through on it. Answers granted (lease with its end time) or your place in the queue and who holds it; when queued do NOT use the device, a steer message says when it is yours. The A53 is the agents\' own test phone and the emulators are the test lane: request them and use them, never ask Yukimi (the A53 PIN is in ~/.secrets/ruiko-windows-pin.token; memory #300). The FOLD is Yukimi\'s own phone and off limits (rule fold-off-limits): refused unless purpose is final-install (the last install step of finished, tested work), Fleet holds her approval or a priority she named, or purpose approval (she is asked on the phone; only when she said she wants it). A device on the consent test lane, and the Fold with purpose approval, answer consent pending - do NOT touch the device until a steer message says it was allowed (Allow); when it is denied carry on without it, and do not ask again for 10 minutes. Never take a device someone else holds. Release it with coord_device_release as soon as the test ends.', inputSchema: S({ device: str('a53 | an emulator id | ruiko-chrome | headless-chrome | another shared device name (fold only with purpose final-install or approval)'), why: str('What you test, one line'), minutes: { type: 'number', description: 'How long you need it (default 15, max 60)' }, purpose: str('Only for the Fold: final-install | approval') }, ['device']) },
     { name: 'coord_device_release', description: 'Release a shared test device (or leave its queue) as soon as your test ends; the next agent in line is granted it at once.', inputSchema: S({ device: str('The device you hold or wait for') }, ['device']) },
-    { name: 'coord_device_renew', description: 'Extend your lease on a shared test device (from now, default 15, max 60 minutes) when the test runs longer than planned. Leases also end when you are idle for 10 minutes or your session ends. On a phone that still waits for the Allow Yukimi taps nothing runs yet and renewing only sets the length the lease gets once she allows; an allowed lease keeps its consent when renewed.', inputSchema: S({ device: str('The device you hold'), minutes: { type: 'number', description: 'Minutes from now (max 60)' } }, ['device']) },
+    { name: 'coord_device_renew', description: 'Extend your lease on a shared test device (from now, default 15, max 60 minutes) when the test runs longer than planned. Leases also end when you are idle for 10 minutes or your session ends. On a lease that still waits for an Allow (a consent test-lane device, or the Fold with purpose approval) nothing runs yet and renewing only sets the length the lease gets once it is allowed; an allowed lease keeps its consent when renewed.', inputSchema: S({ device: str('The device you hold'), minutes: { type: 'number', description: 'Minutes from now (max 60)' } }, ['device']) },
     { name: 'coord_devices', description: 'Shared test devices: who holds each, when the lease ends, and who waits in line. Look before you plan a test; request a device with coord_device_request before using it, never use one someone else holds.', inputSchema: S({ device: str('One device (omit for all)') }) },
     { name: 'coord_build_request', description: 'Open a build gate before any build, install, deploy, SW notify or restart: every live agent in the repo is asked whether its work is ready to build (agents that are idle and hold no claim there count as ready). Joins an open gate for the same target. Answers the gate and who it waits on.', inputSchema: S({ target: str('What gets built, e.g. dsapp-apk, sw-notify, dreamscape-restart'), note: str('Why / what it ships'), repo: str('Repo name (default: yours)'), wait_minutes: { type: 'number', description: 'How long the gate stays open (default 120)' }, deliver: { type: 'boolean', description: 'Also type the question into busy agents\' terminals (default true)' } }, ['target']) },
     { name: 'coord_build_ready', description: 'Answer a build gate: ready true when your files there are in a state that builds (nothing half-edited), false with why.', inputSchema: S({ build: { type: 'number', description: 'Gate id' }, ready: { type: 'boolean' }, note: str('Why not / what to wait for') }, ['build', 'ready']) },
@@ -540,4 +567,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { handle, run, TOOLS, _self: self, _paneOf: paneOf };
+module.exports = { handle, run, TOOLS, INSTRUCTIONS, _self: self, _paneOf: paneOf, _pokeServer: pokeServer };
