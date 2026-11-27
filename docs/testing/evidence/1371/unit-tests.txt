@@ -125,3 +125,191 @@ process left; cause not found); it was rerun in a held ssh session as above. Two
 (started 01:13) were stopped by their PIDs; no other session's process was touched.
 check-perf-rules: node scripts/check-perf-rules.js --dsapp ~/.cache/claude-run/dsapp-1370 -> "perf rules: ok (165 files)", exit 0
 (run on 069fc5a's tree and again on bd91633's tree).
+
+==================================================================================================================
+Part A3 - the early hold at process start (second addition), 27 Nov 2026
+Commit d05e3f09b49078cc8ba3ad4d4c6bc726dcde1c8f on bd91633 (not rebased; origin/main is now a3b2e7e).
+Pushed (fast-forward, plain push): origin fix/1331-bars-heal-2 and origin tmp/1331-bars-heal-3, both d05e3f0.
+Build gate: #270 (dsapp-unit-test-1371, DSApp-Kotlin), begun, ended ok. Same method as above (fresh dsapp-ut-1371, jbr, BelowNormal,
+gradlew.bat --no-daemon compileReleaseKotlin testDebugUnitTest, default heap). No APK, no install, no device.
+
+  run   tree                                                                BUILD                      tests  NavRoomPolicyTest
+  (i)   d05e3f0 alone (on d0b7d70 base, as the branch is)                    BUILD SUCCESSFUL in 1m41s    235   29
+  (ii)  main a3b2e7e + the 6 unmerged non-tmp branches (script) + d05e3f0   BUILD SUCCESSFUL in 1m41s    361   29
+  both: GRADLE EXIT=0, compileReleaseKotlin ran, 0 failures, 0 errors, 0 skipped; 128 compiler warnings as before (no new one)
+The commit adds 2 tests to NavRoomPolicyTest (earlyHoldDue truth table, EARLY_HOLD_DELAY_MS 2500 < GRACE_MS).
+check-perf-rules --dsapp: "perf rules: ok (165 files)"; check-app-scope: "app scope: ok (597 files)".
+
+--- (i) d05e3f0 alone ---
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 1m 41s
+35 actionable tasks: 35 executed
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=12 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=16 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=29 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=235 failures=0 errors=0 skipped=0
+
+--- (ii) simulated merge + d05e3f0 ---
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 1m 41s
+35 actionable tasks: 35 executed
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=16 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=28 failures=0 errors=0 skipped=0
+BackgroundValueTest: tests=12 failures=0 errors=0 skipped=0
+BarsHealPolicyTest: tests=42 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+EmuShimsTest: tests=7 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=29 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=361 failures=0 errors=0 skipped=0
+
+
+==================================================================================================================
+Part A4 - the early hold arms the service-not-bound fallback (B1 of the re-review), 27 Nov 2026
+Commit 99ac6680427176677412c34a727e1a703303c1db on d05e3f0. Pushed fast-forward: origin fix/1331-bars-heal-2 and tmp/1331-bars-heal-3.
+Build gate: #272 (dsapp-unit-test-1371, DSApp-Kotlin), begun, ended ok. Same method as above. No APK, no install, no device.
+
+  run   tree                                                                BUILD                      tests  NavRoomPolicyTest
+  (i)   99ac668 alone                                                        BUILD SUCCESSFUL in 2m       236   30
+  (ii)  main a3b2e7e + the 6 unmerged non-tmp branches (script) + 99ac668   BUILD SUCCESSFUL in 1m42s    362   30
+  both: GRADLE EXIT=0, compileReleaseKotlin ran, 0 failures, 0 errors, 0 skipped; 128 compiler warnings as before
+The commit adds 1 test (theEarlyUnboundCheckWaitsLongerThanHealsAndThanTheEarlyHoldsOneShot: EARLY_UNBOUND_MS 30 s > UNBOUND_MS and > the one-shot).
+check-perf-rules --dsapp: "perf rules: ok (165 files)"; check-app-scope: "app scope: ok (597 files)".
+
+--- (i) 99ac668 alone ---
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 2m
+35 actionable tasks: 35 executed
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=12 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=16 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=30 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=236 failures=0 errors=0 skipped=0
+
+--- (ii) simulated merge + 99ac668 ---
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 1m 42s
+35 actionable tasks: 35 executed
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=16 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=28 failures=0 errors=0 skipped=0
+BackgroundValueTest: tests=12 failures=0 errors=0 skipped=0
+BarsHealPolicyTest: tests=42 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+EmuShimsTest: tests=7 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=30 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=362 failures=0 errors=0 skipped=0
+
+
+==================================================================================================================
+Part A5 - the old holder's grace is 20 s again, 27 Nov 2026
+Commit 4bb28534bfa2ef9ba884d66fac05a639548e5510 on 99ac668 (A4). Pushed fast-forward: origin fix/1331-bars-heal-2 and tmp/1331-bars-heal-3.
+Build gate: #274 (dsapp-unit-test-1371, DSApp-Kotlin), begun, ended ok. Same method as above. No APK, no install, no device.
+
+  run   tree                                                                BUILD                      tests  NavRoomPolicyTest
+  (i)   4bb2853 alone                                                        BUILD SUCCESSFUL in 1m37s    237   31
+  (ii)  main a3b2e7e + the 6 unmerged non-tmp branches (script) + 4bb2853   BUILD SUCCESSFUL in 1m40s    363   31
+  both: GRACE_MS = 20_000L; GRACE_MS 20 s > the slowest measured 15.2 s (new test theOldHoldersGraceCoversTheSlowestMeasuredUpdate);
+  GRADLE EXIT=0, compileReleaseKotlin ran, 0 failures, 0 errors, 0 skipped; 128 compiler warnings as before
+check-perf-rules --dsapp: "perf rules: ok (165 files)"; check-app-scope: "app scope: ok (597 files)".
+
+--- (i) 4bb2853 alone ---
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 1m 37s
+35 actionable tasks: 35 executed
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=12 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=16 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=31 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=237 failures=0 errors=0 skipped=0
+
+--- (ii) simulated merge + 4bb2853 ---
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 1m 40s
+35 actionable tasks: 35 executed
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=16 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=28 failures=0 errors=0 skipped=0
+BackgroundValueTest: tests=12 failures=0 errors=0 skipped=0
+BarsHealPolicyTest: tests=42 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+EmuShimsTest: tests=7 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=31 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=363 failures=0 errors=0 skipped=0
+

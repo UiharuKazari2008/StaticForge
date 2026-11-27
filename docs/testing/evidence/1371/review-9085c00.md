@@ -514,3 +514,260 @@ Nothing breaks compared with 20 s.
   have no unit test; they live in MelatonBars. D8 and D9 exercise the fallback, but only a debug delay before
   `println("OK")` can show the late-token give-up and its log line `a holder arrived that is not wanted: given up
   (#1331)` on a device.
+
+---
+
+## Re-review of d05e3f0 (origin/fix/1331-bars-heal-2, on bd91633)
+
+Read-only, Nov 27 2026. Line numbers are d05e3f0's. MelatonBars.kt is `MelatonBars.kt` unless another file is named.
+
+**Verdict: safe for the device run (lane and A53). Not for the owner's phone until B1 is fixed.** On top of that, the
+device run must show that the screen-off update now passes. If main was really blocked from +2 s to +14 s rather than
+only quiet, the Shizuku route still loses the race (S7).
+
+### BLOCKER
+
+**B1. The early hold no longer needs the Bars service, so an update that leaves the service unbound now leaves the phone
+with no navigation at all, for as long as no activity starts.** The cause is MelatonBars.kt:902-916 (`holdEarly`).
+The only recovery for an unbound service is `heal()` (:582-590 arms `unboundCheck`; :596-604 has the crashed-list
+off/on), and heal() is reached only from MainActivity.kt:2519 (git grep: no other caller at d05e3f0; fix/1340 is not
+merged).
+
+Scenario:
+1. A silent self-update runs with the screen off while some other program is in front.
+2. Android puts Melaton's accessibility service on its crashed list and does not bind it again. heal()'s comment at
+   :593-595 says the Fold did exactly this on Nov 16.
+3. In the new process, `holdEarly` starts a holder at +1.5 s (Shizuku binder) or +2.5 s (one-shot). It answers OK and
+   kills the old holder. Its death link is to this live process, which stays up (foreground service).
+
+Result:
+- Back/Home/Recents stay disabled with no soft key bar drawn. Home cannot be pressed, so MainActivity (the only path to
+  heal()) is never started, and unlocking returns to the same program.
+- No `unboundCheck` is armed, so there is no gesture fallback.
+- The phone stays like this until the process dies or the phone reboots.
+- Before d05e3f0 the same case showed Android's buttons after the 10 s grace: the hated state, but a usable one.
+
+Smallest fix: in `holdEarly`, after the `navHoldWanted` check, add
+`main.removeCallbacks(unboundCheck); main.postDelayed(unboundCheck, NavRoomPolicy.UNBOUND_MS)`. `unboundCheck`
+(:616-623) uses `holderCtx`, which `holdEarly` sets, and switches to no-hint gestures and kills the holder when
+`service == null`. Notes on the delay:
+- The failing run connected at +14 s, so consider 20 s for this early arm. Each second is time with no navigation if
+  the service never comes.
+- The device run should include this case: before the update, take the service out of
+  `enabled_accessibility_services`. Expect `Bars service not bound 15 s after heal ...` then `gesture fallback on`
+  within the delay, and no shell record in `dumpsys statusbar` after that.
+
+### SHOULD-FIX
+
+**S7. If main is blocked, the early hold through Shizuku still waits for main.** The command can only run after main has
+served two steps of ShizukuControl.exec:
+1. `main.post { withService ... }` (ShizukuControl.kt:118), which calls `bindUserService`.
+2. `onServiceConnected` (:33), delivered on main. Assumed: Shizuku delivers ServiceConnection callbacks on its main
+   handler.
+
+Only then does the command run, on ShizukuShell's own thread (:121-127). The result needs main twice more (:126 and
+execRoute's post), but by then the holder already holds.
+
+Order in the failing run, if main was blocked:
+1. +1.5 s: the binder listener starts the hold; the bind is asked.
+2. Main is blocked from +2 s, so the connection is delivered at +14 s.
+3. The command and the holder's OK come at about +15 s, inside the 15 s latch (which runs from about +1.5 s to
+   +16.5 s).
+4. The old holder's grace ended at +10 s, so the row is open from about +10 s to +15 s: the same failure as before.
+
+If main stays blocked past +16.5 s, the latch expires and the ADB route runs off main and holds. The queued Shizuku
+command then runs later (S5), still row-safe.
+
+The ADB route needs no main thread until its callback. If main was only quiet (no log lines) and not blocked, d05e3f0
+works. The device run decides:
+- Compare the times of `early hold at process start (#1371)` and `holder token linked (#1331)`.
+- Look for `Choreographer: Skipped` or `Looper` slow-dispatch lines in the +2 s to +14 s window.
+
+Cheap ways out, without a rewrite:
+- (a) Find and move the 12 s of main-thread work at boot. That is also a problem under the boot and power rules.
+- (b) For the early hold only, try ADB first when `adbUsable` (no main needed; an adbd child, so N3 applies).
+- (c) Until (a) is done, keep GRACE_MS above the worst measured time from the old process's death to the new holder's
+  OK.
+
+### Answers
+
+1. **Main-process guard (DreamscapeApplication.kt:14-15): correct.**
+   - The manifest declares no `android:process` on any component or on `<application>` (grep). The only other process
+     is Shizuku's user service, `processNameSuffix("shell")` (ShizukuControl.kt:105).
+   - That process is started by Shizuku's starter, not by Android's bindApplication, so it does not run
+     `DreamscapeApplication.onCreate`. Assumed; it is also named `<pkg>:shell`, so the guard refuses it either way.
+   - minSdk is 31, so `Application.getProcessName()` exists. The main process's name is the package name. `null`
+     falls back to main.
+   - It cannot run where it must not, and it is not skipped in the main process.
+2. **`ShizukuControl.install` (ShizukuControl.kt:54-60): idempotent.** `if (appContext != null) return` covers the later
+   calls from HomeKeeper.kt:179, MainActivity.kt:2565, ActiveSyncLink.kt:258 and the service (MelatonBars.kt:1807).
+   - It registers a permission-result listener, a sticky binder-received listener and a binder-dead listener. Each
+     only does `notifyChanged()` (a main post to an empty listener set this early), and binder-dead also nulls
+     `service`.
+   - Other users, such as the update installer through `LocalAdb.shell`'s Shizuku leg, only gain from it: `withService`
+     needs `appContext` and now has it sooner. No harmful side effect found.
+3. **Double starts: none overlap.** Every start goes through `navBlankKeep(on)`, which returns while `holderBusy`
+   (:944). A start's kill (`kill $old`) runs only after its own holder's OK, and `$old` is listed before its own launch.
+   - **Binder at +1.5 s, then the one-shot:** the one-shot finds the start busy, or the token alive, and does nothing
+     (:913). If the first start failed, the one-shot starts again, one after the other. If the first holder was nolink,
+     the one-shot's forced start takes the reuse shortcut (exit 0).
+   - **No binder, one-shot (ADB) at +2.5 s, binder at +4 s:** the listener returns while busy or once the token is
+     alive. If the ADB start failed, the listener starts again over Shizuku. If the binder came while busy and that
+     start then fails, the 1.5 s retry takes it up.
+   - **Service connects while the early start runs:** relock -> navRoom -> `navBlankKeep(app, true)` unforced; the
+     skip check does not skip (`navBlank` false), so it returns at `holderBusy`. It also resets `holdRetries`, which is
+     harmless.
+   - **Early start failed, then service connects:** a normal start. A pending retry that fires while it runs sets
+     `reholdWaiting`.
+   - No holder is killed before another one holds.
+4. **Normal restart with the previous holder still in its grace:** in the fresh process `before` is null, so
+   `replacing` is false and there is no reuse. `old=$(pidof)` lists the previous holder; it is killed only after the new
+   holder's OK. The row is never open. If the new start fails, the old one is left alone and exits when its grace
+   ends; the retries follow. That gap is inherent.
+5. See S7. Main is needed for the user-service bind and its connection before the command runs (Shizuku), and for the
+   result posts afterwards. A block longer than the latch sends the hold to ADB, row-safe. The row can be open after
+   the grace while main is blocked between the bind and the connection. The cheap fixes are in S7.
+6. **ADB that early:** LocalAdb needs no init. `loadPort` and `keyPair` run inside `withAdb` and `status`
+   (LocalAdb.kt:87, :105-111). In a fresh process `lastAuthorized` is null, so `adbUsable` is true when 5555 listens.
+   - **A53: d05e3f0 makes S6 more likely.** The first ADB connection of every process now comes at a fixed +2.5 s,
+     instead of whenever the service connects. That is closer to the moments adbd may be settling (boot, or the app's
+     own 5555 restore that restarted adbd 6 s after an install on the Fold, memory #336). If that first attempt gets a
+     non-timeout error, `lastAuthorized = false` (LocalAdb.kt:151-153). The A53 then has no route for that process:
+     the retry chain and the fallback fail, and the row shows from the old grace's end until another caller succeeds
+     with ADB. If 5555 is not listening, nothing is attempted, so there is no harm. Ship S6's fix before trusting the
+     A53 result.
+   - **Fold (Shizuku first): not measurably more likely.** The binder normally starts the hold at +1.5 s with no ADB
+     attempt. ADB is tried early only if the binder is late (one-shot) or the Shizuku leg fails without a fresh token.
+7. **Power: no issue.**
+   - One `postDelayed` (2.5 s) per main-process start, removed by nothing and run once.
+   - One sticky listener (registered once per process, as before).
+   - One holder start per process start. Before, it happened at service connect, so there are no more starts, only
+     earlier ones.
+   - ShizukuControl's listeners, registered once.
+   - No repeat, no wake lock, no alarm.
+   - A small prefs read on main in `Application.onCreate` (`navHoldWanted` -> `config`): local disk only, no server
+     wait.
+8. **NOTES:**
+   - `earlyHold` labels the first start within 2.5 s "early hold at process start", even when the service's connect
+     made it (:947). This is cosmetic, but read D4's log with it in mind.
+   - A crash loop past +2.5 s now re-holds at every restart with no bars ever drawn. Android's crash back-off makes the
+     restarts slower over time, so there are gaps; B1's `unboundCheck` does not help when the process dies before it
+     fires. Same class as the old N7.
+   - The tests cover `earlyHoldDue` and `EARLY_HOLD_DELAY_MS < GRACE_MS` only. Referencing `NavBlankShell.GRACE_MS` from
+     the JVM test is fine, since a `const val` is inlined.
+
+---
+
+## Re-review of 99ac668 and 4bb2853 (origin/fix/1331-bars-heal-2)
+
+Read-only, Nov 27 2026. Line numbers are 4bb2853's.
+
+**Verdict: no BLOCKER in these two commits. For the owner's phone I would call it safe only together with fix/1340, after
+the screen-off 35 -> 36 run passes and after C1 has been measured (see 5).**
+
+### 1. Is B1 closed?
+
+Yes, for the case it names.
+- `holdEarly` arms `main.postDelayed(unboundCheck, NavRoomPolicy.EARLY_UNBOUND_MS)` (MelatonBars.kt:912-913;
+  NavRoomPolicy.kt:39 is 30 s).
+- `unboundCheck` (:616-623) falls back when `service == null`, using `navRoomSaved` and `fallbackSpent()`. In a fresh
+  process `fallbackSwitches` is 0, so the fallback is open.
+
+Walk-through, times from the old process's death (the new process starts at about +0.5 s):
+- **0 to the new holder's OK** (+1.5 s on the Fold, up to +15.2 s measured with main blocked): the old holder holds
+  for its 20 s grace (NavBlankShell.kt:48). The row is empty and no bar is drawn.
+- **The new holder's OK until about +30.5 s:** the new holder holds. Still no bar, because the service is not bound.
+  - The user has no Back/Home/Recents, no soft key bar, and Home cannot start MainActivity.
+  - Assumed from AOSP's StatusBarShellCommand static token, and the relock comment says so: Android's status bar
+    probably stays locked by the old process's `cmd statusbar send-disable-flag`, so there is no shade either.
+- **About +30.5 s (+1-2 s for `cmd overlay list` and `enable-exclusive`):** no-hint gestures are switched on.
+  `navBlankKeep(false)` then kills every `melaton_navblank`, and Android's gestures work.
+  - Not fixed: the status bar stays locked and nothing of Melaton is drawn, until the service binds (then the way back
+    comes on an event 60 s or more later) or something calls `lock(false)`.
+  - fix/1340's give-up path does call `MelatonBars.lock(app, false)` (its BarsServiceHeal.kt:386); this branch's
+    `unboundCheck` does not.
+
+One state is still left with an empty row, nothing drawn and nothing armed (NOTE R5). If `navFallbackStart`'s
+`cmd overlay list` or `enable-exclusive` fails at +30 s (:1031, :1035), it calls `retryHold`. The rehold returns at
+once because the token is alive (`reholdRun`, :747), so nothing is armed again. That needs the shell route that started
+the holder seconds earlier to fail now, which is unlikely. Smallest fix: when the fallback was asked by `unboundCheck`
+and fails, arm `unboundCheck` once more (one-shot, bounded).
+
+### 2. Grace 20 s against the unbound arm at 30 s
+
+No bad interplay.
+- The early arm fires about 30.5 s after the old death, which is after the old grace has ended (20 s). By then the old
+  holder has exited, or the new holder already killed it after its OK.
+- If heal() re-arms the timer (15 s from a MainActivity start, :590), the fallback can come while the old holder is
+  still in its grace. The kill is `kill $(pidof melaton_navblank)`, and an old-process holder has the same
+  `--nice-name`, so it is killed too.
+- An old holder cannot outlive the switch, apart from the moment between `enable-exclusive` and the kill (under a
+  second with gestures taken).
+- Nothing restarts a holder after the fallback: the one-shot, the binder listener and `reholdRun` all check
+  `navHoldWanted` (false in the fallback), and guard (c) gives up a late token.
+- **NOTE R6:** heal() replaces the 30 s timer with its own 15 s one. A MainActivity start at +5 s brings the check
+  forward to +20 s, which can cut into fix/1340's rebind window (21-25 s). The phone then stays on gestures for at least
+  60 s. It is not visible buttons, but it is an avoidable flip. Fix: when re-arming, keep the later of the two
+  deadlines.
+- **NOTE R7:** the log line `Bars service not bound 15 s after heal ...` (:620) is wrong for the early arm. Say how long
+  it waited.
+
+### 3. Can the accepted cost be reached in an ordinary event on the Fold (Shizuku, fix/1340 merged)?
+
+- **An ordinary update: unlikely.** Assumed from AOSP AccessibilityManagerService: the service the update's kill marks
+  as crashed is cleared from the crashed set when the package update finishes, and the service is bound again. Every
+  measured run bound it: the Fold at 1.2-1.5 s, the A53, and the emulator at about +14 s with the screen off.
+  fix/1340's watch re-binds at about 4 s plus 1.5 s plus 4 s if not. Reaching 30 s needs both to fail. I put it at well
+  under one update in a hundred. The Nov 16 "empty, locked bar" on the Fold shows it is not impossible.
+- **C1, an ordinary crash: this is the likely way in, and it is not an update.**
+  - Assumed from AOSP: a bound accessibility service whose process dies outside an update stays on the crashed set and
+    is not bound again until it is toggled or its package changes.
+  - The process is restarted (on the A53 after about 10 s, by the planner's run). The early hold re-holds at once,
+    before the old grace ends, so the row is never visible.
+  - But the bars are not drawn until something re-binds the service. Without fix/1340 that is
+    `EARLY_UNBOUND_MS` = 30 s after the restart: about **40 s with no navigation**, then gestures with no bar and
+    possibly no shade. With fix/1340, its watch toggles the service at about +4 s after the restart and verifies at
+    +9.5 s: about 15-20 s with no navigation.
+  - bd91633 (no early hold) showed Android's buttons after the grace, which is usable.
+
+  How to settle it on the emulator:
+  - `kill -9 <main pid>` (a crash, not a force stop), with the room on and the screen on, three times. Record each
+    time:
+    - `dumpsys accessibility` (is the service bound or crashed)
+    - when `MelatonBarService.onServiceConnected` / the bars come back (`logcat -s MelatonBars BarsHeal`)
+    - `early hold at process start (#1371)` and `holder token linked`
+    - whether `gesture fallback on` appears at +30 s
+    - `dumpsys statusbar` (records, and whether the shade is disabled)
+  - Do the same with fix/1340 merged.
+  - If the service comes back on its own within a few seconds, C1 is void. If it stays unbound, it is real.
+
+### 4. New defects
+
+- **SHOULD-FIX C1 (if the crash run shows the service stays unbound):** after a crash the early hold leaves no
+  navigation for the restart delay plus 30 s (without 1340) or about 15-20 s (with 1340).
+  Smallest fix: early-hold only when the process start follows an update,
+  `packageManager.getPackageInfo(packageName, 0).lastUpdateTime` within about 2 minutes of now. This is where the
+  update gap needs it; every other start waits for the service, as before d05e3f0. Alternatively, ship only with 1340.
+- **NOTE R5** (fallback failure leaves nothing armed), **R6** (heal shortens the early arm), **R7** (the log text).
+- **NOTE R8:** the unbound fallback does not give Android's status bar back. Call `lock(app, false)` in `unboundCheck`'s
+  fallback, because the new process's `locked` field is false although system_server may still hold the old flags. Or
+  rely on fix/1340, which does it.
+- **Tests:** the new tests are constants only (`EARLY_UNBOUND_MS == 30_000`, `GRACE_MS > 15_200`). No new code paths are
+  tested.
+
+### 5. Overall verdict for the owner's phone
+
+Not yet. Safe when all of the following hold:
+- (a) The screen-off 35 -> 36 run with 4bb2853 shows no gap: the records are never empty, the new token's
+  `BACK HOME RECENT SEARCH` row comes before the old token's CLEAR, and the new OK comes before old death + 20 s with at
+  least 3 s to spare.
+- (b) The crash run in 3 is done. If the service is not re-bound by itself, C1 is fixed (update-only early hold), or
+  fix/1340 is merged into the same build and the crash run is repeated with it showing bars back within its window.
+- (c) The forced unbound case (service removed from `enabled_accessibility_services` before an update) shows
+  `gesture fallback on` at about +30 s, and no `melaton_navblank` after it.
+- (d) S6 is fixed, or accepted as A53-only: the Fold holds through Shizuku first.
+- (e) The build is compiled with NavRoomPolicyTest passing and installed on the Fold only as the final step, per
+  fold-off-limits.
+
+The A53 PASS on bd91633 does not cover d05e3f0, 99ac668 or 4bb2853. Run the update and crash cases on the A53 again
+with the final build.

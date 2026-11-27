@@ -36,3 +36,25 @@ Caller check (git grep at the rebased tree and at every unmerged non-tmp/build b
     callers. Signature unchanged; now false while in the gesture fallback (intended: no nav-bar hiding, no edges/home strip
     then). Same MainActivity lines in claude/shake-torch-1104, feat/1298, feat/1309, feat/1327, fix/1340: fine.
   navRoomSaved: new private fun, no external caller.
+
+==================================================================================================================
+Part A3 re-run (27 Nov 2026, after the early hold commit d05e3f0)
+Base: origin/main a3b2e7e804e4be21c06bfaeb3e8bdaf386175b24. The set of unmerged branches (git branch -r --no-merged origin/main without
+origin/build/* and origin/tmp/*) is now six, all with commits of their own; dsapp-merge-latest.sh run unchanged, alphabetical order:
+  ok    origin/claude/shake-torch-1104
+  ok    origin/feat/1309-emu-shims
+  ok    origin/feat/1327-output-panel
+  ok    origin/fix/1331-bars-heal-2          (= bd91633, this work before the early hold)
+  ok    origin/fix/1340-bars-service-heal    (touches DreamscapeApplication.kt: BarsServiceWatch.onProcessStart, at the END of onCreate)
+  ok    origin/fix/1343-notice-above-keyboard
+  (feat/1298-notify-sound is no longer in the set: merged into main.)
+Then tmp/1331-bars-heal-3 @ d05e3f0 merged last: "Merge made by the 'ort' strategy", no conflict, 4 files, 55+.
+DreamscapeApplication.kt after the merge holds both: my MelatonBars.holdEarly(this) guarded block right after HomeKeeper.onProcessStart
+(top of onCreate) and 1340's BarsServiceWatch.onProcessStart(this) near the end; the two hunks are separated by unchanged lines, so no conflict.
+
+Part A4 re-run (27 Nov 2026, commit 99ac668 on d05e3f0): base origin/main a3b2e7e, the same six unmerged non-tmp branches (the script's
+"ok" for each; origin/fix/1331-bars-heal-2 at that time = d05e3f0), then tmp/1331-bars-heal-3 @ 99ac668 merged last:
+"Merge made by the 'ort' strategy", 3 files, 21+, no conflict. DreamscapeApplication.kt untouched by this commit.
+
+Part A5 re-run (27 Nov 2026, commit 4bb2853 on 99ac668): base origin/main a3b2e7e, the same six unmerged non-tmp branches (script "ok" for
+each; origin/fix/1331-bars-heal-2 then = 99ac668), then tmp/1331-bars-heal-3 @ 4bb2853 merged last: clean ("ort"), 2 files, 18+/9-, no conflict.
