@@ -20,7 +20,8 @@
  *                          Customize network settings / Rename Connection
  *   Wireless Manager       WM 6.1's All / Wi-Fi / Bluetooth / Phone rows through the Android app
  *                          (AndroidDevice, Shizuku), Menu with the radios' Android settings and
- *                          Disconnect Cellular Data; then the Dreamscape connection row: tap connects
+ *                          Disconnect Cellular Data; Network mode (wmRadioMode.js, #1328: the mode and the
+ *                          place whose rule is applying, tap opens its page) on an app that has it; then the Dreamscape connection row: tap connects
  *                          (wsClient.manualReconnect) or disconnects (cancelConnectionFromUser,
  *                          after a warning), as the tray flyout's "Connect or disconnect"
  *   Remote Access          remoteAccessProperties.js on four tabs: priority client
@@ -1088,6 +1089,11 @@
         return on ? 'On' : 'Off';
     }
 
+    // (#1328) the cellular network mode: its page and state are wmRadioMode.js (loaded after this file, so looked
+    // up when used); an app without the bridge has no bar and no Menu entry
+    const netMode = () => (root.wmRadioMode && root.wmRadioMode.available() ? root.wmRadioMode : null);
+    let netModeWatch = null; // the open page's listener (one at a time)
+
     // Layout from WM 6.1 itself (Yukimi's emulator, Nov 10): All on a full-width bar, the radios in a
     // rounded panel under it, each a bar (name left, glyph right, white) with its state in a white box
     // under the bar's right half; Done | Menu; X in the title bar.
@@ -1113,6 +1119,7 @@
                         // our own Settings > Network Cards > Wireless (#1038), Android's only on an app without it
                         { label: 'Wi-Fi Settings', disabled: !canOpen && !root.wmWifi, action: () => { if (!(root.wmWifi && root.wmWifi.available() && root.wmWifi.open())) openAndroidSettings('wifi'); } },
                         ...(r && r.present && r.present.nfc ? [{ label: 'NFC Settings', disabled: !canOpen, action: () => openAndroidSettings('nfc') }] : []),
+                        ...(netMode() ? [{ label: 'Network Mode Settings', action: () => netMode().open() }] : []),
                         { label: 'Disconnect Cellular Data', disabled: !(r && r.data && !r.airplane), action: () => setRadio('data', false) }
                     ]
                 }
@@ -1123,10 +1130,16 @@
             const r = radios();
             const rows = r ? RADIO_ROWS.filter(([id]) => id !== 'all' && radioPresent(r, id)) : [];
             const item = (attr, name) => `<div class="wm-wl-item"><button type="button" class="wm-wl-bar" ${attr}><span class="wm-wl-name">${esc(name)}</span><img class="wm-wl-glyph" alt="" draggable="false"></button><span class="wm-wl-state"></span></div>`;
+            // Network mode sits under Phone, the radio it belongs to
+            const bars = rows.map(([id, name]) => [id, item(`data-radio="${id}"`, name)]);
+            if (netMode()) {
+                const phoneAt = bars.findIndex(([id]) => id === 'phone');
+                bars.splice(phoneAt < 0 ? bars.length : phoneAt + 1, 0, ['netmode', item('data-act="netmode"', 'Network mode')]);
+            }
             el.innerHTML = `<div class="wm-wl">
                     ${r ? `<button type="button" class="wm-wl-bar is-all" data-radio="all"><span class="wm-wl-name">All</span><img class="wm-wl-glyph" alt="" draggable="false"></button>` : ''}
                     <div class="wm-wl-panel${r ? '' : ' is-alone'}">
-                        ${rows.map(([id, name]) => item(`data-radio="${id}"`, name)).join('')}
+                        ${bars.map(([, html]) => html).join('')}
                         ${wgState() ? item('data-act="vpn"', 'VPN') : ''}
                         ${item('data-act="toggle"', 'Dreamscape')}
                     </div>
@@ -1195,6 +1208,40 @@
                 paintRadios(radios());
             };
             root.addEventListener('androiddevicestatus', onStatus);
+
+            // (#1328) Network mode: the mode the phone reads (and the place applying it); a tap or hold opens its page
+            if (netModeWatch) netModeWatch.abort();
+            netModeWatch = null;
+            const mbar = el.querySelector('[data-act="netmode"]');
+            if (mbar) {
+                const mImg = mbar.querySelector('img');
+                mImg.classList.add('is-white'); // the signal bars are tray art, white already
+                const mState = mbar.parentElement.querySelector('.wm-wl-state');
+                const mPaint = () => {
+                    const m = netMode();
+                    if (!m) return;
+                    const now = m.row();
+                    const g = ui.art('status-signal-4');
+                    if (mImg.getAttribute('src') !== g.src) { mImg.src = g.src; mImg.srcset = g.srcset; }
+                    if (mState.textContent !== now.text) mState.textContent = now.text;
+                    mbar.classList.toggle('is-busy', now.busy);
+                };
+                mPaint();
+                const watch = new AbortController();
+                netModeWatch = watch;
+                root.addEventListener('dreamscape:radiomode', () => {
+                    if (!el.isConnected) { watch.abort(); return; }
+                    mPaint();
+                }, { signal: watch.signal });
+                const toNetMode = () => { const m = netMode(); if (m) m.open(); };
+                holdOpens(mbar, toNetMode);
+                mbar.addEventListener('click', () => {
+                    if (mbar._held) { mbar._held = false; return; }
+                    toNetMode();
+                });
+                // the phone is read once each time Wireless Manager is opened
+                if (!d.netModeRead) { d.netModeRead = true; netMode().refresh(); }
+            }
 
             // (#1019) WireGuard: on with the tunnel's name, Off, or No tunnel (none added in Network Cards or seen up
             // yet); a tap switches it through the app, a hold opens its page in Network Cards

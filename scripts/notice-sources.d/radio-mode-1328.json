@@ -1,0 +1,36 @@
+{
+ "sources": {
+  "radio-mode-refused": {
+   "area": "public/scripts/comp/wmRadioMode.js refused (Wireless Manager > Network Mode)",
+   "trigger": "user-action",
+   "action": "the app's reason for refusing the mode change, save or delete she just asked for; the page stays behind it with her input to correct",
+   "sound": "message-box",
+   "switch": "answers her own tap only; shown only while the page is on screen (off screen the page's own line keeps the reason). Its beep is the message box's (Settings > Sounds & Notifications)",
+   "note": "N1/N10 ok: a failure told once, where it failed, in the app's words; the page's Last problem line is hidden while the box is up. No box when the change worked (N2). #1328"
+  },
+  "radio-mode-confirm-nr": {
+   "area": "public/scripts/comp/wmRadioMode.js setMode (NR only chosen by hand)",
+   "trigger": "user-action",
+   "action": "Yes sets NR only, No (default) keeps the current mode",
+   "sound": "message-box",
+   "switch": "only from her tap on the NR only radio",
+   "note": "N1 ok: a question before a choice that can drop mobile data where there is no 5G. #1328"
+  },
+  "radio-mode-confirm-delete": {
+   "area": "public/scripts/comp/wmRadioMode.js deleteRule",
+   "trigger": "user-action",
+   "action": "Yes deletes the place, No (default) keeps it",
+   "sound": "message-box",
+   "switch": "only from her tap on Delete / Delete Place",
+   "note": "N1 ok: a confirmation of a removal she asked for. #1328"
+  },
+  "radio-mode-input": {
+   "area": "public/scripts/comp/wmRadioMode.js say (the place editor's missing input; Here with no position)",
+   "trigger": "user-action",
+   "action": "says what to fill in or turn on; the editor stays open with her input",
+   "sound": "message-box",
+   "switch": "answers her own ok on the editor or her pick of Here",
+   "note": "N1/N10 ok: told once, in the editor that failed. #1328"
+  }
+ }
+}

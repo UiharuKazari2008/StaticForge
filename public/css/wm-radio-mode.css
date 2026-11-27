@@ -1,0 +1,32 @@
+/* Melaton Mobile > Wireless Manager > Network Mode (wmRadioMode.js, #1328). The WM kit's controls
+ * (wm-programs.css, wm65.css); only the Places list's columns are the page's own. */
+
+/* one line a place: the name takes what is left and ends in an ellipsis */
+html.ui-mobile .wm-rmode-list .wm-listbox-row > span {
+    flex: 0 0 auto;
+}
+
+html.ui-mobile .wm-rmode-list .wm-listbox-row > .wm-rmode-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+html.ui-mobile .wm-rmode-list .wm-rmode-mode {
+    width: calc(46 * var(--wm-px));
+}
+
+html.ui-mobile .wm-rmode-list .wm-rmode-radius {
+    width: calc(46 * var(--wm-px));
+    text-align: right;
+}
+
+html.ui-mobile .wm-rmode-list .wm-rmode-on {
+    width: calc(20 * var(--wm-px));
+}
+
+/* the app's reasons can be long words (a command, a package name): they wrap inside the page */
+html.ui-mobile .wm-rmode > p {
+    overflow-wrap: anywhere;
+}
