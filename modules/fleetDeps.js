@@ -314,3 +314,10 @@ function graph(listWork) {
 }
 
 module.exports = { detect, detectWithModel, blockedBy, orderQueued, prerequisites, graph, setPriority, addDep, removeDep, depsOf, priorities };
+
+// Reload without a restart (#1292, docs/server/hot-reload.md): the one runtime value is the DB handle its tables were
+// made on; the next version takes it so it does not run the CREATE TABLEs again.
+require('./hotReload').mark(module, {
+    dispose() { return { ready }; },
+    accept(st) { if (st && st.ready) ready = st.ready; }
+});
