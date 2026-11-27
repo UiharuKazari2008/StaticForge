@@ -200,6 +200,79 @@
     font-display: swap;
 }
 
+/* The console's raster 'Terminal' fonts, one face per size the Font tab lists (WxH = cell width x height in px),
+   ripped by scripts/build-vista-raster-fonts.py: draw at font-size = H px, line-height = H px. */
+@font-face {
+    font-family: 'Melaton Terminal 4x6';
+    src: url('/protected/fonts/vista/melaton-terminal-4x6.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Melaton Terminal 6x8';
+    src: url('/protected/fonts/vista/melaton-terminal-6x8.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Melaton Terminal 8x8';
+    src: url('/protected/fonts/vista/melaton-terminal-8x8.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Melaton Terminal 16x8';
+    src: url('/protected/fonts/vista/melaton-terminal-16x8.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Melaton Terminal 5x12';
+    src: url('/protected/fonts/vista/melaton-terminal-5x12.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Melaton Terminal 7x12';
+    src: url('/protected/fonts/vista/melaton-terminal-7x12.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Melaton Terminal 8x12';
+    src: url('/protected/fonts/vista/melaton-terminal-8x12.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Melaton Terminal 16x12';
+    src: url('/protected/fonts/vista/melaton-terminal-16x12.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Melaton Terminal 12x16';
+    src: url('/protected/fonts/vista/melaton-terminal-12x16.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Melaton Terminal 10x18';
+    src: url('/protected/fonts/vista/melaton-terminal-10x18.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
 @font-face {
     font-family: 'Meiryo';
     src: url('/protected/fonts/vista/meiryo.woff2') format('woff2'),
