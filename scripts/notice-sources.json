@@ -1,0 +1,1 @@
+{"note":"Notice source registry (N5). Every emit site carries `// notice: <id>`; the id is registered here with its trigger, its destination (action), whether it sounds, and where the user switches it off. switch \"none\" is called out by the Supervisor.","sources":{}}

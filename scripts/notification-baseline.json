@@ -1,0 +1,657 @@
+{
+ "note": "Emit sites with no registered source id. Counts may only go down. See docs/design/notification-discipline.md and scripts/check-notifications.js.",
+ "totals": {
+  "message": 512,
+  "toast": 1053,
+  "sound": 58,
+  "balloon": 13
+ },
+ "files": {
+  "apps/activesync/client/activesync.js": {
+   "message": 7
+  },
+  "apps/alarm/client/alarm.js": {
+   "toast": 1
+  },
+  "apps/claudedesk/client/claudedesk.js": {
+   "message": 2
+  },
+  "apps/videos/client/videos.js": {
+   "message": 1
+  },
+  "apps/vzaccess/client/vzaccess.js": {
+   "sound": 1
+  },
+  "apps/xlink/client/xlink.js": {
+   "message": 2
+  },
+  "public/scripts/appInitSteps.js": {
+   "toast": 3
+  },
+  "public/scripts/appWebSocketHandlers.js": {
+   "toast": 4
+  },
+  "public/scripts/cacheBuster.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/accountDataBootstrap.js": {
+   "toast": 4
+  },
+  "public/scripts/comp/activeSyncAgent.js": {
+   "message": 1
+  },
+  "public/scripts/comp/activeSyncClipboard.js": {
+   "message": 1
+  },
+  "public/scripts/comp/activeSyncNotifications.js": {
+   "balloon": 1
+  },
+  "public/scripts/comp/activeSyncStudio.js": {
+   "message": 1
+  },
+  "public/scripts/comp/activeSyncTray.js": {
+   "balloon": 1
+  },
+  "public/scripts/comp/agentClientBridge.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/agentClientUpdateDialog.js": {
+   "sound": 1
+  },
+  "public/scripts/comp/appBootstrap.js": {
+   "toast": 4
+  },
+  "public/scripts/comp/autocompleteUtils.js": {
+   "toast": 8
+  },
+  "public/scripts/comp/autofill/wordLookup.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/autofillSettings.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/balanceDisplay.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/bootMessageBox.js": {
+   "sound": 1
+  },
+  "public/scripts/comp/bracketGenerationApplet.js": {
+   "toast": 23
+  },
+  "public/scripts/comp/bulkOperationsManager.js": {
+   "toast": 21
+  },
+  "public/scripts/comp/cacheAndReadOnly.js": {
+   "toast": 6
+  },
+  "public/scripts/comp/characterDbApplet.js": {
+   "toast": 26
+  },
+  "public/scripts/comp/characterPositionToolManager.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/characterSearchModal.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/compareViewManager.js": {
+   "toast": 15
+  },
+  "public/scripts/comp/compileToPromptsApplet.js": {
+   "toast": 7
+  },
+  "public/scripts/comp/compiledPromptInspector.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/confirmationDialog.js": {
+   "message": 1,
+   "sound": 2
+  },
+  "public/scripts/comp/copyLookback.js": {
+   "toast": 6
+  },
+  "public/scripts/comp/cplAuthentication.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/dataManagementDsapApplet.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/desktop-apps/dovecote.js": {
+   "toast": 1,
+   "sound": 2
+  },
+  "public/scripts/comp/desktop-apps/emotion.js": {
+   "toast": 9
+  },
+  "public/scripts/comp/desktop-apps/guacRemote.js": {
+   "toast": 8
+  },
+  "public/scripts/comp/desktop-apps/vista-games/blockdrop.js": {
+   "sound": 1
+  },
+  "public/scripts/comp/desktop-apps/vista-games/chess.js": {
+   "sound": 2
+  },
+  "public/scripts/comp/desktop-apps/vista-games/inkball.js": {
+   "message": 1
+  },
+  "public/scripts/comp/desktop-apps/vista-games/jezzball.js": {
+   "message": 2
+  },
+  "public/scripts/comp/desktop-apps/vista-games/vistaGameEngine.js": {
+   "sound": 2
+  },
+  "public/scripts/comp/desktopShortcuts.js": {
+   "toast": 41
+  },
+  "public/scripts/comp/director.js": {
+   "toast": 69
+  },
+  "public/scripts/comp/directorLearningAdmin.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/directorToolInspector.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/dreamosPortal.js": {
+   "balloon": 1
+  },
+  "public/scripts/comp/dropPasteFallback.js": {
+   "toast": 5
+  },
+  "public/scripts/comp/dsapRegistry.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/dynamicGenerationManager.js": {
+   "toast": 6
+  },
+  "public/scripts/comp/dynamicGenerationOverrides.js": {
+   "toast": 10
+  },
+  "public/scripts/comp/emphasisGroupsToolManager.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/emphasisTokenModal.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/errorDisplay.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/exitConfirmation.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/exploreDsapApplet.js": {
+   "toast": 12
+  },
+  "public/scripts/comp/explorerApplet.js": {
+   "toast": 59,
+   "sound": 1
+  },
+  "public/scripts/comp/explorerArchive.js": {
+   "sound": 1
+  },
+  "public/scripts/comp/galleryActions.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/galleryToolbar.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/galleryView.js": {
+   "toast": 30
+  },
+  "public/scripts/comp/generationOrchestrator.js": {
+   "toast": 6
+  },
+  "public/scripts/comp/generationQuipsTray.js": {
+   "toast": 20
+  },
+  "public/scripts/comp/grimoireIeChrome.js": {
+   "toast": 3,
+   "message": 3
+  },
+  "public/scripts/comp/grimoireRemoteBrowser.js": {
+   "toast": 13,
+   "sound": 1
+  },
+  "public/scripts/comp/imageExpansion.js": {
+   "toast": 20
+  },
+  "public/scripts/comp/imageGenerationSettings.js": {
+   "toast": 4
+  },
+  "public/scripts/comp/imagePromptInspector.js": {
+   "toast": 4
+  },
+  "public/scripts/comp/imageViewer.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/ipManagement.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/journal.js": {
+   "sound": 1
+  },
+  "public/scripts/comp/ledgeDesk.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/logViewerApplet.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/mainMenuManager.js": {
+   "toast": 40
+  },
+  "public/scripts/comp/mainframeExceptionDialog.js": {
+   "sound": 1
+  },
+  "public/scripts/comp/manualDropdownManager.js": {
+   "toast": 20
+  },
+  "public/scripts/comp/manualGenerationParams.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/manualModalManager.js": {
+   "toast": 31
+  },
+  "public/scripts/comp/manualPreviewManager.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/manualUploadHandlers.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/melatonAppUpdate.js": {
+   "message": 2
+  },
+  "public/scripts/comp/menmaDsapApplet.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/messengerNotify.js": {
+   "balloon": 2,
+   "sound": 1
+  },
+  "public/scripts/comp/modalUtils.js": {
+   "toast": 12,
+   "balloon": 1,
+   "sound": 2
+  },
+  "public/scripts/comp/naxVibesApplet.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/naxtApplet.js": {
+   "toast": 29
+  },
+  "public/scripts/comp/notepadManager.js": {
+   "toast": 13
+  },
+  "public/scripts/comp/novelAiAccountStatus.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/novelsDsapApplet.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/pipelineStageControls.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/pipelineStageManager.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/planetSwitcher.js": {
+   "toast": 1,
+   "sound": 4
+  },
+  "public/scripts/comp/popoverManager.js": {
+   "balloon": 4
+  },
+  "public/scripts/comp/presetManager.js": {
+   "toast": 43
+  },
+  "public/scripts/comp/programFaults.js": {
+   "message": 1
+  },
+  "public/scripts/comp/promptTextareaContextMenu.js": {
+   "toast": 13
+  },
+  "public/scripts/comp/randomPromptManager.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/referenceContextMenu.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/referenceManager.js": {
+   "toast": 40
+  },
+  "public/scripts/comp/requestBodyReplacementsModal.js": {
+   "toast": 16
+  },
+  "public/scripts/comp/requestForm.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/runApplet.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/runCommandIndex.js": {
+   "toast": 10
+  },
+  "public/scripts/comp/runpodTray.js": {
+   "toast": 4
+  },
+  "public/scripts/comp/securityCenterDsapApplet.js": {
+   "toast": 77
+  },
+  "public/scripts/comp/serverManagement.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/serviceWorkerManager.js": {
+   "toast": 13
+  },
+  "public/scripts/comp/sidebar-gadgets/gadgetShim.js": {
+   "sound": 1
+  },
+  "public/scripts/comp/similarImageDsapApplet.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/spellbookModal.js": {
+   "toast": 10
+  },
+  "public/scripts/comp/stageResultsReview.js": {
+   "toast": 6
+  },
+  "public/scripts/comp/studioChangeJson.js": {
+   "toast": 10
+  },
+  "public/scripts/comp/studioSession.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/studioSoftTips.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/studioVSlider.js": {
+   "toast": 5
+  },
+  "public/scripts/comp/syncCenter.js": {
+   "balloon": 1
+  },
+  "public/scripts/comp/tagWikiSearchModal.js": {
+   "toast": 33,
+   "sound": 6
+  },
+  "public/scripts/comp/textReplacementManager.js": {
+   "toast": 50
+  },
+  "public/scripts/comp/toastManager.js": {
+   "balloon": 1,
+   "message": 1
+  },
+  "public/scripts/comp/trayIndicators.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/uploadHandlers.js": {
+   "toast": 4
+  },
+  "public/scripts/comp/usageToolManager.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/vfsImportRouter.js": {
+   "toast": 7
+  },
+  "public/scripts/comp/vfsSystemOpenRouter.js": {
+   "toast": 7
+  },
+  "public/scripts/comp/vistaGadgetHost.js": {
+   "sound": 1
+  },
+  "public/scripts/comp/vistaSidebar.js": {
+   "toast": 3,
+   "sound": 1
+  },
+  "public/scripts/comp/weatherAlerts.js": {
+   "balloon": 1,
+   "message": 3
+  },
+  "public/scripts/comp/winlogonPower.js": {
+   "sound": 1
+  },
+  "public/scripts/comp/wmAccounts.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmActiveSync.js": {
+   "message": 7
+  },
+  "public/scripts/comp/wmAndroidApps.js": {
+   "message": 22
+  },
+  "public/scripts/comp/wmAndroidWidgets.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmAtelier.js": {
+   "message": 5
+  },
+  "public/scripts/comp/wmBinToss.js": {
+   "message": 2
+  },
+  "public/scripts/comp/wmBlockDrop.js": {
+   "message": 4
+  },
+  "public/scripts/comp/wmBrickBreaker.js": {
+   "message": 3
+  },
+  "public/scripts/comp/wmBrowser.js": {
+   "message": 32
+  },
+  "public/scripts/comp/wmCalendar.js": {
+   "message": 3
+  },
+  "public/scripts/comp/wmCamera.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmCarKey.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmCharacters.js": {
+   "message": 7
+  },
+  "public/scripts/comp/wmChat.js": {
+   "message": 6
+  },
+  "public/scripts/comp/wmClaudeAccounts.js": {
+   "message": 20
+  },
+  "public/scripts/comp/wmDialogs.js": {
+   "message": 2
+  },
+  "public/scripts/comp/wmDoubles.js": {
+   "message": 4
+  },
+  "public/scripts/comp/wmDreamStudio.js": {
+   "message": 9
+  },
+  "public/scripts/comp/wmDreamStudioExpanders.js": {
+   "message": 4
+  },
+  "public/scripts/comp/wmDreamStudioInspector.js": {
+   "message": 2
+  },
+  "public/scripts/comp/wmDreamStudioMenu.js": {
+   "message": 2
+  },
+  "public/scripts/comp/wmDreamStudioPrint.js": {
+   "message": 4
+  },
+  "public/scripts/comp/wmDreamStudioRack.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmDreamStudioRefs.js": {
+   "message": 4
+  },
+  "public/scripts/comp/wmDreamStudioRentan.js": {
+   "message": 2
+  },
+  "public/scripts/comp/wmDreamStudioSession.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmEmotion.js": {
+   "message": 4
+  },
+  "public/scripts/comp/wmExpanders.js": {
+   "message": 10
+  },
+  "public/scripts/comp/wmFileDialogs.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmFileExplorer.js": {
+   "message": 23
+  },
+  "public/scripts/comp/wmGems.js": {
+   "message": 4
+  },
+  "public/scripts/comp/wmHost.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/wmInkBall.js": {
+   "message": 3
+  },
+  "public/scripts/comp/wmLapis.js": {
+   "message": 20
+  },
+  "public/scripts/comp/wmLedge.js": {
+   "message": 4
+  },
+  "public/scripts/comp/wmLock65.js": {
+   "message": 2
+  },
+  "public/scripts/comp/wmMedia.js": {
+   "message": 6
+  },
+  "public/scripts/comp/wmMessaging.js": {
+   "message": 28
+  },
+  "public/scripts/comp/wmMinesweeper.js": {
+   "message": 4
+  },
+  "public/scripts/comp/wmNotes.js": {
+   "message": 15,
+   "sound": 1
+  },
+  "public/scripts/comp/wmNotificationInbox.js": {
+   "message": 3
+  },
+  "public/scripts/comp/wmPayPass.js": {
+   "message": 5
+  },
+  "public/scripts/comp/wmPhasewalker.js": {
+   "message": 5
+  },
+  "public/scripts/comp/wmPhoneGallery.js": {
+   "message": 7
+  },
+  "public/scripts/comp/wmPrograms.js": {
+   "message": 6
+  },
+  "public/scripts/comp/wmReference.js": {
+   "message": 3
+  },
+  "public/scripts/comp/wmRemoteDesktop.js": {
+   "message": 3
+  },
+  "public/scripts/comp/wmSearch.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmSearchPictures.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmSettingsApplets.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmSettingsChime.js": {
+   "message": 1,
+   "sound": 1
+  },
+  "public/scripts/comp/wmSettingsConnections.js": {
+   "message": 14
+  },
+  "public/scripts/comp/wmSettingsDreamscape.js": {
+   "message": 5
+  },
+  "public/scripts/comp/wmSettingsPersonal.js": {
+   "message": 2
+  },
+  "public/scripts/comp/wmSettingsSystem.js": {
+   "message": 29
+  },
+  "public/scripts/comp/wmShell.js": {
+   "toast": 2,
+   "message": 26,
+   "sound": 16
+  },
+  "public/scripts/comp/wmShortcuts.js": {
+   "message": 3
+  },
+  "public/scripts/comp/wmSolitaire.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmSpellbook.js": {
+   "message": 3
+  },
+  "public/scripts/comp/wmSpellcaster.js": {
+   "message": 3
+  },
+  "public/scripts/comp/wmStudio.js": {
+   "toast": 1,
+   "message": 1
+  },
+  "public/scripts/comp/wmSuiteKit.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmTaskManager.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmTasks.js": {
+   "message": 4
+  },
+  "public/scripts/comp/wmTeleport.js": {
+   "sound": 1
+  },
+  "public/scripts/comp/wmTextMessaging.js": {
+   "message": 7
+  },
+  "public/scripts/comp/wmTitanium.js": {
+   "message": 1
+  },
+  "public/scripts/comp/wmTodayWidgets.js": {
+   "message": 8
+  },
+  "public/scripts/comp/wmTraffic.js": {
+   "message": 8
+  },
+  "public/scripts/comp/wmWallet.js": {
+   "message": 16
+  },
+  "public/scripts/comp/wmWeather.js": {
+   "message": 19
+  },
+  "public/scripts/comp/wmWifi.js": {
+   "message": 2
+  },
+  "public/scripts/comp/wmXLink.js": {
+   "message": 6
+  },
+  "public/scripts/comp/wmXmRadio.js": {
+   "message": 8
+  },
+  "public/scripts/comp/wmYouTube.js": {
+   "message": 3
+  },
+  "public/scripts/comp/workspaceDialogs.js": {
+   "message": 2
+  },
+  "public/scripts/comp/workspaceUtils.js": {
+   "toast": 7
+  },
+  "public/scripts/websocket.js": {
+   "toast": 20,
+   "sound": 5
+  },
+  "public/scripts/ws/handlers/40-appCoreInbound.js": {
+   "toast": 3
+  }
+ }
+}
