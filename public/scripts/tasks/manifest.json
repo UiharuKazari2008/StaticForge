@@ -1,5 +1,5 @@
 {
   "api": 1,
-  "files": ["runtime.js", "drive-alerts.js", "car-presence.js", "status-order.js", "status-fit.js", "status-popups.js", "status-bar.js", "hour-chime.js"],
-  "tasks": [{ "name": "drive-alerts", "api": 1 }, { "name": "car-presence", "api": 1 }, { "name": "status-bar", "api": 1 }, { "name": "hour-chime", "api": 1 }]
+  "files": ["runtime.js", "drive-alerts.js", "radio-mode.js", "car-presence.js", "status-order.js", "status-fit.js", "status-popups.js", "status-bar.js", "hour-chime.js"],
+  "tasks": [{ "name": "drive-alerts", "api": 1 }, { "name": "radio-mode", "api": 1 }, { "name": "car-presence", "api": 1 }, { "name": "status-bar", "api": 1 }, { "name": "hour-chime", "api": 1 }]
 }

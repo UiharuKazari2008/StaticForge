@@ -19,6 +19,9 @@
  *   reply { tag, type, ok, data, error }               the answer to ctx.request
  *   push { type, data }         a server packet of a type the task subscribed to
  *   timer {}                    the time the task asked for (ctx.timer) came
+ *   rules / geofence { enter, exit } / manual { mode } / retry / radio { ok, mode, ruleId, error }, and a one-shot
+ *                               fix { lat, lon, accuracyM }: the network mode by place, only from a host with 'radio' in
+ *                               host.ops; each carries device: { supported, current, baseline } (task radio-mode, #1328)
  * ctx: state (kept by the host across restarts; changes are saved after the event), now (epoch ms),
  *   link(on) (the task needs the CaféReady link now: requests, pushes and feeds flow only while some task
  *   asks for it; the host closes it and stops the engine when none does),
@@ -26,6 +29,9 @@
  *   subscribe([type]) (broadcast types it hears as push), feed(name, on) (statusHub feeds), output(obj)
  *   (what the app's native parts and the page read), timer(ms) (one, inexact, never repeating; 0 cancels),
  *   approach(a | null) (the camera approach overlay and tones, only when host.ops has 'approach'; null ends it; shape: #1124 contract),
+ *   radio({ mode: 'auto' | 'nr' | 'lte' | 'nrlte', mask, autoMask, ruleId, name, why }) (write the phone's allowed network
+ *   types, only when host.ops has 'radio'; answered with a radio event, in the order asked; mask '' for auto: the host's
+ *   kept Auto mask; #1328),
  *   log(text).
  * Host -> runtime: CafeTasks.dispatch(name, eventType, dataJson, stateJson?) -> JSON
  *   { patch?: { key: value } (the state's top-level keys that changed), drop?: [key] (keys removed),
@@ -97,6 +103,8 @@
             output: (o) => actions.push({ op: 'output', output: o || {} }),
             timer: (ms) => actions.push({ op: 'timer', ms: Math.max(0, Math.round(Number(ms) || 0)) }),
             approach: (a) => actions.push({ op: 'approach', approach: a == null ? null : a }),
+            radio: (r) => actions.push({ op: 'radio', mode: String(r.mode || ''), mask: String(r.mask || ''), autoMask: String(r.autoMask || ''),
+                ruleId: String(r.ruleId || ''), name: String(r.name || ''), why: String(r.why || '') }),
             log: (text) => actions.push({ op: 'log', text: String(text) })
         };
         let error;
