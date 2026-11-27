@@ -1212,6 +1212,19 @@
     // app (a plain browser) loading stops when the program is left, until it is in front again. The screen going
     // off stops nothing that is heard (#1322): the app's player takes it, or the page plays on, held awake.
 
+    // This window's player, as the server's relays know it (#1410): two players can share one relayed stream, and a stop
+    // from one must not end it for the other. Kept over a reload of the page; each window and tab has its own.
+    const VIEWER = (() => {
+        const made = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
+        try {
+            // (kept for a reload only: a duplicated tab starts with a copy of this storage and is another player)
+            const nav = window.performance && performance.getEntriesByType('navigation')[0];
+            let id = nav && nav.type === 'reload' ? sessionStorage.getItem('wmVideosViewer') : '';
+            if (!id) { id = made(); sessionStorage.setItem('wmVideosViewer', id); }
+            return id;
+        } catch (_) { return made(); }
+    })();
+
     const LS_MODE = 'wmVideosLiveMode';
     const HLS_SRC = '/dist/hlsjs/hls.light.min.js';
     let player = null; // { slug, title, channel, url, mode, modes, id, hls, state, held, lock, tries, keyTimer }
@@ -1506,7 +1519,7 @@
         plStatus(mode === 'audio' || /^(e|hw)/.test(mode) ? 'Starting the stream (the server is encoding it)...' : 'Starting the stream...', true);
         refreshKeys();
         try {
-            const d = await ask('youtube_live_start', { slug: p.slug, mode }, 75000);
+            const d = await ask('youtube_live_start', { slug: p.slug, mode, viewer: VIEWER }, 75000);
             if (player !== p || p.mode !== mode) return;
             p.id = d.id;
             p.url = d.url;
@@ -1547,7 +1560,7 @@
         plStart(player.mode);
     }
 
-    /** Leaves the player: the stream stops on the phone and, a moment later with nobody asking, on the server. */
+    /** Leaves the player: the stream stops on the phone, and on the server once no other player has it (#1410). */
     function stopPlayer() {
         const p = player;
         if (!p) return false;
@@ -1559,7 +1572,7 @@
         if (p.vod) ytClose(p);
         plDetach();
         plHold(false);
-        if (p.id) ask(p.kind === 'ytr' ? 'youtube_video_stop' : 'youtube_live_stop', { id: p.id }, 8000).catch(() => {});
+        if (p.id) ask(p.kind === 'ytr' ? 'youtube_video_stop' : 'youtube_live_stop', { id: p.id, viewer: VIEWER }, 8000).catch(() => {});
         player = null;
         plTell();
         // only a stream this page handed to the native player: the native player is shared with XM Radio, whose radio
@@ -1937,7 +1950,7 @@
         plStatus('Starting the video...', true);
         refreshKeys();
         try {
-            const d = await ask('youtube_video_start', { id: p.vid, mode, at: Math.max(0, Math.floor(at || 0)) }, 90000);
+            const d = await ask('youtube_video_start', { id: p.vid, mode, at: Math.max(0, Math.floor(at || 0)), viewer: VIEWER }, 90000);
             if (player !== p || p.mode !== mode) return;
             p.id = d.id;
             p.url = d.url;

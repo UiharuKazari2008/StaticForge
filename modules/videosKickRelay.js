@@ -26,12 +26,22 @@
  *             45 s (encoder and files go), but it no longer costs the stream: it and a server restart keep the
  *             record. Only the viewer ends a stream for good (stop, another quality of the channel, a channel
  *             taken off the list), and that removes it.
+ *   viewers   Two players can watch one session (#1410). Each gives start() and stop() its own viewer id; the
+ *             session and its record list them, and the record's list is written at once, so the rule holds
+ *             after a restart, a reload or an idle end, when a session comes back with no start(). A stop with
+ *             a viewer id only takes that viewer away: the stream ends when nobody is left on it or on any
+ *             address it answers for. Taking another quality of the channel leaves the others the same way: a
+ *             stream that somebody else holds keeps running (two qualities side by side, within the two
+ *             streams the server runs; one pushed out for that bound keeps its record when somebody else is on it). No id (an older page) works as before: its stop ends the stream, and
+ *             it holds nothing against another viewer's quality change.
  *   revive    When the playlist of an address that has no session is asked for and its record is there, the
  *             session is started again in the background under the SAME address and the player is told to
  *             come back in a few seconds (503 with Retry-After): the request never waits for ffmpeg. If the
- *             channel already runs in another session, that one answers for the old address and nothing is
- *             started. Only the playlist revives, never a piece. A revive never pushes a running stream out
- *             and is bounded so Kick is never hammered: at least 20 s between tries for one address, doubling
+ *             channel already runs in the same quality, that session answers for the old address and nothing is
+ *             started. One in another quality answers too, except when the address has a viewer who is not on
+ *             it and there is room: then the address's own quality is started (an Audio First phone is not
+ *             handed another viewer's 1080p). Only the playlist revives, never a piece. A revive never pushes a
+ *             running stream out and is bounded so Kick is never hammered: at least 20 s between tries for one address, doubling
  *             while the revived stream never plays (up to 5 minutes), and at most 5 tries in 10 minutes. A
  *             channel that is offline keeps its record and is tried again within those bounds. The new
  *             encoder starts its piece numbers past anything the earlier run wrote, because pieces are cached
@@ -55,6 +65,8 @@ const IDLE_MS = 45000;
 const READY_MS = 30000;
 const ADDRESS_TTL = 5 * 60000;
 const MAX_SESSIONS = 2;
+const VIEWER = /^[\w.:-]{1,64}$/;
+const MAX_VIEWERS = 16;
 const MAX_RESTARTS = 40;
 const SEGMENT_S = 4;
 
@@ -103,7 +115,7 @@ let store = null; // the session records (modules/videosRelayStore.js), opened o
 let budget = null; // how often a gone session may be started again (per id)
 let disposed = false; // this version was reloaded away: nothing it has in flight may start a session
 let timer = null;
-let wiping = Promise.resolve(); // bind() clearing the folder: no session folder is made before it is done
+let wiping = Promise.resolve(); // folders being cleared (bind(), a session's end): no session folder is made before that is done
 const RETRY_FULL_S = 30;
 
 const records = () => store || (store = require('./videosRelayStore').open(process.env.VIDEOS_LIVE_STORE || path.join(__dirname, '..', '.cache', 'videos-live-sessions.json')));
@@ -278,7 +290,9 @@ async function again(session, why) {
     await new Promise((r) => setTimeout(r, Math.min(15000, 1500 * session.restarts)));
     if (session.stopped) return;
     try {
-        run(session, await variantFor(session.slug, session.mode, true));
+        const variant = await variantFor(session.slug, session.mode, true);
+        if (session.stopped) return; // ended while the address was read: no encoder for a session that is gone
+        run(session, variant);
         session.state = 'live';
     } catch (e) {
         session.state = e.code === 'KICK_OFFLINE' ? 'ended' : 'error';
@@ -316,9 +330,9 @@ function watch() {
 
 const view = (s) => ({ id: s.id, slug: s.slug, mode: s.mode.id, state: s.state, error: s.error || '', url: `/api/videos/live/${s.id}/index.m3u8`, source: s.source || null, restarts: s.restarts, startedAt: s.startedAt });
 
-/** A running session of the channel (any quality), or null. */
-function runningFor(slug) {
-    for (const s of sessions.values()) if (s.slug === slug && !s.stopped && s.state !== 'ended' && s.state !== 'error') return s;
+/** A running session of the channel (of one quality, or any), or null. */
+function runningFor(slug, modeId) {
+    for (const s of sessions.values()) if (s.slug === slug && (!modeId || s.mode.id === modeId) && !s.stopped && s.state !== 'ended' && s.state !== 'error') return s;
     return null;
 }
 
@@ -341,10 +355,67 @@ function hit(s, askedId) {
     if (askedId && askedId !== s.id) records().touch(askedId, { lastHit: s.lastHit });
 }
 
+// ------------------------------------------------------------------------------------------ who holds a session
+
+/** A viewer is one player's id; '' is a player that gave none. */
+const cleanViewer = (v) => (typeof v === 'string' && VIEWER.test(v) ? v : '');
+const viewersOf = (record) => (record && Array.isArray(record.viewers) ? record.viewers.map(cleanViewer).filter(Boolean) : []);
+/** The addresses a session answers for: its own id and the old ones aliased to it. */
+const addressesOf = (s) => [s.id, ...[...aliases].filter(([, target]) => target === s.id).map(([old]) => old)];
+
+/** Everybody on a session: its own list and the lists in the records of its addresses. */
+function holders(s) {
+    const out = new Set(s.viewers);
+    for (const id of addressesOf(s)) for (const v of viewersOf(records().get(id))) out.add(v);
+    return out;
+}
+
+/** A record's viewers, when they changed: put (written on the next tick), not touch (which may wait 20 s). */
+function keepViewers(id, viewers) {
+    const r = records().get(id);
+    if (r && String(viewersOf(r)) !== String(viewers)) records().put(id, Object.assign(r, { viewers }));
+}
+
+/** Viewers come to a session (a start, a join, an old address it answers for). The one longest here goes past the cap. */
+function addViewers(s, list) {
+    const named = list.filter(Boolean);
+    if (!named.length) return;
+    for (const v of named) { s.viewers.delete(v); s.viewers.add(v); }
+    while (s.viewers.size > MAX_VIEWERS) s.viewers.delete(s.viewers.values().next().value);
+    keepViewers(s.id, [...s.viewers]); // a session still starting has no record yet: start() writes the list with it
+}
+
+/** An old address is answered by a running session from now on, and its viewers are that session's. */
+function standIn(old, s, viewers) {
+    aliases.set(old, s.id);
+    addViewers(s, viewers);
+}
+
+/**
+ * One viewer leaves an address, and with it the session that answers for it (s, or null) and all that session's
+ * addresses. True: somebody else is still there, so nothing ends; an old address that nobody is left on goes. False:
+ * nobody is (or the records name nobody): the caller ends it as a whole. Never waits.
+ */
+function leave(key, s, viewer) {
+    if (s) s.viewers.delete(viewer);
+    let held = !!s && s.viewers.size > 0;
+    const emptied = [];
+    for (const id of new Set(s ? [key, ...addressesOf(s)] : [key])) {
+        const before = viewersOf(records().get(id));
+        const after = before.filter((v) => v !== viewer);
+        if (after.length) held = true;
+        if (after.length === before.length) continue;
+        keepViewers(id, after);
+        if (!after.length && s && id !== s.id) emptied.push(id);
+    }
+    if (held) for (const id of emptied) dropRecord(id);
+    return held;
+}
+
 function openSession(id, slug, mode, extra) {
     if (disposed) throw new RelayError('The server is reloading this part, try again in a moment', 'KICK_STREAM');
     const now = Date.now();
-    const session = Object.assign({ id, slug, mode, dir: path.join(ROOT, id), state: 'starting', error: '', child: null, stopped: false, restarts: 0, startedAt: now, lastHit: now, source: null, starting: null }, extra);
+    const session = Object.assign({ id, slug, mode, dir: path.join(ROOT, id), state: 'starting', error: '', child: null, stopped: false, restarts: 0, startedAt: now, lastHit: now, source: null, starting: null, viewers: new Set() }, extra);
     sessions.set(id, session);
     watch();
     return session;
@@ -366,46 +437,114 @@ async function begin(session, variant) {
     }
 }
 
-/** The viewer chose a new quality of the channel: the addresses of the other qualities are dead for good. */
-function dropOtherModes(slug, modeId) {
-    for (const r of records().all()) if (r.slug === slug && r.mode !== modeId) dropRecord(r.id);
+/**
+ * The viewer chose a quality of the channel: it leaves the records of the other qualities. One with nobody left is dead
+ * for good (so is one that names nobody), but never the record of a running session that others are on.
+ */
+function dropOtherModes(slug, modeId, viewer) {
+    for (const r of records().all()) {
+        if (r.slug !== slug || r.mode === modeId) continue;
+        const left = viewersOf(r).filter((v) => v !== viewer);
+        const s = sessions.get(r.id);
+        if (!left.length && !(s && holders(s).size)) dropRecord(r.id);
+        else keepViewers(r.id, left);
+    }
+}
+
+/**
+ * A viewer who takes one quality leaves the channel's sessions of the others: one that nobody else is on ends for good.
+ * Returns the stops under way (their bookkeeping is done already).
+ */
+function leaveOtherQualities(slug, modeId, viewer) {
+    const ends = [];
+    for (const s of [...sessions.values()]) {
+        if (s.slug !== slug || s.mode.id === modeId) continue;
+        // a player with no id has no place to give up, and its stop would end a stream for everybody on it
+        if (!viewer && holders(s).size) continue;
+        ends.push(stop(s.id, 'replaced', { viewer }));
+    }
+    return ends;
+}
+
+/** One more viewer for a session that runs: resolves once the phone can play. */
+async function join(s, viewer) {
+    addViewers(s, [viewer]);
+    hit(s);
+    const ends = leaveOtherQualities(s.slug, s.mode.id, viewer);
+    dropOtherModes(s.slug, s.mode.id, viewer);
+    await Promise.all([s.starting, ...ends]); // s.starting is read here, before anything can clear it
+    return view(s);
+}
+
+/** Before a failed start is cleared away: an old address with another viewer only stops pointing at it, its record stays. */
+function spareAliases(id, viewer) {
+    for (const [old, target] of [...aliases]) if (target === id && viewersOf(records().get(old)).some((v) => v !== viewer)) aliases.delete(old);
 }
 
 /** Start watching a channel in a mode (or take the session already running it): resolves once the phone can play. */
-async function start(slugIn, modeId) {
+async function start(slugIn, modeId, viewerIn) {
     const slug = String(slugIn || '').toLowerCase().replace(/^kick:/, '');
     const mode = modeById(String(modeId || '')) || modeById(DEFAULT_MODE);
+    const viewer = cleanViewer(viewerIn);
     if (!SLUG.test(slug) || !allowed(slug)) throw new RelayError('Add the channel under Channels > Kick first', 'KICK_NOT_LISTED');
-    for (const s of sessions.values()) {
-        if (s.slug === slug && s.mode.id === mode.id && !s.stopped && s.state !== 'ended' && s.state !== 'error') { hit(s); dropOtherModes(slug, mode.id); if (s.starting) await s.starting; return view(s); }
-    }
+    const running = runningFor(slug, mode.id);
+    if (running) return join(running, viewer);
     // first that there is a stream to pull: a channel that is not live must not push a running stream out
     const variant = await variantFor(slug, mode, false);
-    // another quality of the same channel, or an older stream past the limit, makes room
-    for (const s of [...sessions.values()]) if (s.slug === slug) await stop(s.id, 'replaced');
-    while (sessions.size >= MAX_SESSIONS) await stop([...sessions.values()].sort((a, b) => a.lastHit - b.lastHit)[0].id, 'replaced');
-    dropOtherModes(slug, mode.id);
+    // somebody else may have started the same one while that was read: one session for both
+    const meanwhile = runningFor(slug, mode.id);
+    if (meanwhile) return join(meanwhile, viewer);
+    // Nothing is awaited from that check to openSession (stop() does its bookkeeping before it first waits), so two
+    // starts of one quality never both open a session.
+    // another quality of the same channel that nobody else is on, or an older stream past the limit, makes room
+    const ends = leaveOtherQualities(slug, mode.id, viewer);
+    // what is left of this quality is a run that broke. When others are on it, their addresses come over to the new one
+    const carried = [];
+    for (const s of [...sessions.values()]) {
+        if (s.slug !== slug || s.mode.id !== mode.id) continue;
+        const others = [...holders(s)].some((v) => v !== viewer);
+        if (others) carried.push(...addressesOf(s));
+        ends.push(stop(s.id, 'replaced', { keep: others }));
+    }
+    // (one that somebody else is on makes room too, but keeps its record: another player's start never ends it for good)
+    while (sessions.size >= MAX_SESSIONS) {
+        const oldest = [...sessions.values()].sort((a, b) => a.lastHit - b.lastHit)[0];
+        ends.push(stop(oldest.id, 'replaced', { keep: [...holders(oldest)].some((v) => v !== viewer) }));
+    }
+    dropOtherModes(slug, mode.id, viewer);
     const id = crypto.randomBytes(12).toString('hex');
     const session = openSession(id, slug, mode, {});
+    addViewers(session, [viewer]);
     try {
         await begin(session, variant);
     } catch (e) {
-        await stop(id, e.message);
+        // only this very session: once it is gone, its address may be answered by a newer one, which stop() would end
+        if (sessions.get(id) === session) { spareAliases(id, viewer); await stop(id, e.message); }
         throw e;
     }
-    if (sessions.get(id) === session) records().put(id, { slug, mode: mode.id, startedAt: session.startedAt, lastHit: session.lastHit });
+    if (sessions.get(id) === session) {
+        // the new one is up: the broken run's addresses answer from here (those whose records are still there)
+        for (const old of carried) { const r = records().get(old); if (r) standIn(old, session, viewersOf(r)); }
+        records().put(id, { slug, mode: mode.id, startedAt: session.startedAt, lastHit: session.lastHit, viewers: [...session.viewers] });
+    }
+    await Promise.all(ends);
     return view(session);
 }
 
 /**
  * Ends a session. The record of its address is removed unless opts.keep: only the idle ends keep it (nobody
- * asked for 45 s, or the source never came back), so that the player's next ask for the playlist can start the
- * stream again. A stop that is not for the idle end (the viewer, another quality, a failed start) is for good.
+ * asked for 45 s, or the source never came back), and a broken run, or one pushed out by the two-stream bound, that
+ * others are on, so that the
+ * player's next ask for the playlist can start the stream again. A stop that does not keep (the viewer, another
+ * quality, a failed start) is for good. With opts.viewer (and no keep) only that viewer leaves: while somebody else
+ * is on the stream it goes on, and the answer is false. All bookkeeping is done before the first wait.
  */
 async function stop(id, _why, opts) {
     const key = String(id || '');
     const keep = !!(opts && opts.keep);
+    const viewer = cleanViewer(opts && opts.viewer);
     const s = sessionFor(key);
+    if (viewer && !keep && leave(key, s, viewer)) return false;
     if (!keep) {
         // the addresses that stood in for this session end with it
         for (const [old, target] of [...aliases]) if (s && target === s.id) dropRecord(old);
@@ -421,7 +560,10 @@ async function stop(id, _why, opts) {
         if (idleEnded.size > 64) idleEnded.delete(idleEnded.values().next().value);
     }
     if (s.child) { try { s.child.kill('SIGTERM'); } catch (_) { /* gone */ } }
-    await fs.promises.rm(s.dir, { recursive: true, force: true }).catch(() => {});
+    const removal = fs.promises.rm(s.dir, { recursive: true, force: true }).catch(() => {});
+    // a revive of this very address makes the same folder again: begin() waits until this one is gone
+    wiping = Promise.all([wiping, removal]).then(() => {});
+    await removal;
     if (!sessions.size && timer) { clearInterval(timer); timer = null; }
     return true;
 }
@@ -437,9 +579,22 @@ function state(id) {
 // ------------------------------------------------------------------------------------------ a gone session comes back
 
 /**
+ * The running session that answers for a gone address of the channel: one of the same quality, else one of another.
+ * Null when the address's own quality is to be started: the channel does not run, or only in another quality while the
+ * address has a viewer who is not on that one and there is room.
+ */
+function answererFor(slug, modeId, viewers) {
+    const same = runningFor(slug, modeId);
+    if (same) return same;
+    const other = runningFor(slug);
+    if (other && sessions.size < MAX_SESSIONS && viewers.some((v) => !other.viewers.has(v))) return null;
+    return other;
+}
+
+/**
  * The playlist of an address with no session was asked for and its record is there (the server restarted, or the
  * viewer's phone was away past the idle end): the same address plays again. Decides at once and never throws:
- *   { session }  a session answers for the address now (the channel already runs: no budget, no Kick request)
+ *   { session }  a session answers for the address now (see answererFor: no budget, no Kick request)
  *   { wait }     come back in that many seconds (503): starting in the background, or not allowed yet
  *   { gone }     the address is over (the channel left the list, the record is bad): 404
  */
@@ -449,8 +604,9 @@ function revive(id, record) {
         const mode = modeById(String((record && record.mode) || ''));
         const slug = String((record && record.slug) || '');
         if (!mode || !SLUG.test(slug) || !allowed(slug)) { dropRecord(id); return { gone: true }; }
-        const running = runningFor(slug);
-        if (running) { aliases.set(id, running.id); return { session: running }; }
+        const viewers = viewersOf(record);
+        const running = answererFor(slug, mode.id, viewers);
+        if (running) { standIn(id, running, viewers); return { session: running }; }
         // a revive never pushes out a running stream
         if (sessions.size >= MAX_SESSIONS) return { wait: RETRY_FULL_S };
         const now = Date.now();
@@ -471,14 +627,17 @@ async function reviveRun(id, record, mode, why) {
     try {
         const variant = await variantFor(slug, mode, false);
         // the viewer may have ended the stream while the address was being read: an ended one stays ended
-        if (disposed || !records().get(id)) return;
-        const running = runningFor(slug);
-        if (running) { aliases.set(id, running.id); return; } // the viewer started the channel meanwhile
+        const latest = records().get(id);
+        if (disposed || !latest) return;
+        const viewers = viewersOf(latest); // as they are now: one may have left meanwhile
+        const running = answererFor(slug, mode.id, viewers);
+        if (running) { standIn(id, running, viewers); return; } // the channel was started meanwhile
         if (sessions.size >= MAX_SESSIONS) throw new RelayError('There is no room for another stream just now', 'RELAY_FULL');
         // pieces are made in real time, so this is past every number the earlier run reached under this address
         const startedAt = Number(record.startedAt) || Date.now();
         const startNumber = Math.min(9999000, Math.max(8, Math.floor((Date.now() - startedAt) / (SEGMENT_S * 1000)) + 8));
         session = openSession(id, slug, mode, { startedAt, startNumber, revive: { served: 0, proven: false } });
+        addViewers(session, viewers);
         await begin(session, variant);
         idleEnded.delete(id);
         console.log(`[videos] kick ${slug}: session started again (${why})`);
@@ -486,7 +645,8 @@ async function reviveRun(id, record, mode, why) {
         const over = e.code === 'KICK_NOT_FOUND' || e.code === 'KICK_NOT_LISTED';
         console.warn(`[videos] kick ${slug}: the stream could not be started again (${e.message})`);
         // the budget's doubling gap bounds the next try; a channel that is gone is over for good
-        if (session) await stop(id, e.message, { keep: !over });
+        // (only this very run: the address may by now be answered by a newer session, which stop() would end)
+        if (session && sessions.get(id) === session) await stop(id, e.message, { keep: !over });
         if (over) dropRecord(id);
     } finally {
         reviving.delete(id);

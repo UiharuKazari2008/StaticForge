@@ -570,8 +570,558 @@ ok('a reload ends every session like a restart: records stay, whole folders stay
     } finally { q.back(); }
 });
 
+// ------------------------------------------------------------------------------------------ several players, one video (#1410)
+
+const VID = 'abcdefghijk';
+const OTHER = 'lmnopqrstuv';
+const listed = (id) => { const r = fresh.store.get(id); return r ? [...(r.viewers || [])].sort() : null; };
+const holders = (id) => { const s = T.sessions.get(id); return s ? [...(s.viewers || [])].sort() : null; };
+/** A player of this address plays on: its list and a piece are served. */
+async function plays(get, id, why) {
+    assert.strictEqual((await get(id, 'index.m3u8')).status, 200, `the list: ${why || id}`);
+    const s = T.sessions.get(id) || T.sessions.get(T.aliases.get(id)); // the list request may just have led the address there
+    fs.writeFileSync(path.join(s.dir, 's00000.ts'), 'x');
+    assert.strictEqual((await get(id, 's00000.ts')).status, 200, `a piece: ${why || id}`);
+}
+async function dead(get, id, why) {
+    const n = spawned.length;
+    assert.strictEqual((await get(id, 'index.m3u8')).status, 404, `gone for good: ${why || id}`);
+    assert.strictEqual(spawned.length, n);
+}
+/** A playlist request brings the address back; the encoder then writes enough to open the catch-up gate. */
+async function comeBack(get, id) {
+    assert.strictEqual((await get(id, 'index.m3u8')).status, 503, `comes back: ${id}`);
+    await until(() => T.sessions.get(id) && T.sessions.get(id).state === 'live');
+    writePieces(T.sessions.get(id).dir, 8);
+    await plays(get, id);
+}
+/** A server restart or a module reload: nothing in memory, the records stay. */
+async function restart(gone) {
+    const dirs = [...T.sessions.values()].filter((s) => s.state !== 'done').map((s) => s.dir);
+    relay.hot.dispose();
+    await until(() => dirs.every((d) => !fs.existsSync(d)));
+    relay.hot.accept(null);
+    if (gone) assert.strictEqual(T.sessions.size, 0);
+}
+/** The idle end of one session. */
+async function idleEnd(id) {
+    const dir = T.sessions.get(id).dir;
+    T.sessions.get(id).lastHit = Date.now() - 21 * 60000;
+    T.idleTick();
+    assert.ok(!T.sessions.has(id));
+    await until(() => !fs.existsSync(dir));
+}
+async function hush(fn) { const q = quietWarn(); try { await fn(); } finally { q.back(); } }
+
+ok('#1410 acceptance: two viewers on one session, one stops, the other\'s list and pieces are still served; the last one stopping ends it', async () => {
+    fresh();
+    const a = await relay.start(VID, 'v480', 0, 'viewer-a');
+    const b = await relay.start(VID, 'v480', 0, 'viewer-b');
+    assert.strictEqual(b.id, a.id);
+    assert.strictEqual(spawned.length, 1);
+    await withServer(async (get) => {
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'viewer-a' }), false, 'somebody else holds it');
+        await plays(get, a.id, 'the other viewer');
+        assert.strictEqual(relay.state(a.id).state, 'live');
+        assert.ok(!spawned[0].child.killed, 'the pull goes on');
+        assert.deepStrictEqual(listed(a.id), ['viewer-b']);
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'viewer-a' }), false, 'stopping again changes nothing');
+        await plays(get, a.id);
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'viewer-b' }), true);
+        assert.strictEqual(fresh.store.get(a.id), null);
+        assert.ok(!fs.existsSync(path.join(ROOT(), a.id)));
+        await dead(get, a.id);
+    });
+});
+
+ok('#1410 one viewer: its stop ends the video for good; starting the same twice still takes one stop', async () => {
+    fresh();
+    const a = await relay.start(VID, 'v480', 0, 'solo');
+    assert.deepStrictEqual(listed(a.id), ['solo']);
+    await relay.start(VID, 'v480', 0, 'solo');
+    assert.deepStrictEqual(listed(a.id), ['solo']);
+    assert.deepStrictEqual(holders(a.id), ['solo']);
+    await withServer(async (get) => {
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'solo' }), true);
+        assert.strictEqual(fresh.store.all().length, 0);
+        assert.ok(fresh.budget.forgotten.includes(a.id));
+        await dead(get, a.id);
+        assert.strictEqual(fresh.asked.length, 1);
+    });
+});
+
+ok('#1410 one of two moves or changes quality: the other\'s stream plays on; each ends its own', async () => {
+    for (const [mode, at] of [['v480', 300], ['v360', 0]]) {
+        fresh();
+        const one = await relay.start(VID, 'v480', 0, 'a');
+        await relay.start(VID, 'v480', 0, 'b');
+        const two = await relay.start(VID, mode, at, 'a');
+        assert.notStrictEqual(two.id, one.id);
+        assert.strictEqual(T.sessions.size, 2);
+        assert.deepStrictEqual([holders(one.id), holders(two.id)], [['b'], ['a']]);
+        assert.deepStrictEqual([listed(one.id), listed(two.id)], [['b'], ['a']]);
+        await withServer(async (get) => {
+            await plays(get, one.id, 'b stays where it was');
+            await plays(get, two.id);
+            // a moves again: its own old session ends, b's does not
+            const three = await relay.start(VID, mode, at + 100, 'a');
+            await dead(get, two.id, 'only a had it');
+            await plays(get, one.id);
+            assert.strictEqual(await relay.stop(three.id, { viewer: 'a' }), true);
+            await plays(get, one.id);
+            assert.strictEqual(await relay.stop(one.id, { viewer: 'b' }), true);
+            await dead(get, one.id);
+        });
+    }
+});
+
+ok('#1410 a sole viewer moving replaces its session as before, also an address with no session', async () => {
+    fresh();
+    const a = await relay.start(VID, 'v480', 0, 'solo');
+    const b = await relay.start(VID, 'v480', 300, 'solo');
+    assert.strictEqual(T.sessions.size, 1);
+    assert.strictEqual(fresh.store.get(a.id), null);
+    await idleEnd(b.id);
+    const c = await relay.start(VID, 'v360', 300, 'solo');
+    assert.deepStrictEqual(fresh.store.all().map((r) => r.id), [c.id]);
+    await withServer(async (get) => { await dead(get, a.id); await dead(get, b.id); await plays(get, c.id); });
+});
+
+ok('#1410 an address with no session keeps its record while somebody else is listed on it', async () => {
+    fresh();
+    const a = await relay.start(VID, 'v480', 0, 'a');
+    await relay.start(VID, 'v480', 0, 'b');
+    await idleEnd(a.id);
+    const c = await relay.start(VID, 'v480', 300, 'a');
+    assert.deepStrictEqual(listed(a.id), ['b']);
+    assert.deepStrictEqual(listed(c.id), ['a']);
+    await hush(() => withServer(async (get) => { await comeBack(get, a.id); await plays(get, c.id); }));
+    // and with no name at all nothing named is taken away
+    await idleEnd(a.id);
+    await relay.start(VID, 'v480', 500);
+    assert.deepStrictEqual(listed(a.id), ['b']);
+});
+
+ok('#1410 joining a running session leaves the video\'s other sessions: one nobody else holds ends, one that others hold stays', async () => {
+    fresh();
+    const one = await relay.start(VID, 'v480', 0, 'a');
+    const two = await relay.start(VID, 'v480', 300, 'b');
+    assert.strictEqual(T.sessions.size, 2, 'two players, two places');
+    const joined = await relay.start(VID, 'v480', 300, 'a');
+    assert.strictEqual(joined.id, two.id);
+    assert.deepStrictEqual([...T.sessions.keys()], [two.id]);
+    assert.strictEqual(fresh.store.get(one.id), null);
+    assert.ok(!fs.existsSync(path.join(ROOT(), one.id)));
+    assert.deepStrictEqual(listed(two.id), ['a', 'b']);
+    // a and c on one, b on the other: a goes over, c's stays
+    fresh();
+    const x = await relay.start(VID, 'v480', 0, 'a');
+    await relay.start(VID, 'v480', 0, 'c');
+    const y = await relay.start(VID, 'v480', 300, 'b');
+    await relay.start(VID, 'v480', 300, 'a');
+    assert.strictEqual(T.sessions.size, 2);
+    assert.deepStrictEqual([listed(x.id), listed(y.id)], [['c'], ['a', 'b']]);
+    // joining also takes the viewer off an address of another place that has no session
+    await idleEnd(x.id);
+    await relay.start(VID, 'v480', 300, 'c');
+    assert.strictEqual(fresh.store.get(x.id), null);
+});
+
+ok('#1410 two starts of the very same at once make ONE session that both hold (also when both leave an older one)', async () => {
+    for (const older of [false, true]) {
+        fresh();
+        const first = older ? await relay.start(VID, 'v480', 0, 'a') : null;
+        if (older) await relay.start(VID, 'v480', 0, 'b');
+        spawned.length = 0;
+        let release;
+        const gate = new Promise((r) => { release = r; });
+        T.setHooks({ info: async () => { await gate; return SRC; }, spawn: fakeSpawn });
+        const pa = relay.start(VID, 'v480', 300, 'a');
+        const pb = relay.start(VID, 'v480', 300, 'b');
+        release();
+        const [a, b] = await Promise.all([pa, pb]);
+        assert.strictEqual(a.id, b.id);
+        assert.deepStrictEqual([a.state, b.state], ['live', 'live']);
+        assert.strictEqual(spawned.length, 1, 'one pull');
+        assert.deepStrictEqual([...T.sessions.keys()], [a.id]);
+        assert.deepStrictEqual(holders(a.id), ['a', 'b']);
+        assert.deepStrictEqual(fresh.store.all().map((r) => r.id), [a.id]);
+        if (older) assert.strictEqual(fresh.store.get(first.id), null, 'both left it');
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'a' }), false);
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'b' }), true);
+    }
+});
+
+ok('#1410 stop does its bookkeeping before it first waits: a start right behind it sees it', async () => {
+    fresh();
+    const a = await relay.start(VID, 'v480', 0, 'a');
+    await relay.start(VID, 'v480', 0, 'b');
+    const p1 = relay.stop(a.id, { viewer: 'a' });
+    assert.deepStrictEqual(holders(a.id), ['b']);
+    assert.deepStrictEqual(listed(a.id), ['b']);
+    const p2 = relay.stop(a.id, { viewer: 'b' });
+    assert.ok(!T.sessions.has(a.id));
+    assert.strictEqual(fresh.store.get(a.id), null);
+    const again = relay.start(VID, 'v480', 0, 'a');
+    assert.deepStrictEqual([await p1, await p2], [false, true]);
+    assert.notStrictEqual((await again).id, a.id);
+});
+
+ok('#1410 the rule holds after a reload: the record lists the viewers (put at once, lastHit as it was), the address comes back with them', async () => {
+    fresh();
+    const a = await relay.start(VID, 'v480', 0, 'a');
+    const hit = fresh.store.get(a.id).lastHit;
+    const puts = fresh.store.calls.put.length;
+    await relay.start(VID, 'v480', 0, 'b');
+    assert.ok(fresh.store.calls.put.length > puts, 'a put, not a touch that waits 20 s');
+    assert.strictEqual(fresh.store.get(a.id).lastHit, hit);
+    assert.ok(!fresh.store.calls.touch.some(([, p]) => p.viewers), 'never through touch');
+    await restart(true);
+    await hush(() => withServer(async (get) => {
+        await comeBack(get, a.id);
+        assert.deepStrictEqual(holders(a.id), ['a', 'b']);
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'a' }), false);
+        await plays(get, a.id, 'b after the reload');
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'b' }), true);
+        await dead(get, a.id);
+    }));
+});
+
+ok('#1410 two players at two places both come back after a reload, in either order', async () => {
+    for (const order of [[0, 1], [1, 0]]) {
+        fresh();
+        const ids = [(await relay.start(VID, 'v480', 0, 'a')).id, (await relay.start(VID, 'v360', 300, 'b')).id];
+        assert.strictEqual(T.sessions.size, 2);
+        await restart(true);
+        await hush(() => withServer(async (get) => {
+            for (const i of order) await comeBack(get, ids[i]);
+            assert.strictEqual(T.sessions.size, 2);
+            for (const i of order) await plays(get, ids[i]);
+            assert.deepStrictEqual([listed(ids[0]), listed(ids[1])], [['a'], ['b']]);
+        }));
+    }
+});
+
+ok('#1410 another place\'s session still makes an address stale when it holds everybody listed there, or the record lists nobody', async () => {
+    fresh();
+    await relay.start(VID, 'v480', 300, 'a');
+    const mine = newId(); const nobody = newId(); const theirs = newId();
+    fresh.store.put(mine, rec({ viewers: ['a'] }));
+    fresh.store.put(nobody, rec());
+    fresh.store.put(theirs, rec({ viewers: ['a', 'b'] }));
+    await hush(() => withServer(async (get) => {
+        await dead(get, mine, 'its only viewer is on the other session');
+        await dead(get, nobody, 'no names: as before');
+        assert.strictEqual(fresh.store.get(mine), null);
+        assert.strictEqual(fresh.store.get(nobody), null);
+        await comeBack(get, theirs);
+        assert.strictEqual(T.sessions.size, 2);
+    }));
+    // the same timeline comes before another place, whichever session is older
+    fresh();
+    const far = await relay.start(VID, 'v480', 300, 'a');
+    const here = await relay.start(VID, 'v480', 0, 'b');
+    const old = newId();
+    fresh.store.put(old, rec());
+    await withServer(async (get) => {
+        await plays(get, old);
+        assert.strictEqual(T.aliases.get(old), here.id);
+        assert.ok(T.sessions.has(far.id));
+    });
+});
+
+ok('#1410 a video written whole comes back from its files with its viewers', async () => {
+    fresh();
+    const a = await relay.start(VID, 'v480', 0, 'a');
+    await relay.start(VID, 'v480', 0, 'b');
+    writePieces(path.join(ROOT(), a.id), 3, true);
+    spawned[0].child.emit('close', 0);
+    await restart(true);
+    await hush(() => withServer(async (get) => {
+        await plays(get, a.id);
+        assert.strictEqual(fresh.asked.length, 1, 'taken back from the files');
+        assert.deepStrictEqual(holders(a.id), ['a', 'b']);
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'b' }), false);
+        await plays(get, a.id);
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'a' }), true);
+        await dead(get, a.id);
+    }));
+});
+
+ok('#1410 a stop that arrives while the files are read stays: the ended video does not come back, a leaver is not listed again', async () => {
+    const res = () => { const r = { code: 0, sent: '', headersSent: false, set() {}, status(c) { r.code = c; return r; }, end() { r.done = true; }, sendFile(f, _o, cb) { r.sent = f; r.done = true; cb(); } }; return r; };
+    for (const whole of [true, false]) {
+        fresh();
+        const id = newId();
+        fresh.store.put(id, rec({ done: true, viewers: ['a'] }));
+        writePieces(path.join(ROOT(), id), 3, whole);
+        const r = res();
+        await hush(async () => {
+            const p = relay.serve({ params: { id, file: 'index.m3u8' } }, r);
+            await relay.stop(id, { viewer: 'a' });
+            await p;
+        });
+        assert.strictEqual(r.code, 404);
+        assert.strictEqual(T.sessions.size, 0);
+        assert.strictEqual(spawned.length, 0);
+        // with somebody else listed it comes back, without the one that left
+        fresh();
+        fresh.store.put(id, rec({ done: true, viewers: ['a', 'b'] }));
+        writePieces(path.join(ROOT(), id), 3, whole);
+        await hush(async () => {
+            const p = relay.serve({ params: { id, file: 'index.m3u8' } }, res());
+            await relay.stop(id, { viewer: 'a' });
+            await p;
+        });
+        assert.deepStrictEqual(holders(id), ['b']);
+        assert.deepStrictEqual(listed(id), ['b']);
+    }
+});
+
+ok('#1410 stop with no session in memory: the record loses the viewer and goes with the last one; a record with no list goes as before', async () => {
+    fresh();
+    const id = newId();
+    fresh.store.put(id, rec({ viewers: ['a', 'b'] }));
+    assert.strictEqual(await relay.stop(id, { viewer: 'a' }), false);
+    assert.deepStrictEqual(listed(id), ['b']);
+    assert.strictEqual(await relay.stop(id, { viewer: 'stranger' }), false);
+    assert.deepStrictEqual(listed(id), ['b']);
+    assert.strictEqual(await relay.stop(id, { viewer: 'b' }), false);
+    assert.strictEqual(fresh.store.get(id), null);
+    await withServer(async (get) => dead(get, id));
+    for (const over of [{}, { viewers: [] }]) {
+        const legacy = newId();
+        fresh.store.put(legacy, rec(over));
+        await relay.stop(legacy, { viewer: 'a' });
+        assert.strictEqual(fresh.store.get(legacy), null);
+    }
+    // keep is as before: it takes nobody off
+    const s = await relay.start(VID, 'v480', 0, 'a');
+    assert.strictEqual(await relay.stop(s.id, { keep: true, viewer: 'a' }), true);
+    assert.deepStrictEqual(listed(s.id), ['a']);
+});
+
+ok('#1410 an older address\'s viewer is protected: it joins the session that serves it, and neither the other\'s stop nor its move ends it', async () => {
+    for (const leaves of ['stop', 'move']) {
+        fresh();
+        const old = await relay.start(VID, 'v480', 0, 'a');
+        await idleEnd(old.id);
+        const now = await relay.start(VID, 'v480', 0, 'b');
+        assert.strictEqual(T.aliases.get(old.id), now.id);
+        assert.deepStrictEqual(holders(now.id), ['a', 'b']);
+        assert.deepStrictEqual(listed(now.id), ['a', 'b']);
+        await withServer(async (get) => {
+            if (leaves === 'stop') assert.strictEqual(await relay.stop(now.id, { viewer: 'b' }), false);
+            else await relay.start(VID, 'v480', 300, 'b');
+            await plays(get, old.id, 'the old address');
+            assert.deepStrictEqual(listed(old.id), ['a']);
+            assert.strictEqual(await relay.stop(old.id, { viewer: 'a' }), true, 'the last one, through the old address');
+            assert.strictEqual(fresh.store.get(old.id), null);
+            assert.strictEqual(fresh.store.get(now.id), null);
+            await dead(get, old.id);
+            await dead(get, now.id);
+        });
+    }
+});
+
+ok('#1410 an older address that only the leaving viewer had ends; the session stays for the other', async () => {
+    for (const via of ['old', 'new']) {
+        fresh();
+        const old = await relay.start(VID, 'v480', 0, 'a');
+        await idleEnd(old.id);
+        const now = await relay.start(VID, 'v480', 0, 'b');
+        // `old` lists a alone, the session lists both: a leaves through either address
+        assert.strictEqual(await relay.stop(via === 'old' ? old.id : now.id, { viewer: 'a' }), false);
+        assert.strictEqual(fresh.store.get(old.id), null);
+        assert.ok(!T.aliases.has(old.id));
+        assert.ok(fresh.budget.forgotten.includes(old.id));
+        assert.deepStrictEqual(listed(now.id), ['b']);
+        await withServer(async (get) => { await dead(get, old.id); await plays(get, now.id); });
+    }
+});
+
+ok('#1410 an address that leads to a session by its own request brings its viewers along', async () => {
+    fresh();
+    const now = await relay.start(VID, 'v480', 0, 'b');
+    const old = newId();
+    fresh.store.put(old, rec({ viewers: ['a'] }));
+    await withServer(async (get) => {
+        await plays(get, old);
+        assert.deepStrictEqual(holders(now.id), ['a', 'b']);
+        assert.deepStrictEqual(listed(now.id), ['a', 'b']);
+        assert.strictEqual(await relay.stop(now.id, { viewer: 'b' }), false);
+        await plays(get, old);
+        await restart(true);
+        assert.deepStrictEqual(listed(now.id), ['a']);
+    });
+});
+
+ok('#1410 a broken pull of the very same is set aside: its viewers go to the session that takes over, started again or revived', async () => {
+    // a new start
+    fresh();
+    const a = await relay.start(VID, 'v480', 0, 'a');
+    spawned[0].child.emit('close', 1);
+    const b = await relay.start(VID, 'v480', 0, 'b');
+    assert.notStrictEqual(b.id, a.id);
+    assert.strictEqual(T.aliases.get(a.id), b.id);
+    assert.deepStrictEqual(listed(b.id), ['a', 'b']);
+    assert.strictEqual(await relay.stop(b.id, { viewer: 'b' }), false);
+    await withServer(async (get) => plays(get, a.id));
+    // revived in place
+    fresh();
+    const c = await relay.start(VID, 'v480', 0, 'a');
+    await relay.start(VID, 'v480', 0, 'b');
+    const broken = T.sessions.get(c.id);
+    spawned[0].child.emit('close', 1);
+    await hush(() => withServer(async (get) => {
+        await comeBack(get, c.id);
+        assert.notStrictEqual(T.sessions.get(c.id), broken);
+        assert.deepStrictEqual(holders(c.id), ['a', 'b']);
+        assert.strictEqual(await relay.stop(c.id, { viewer: 'a' }), false);
+        await plays(get, c.id);
+    }));
+});
+
+ok('#1410 a broken pull beside a healthy one of the very same (another old address revived): joining or its own request moves its viewers and older addresses over', async () => {
+    for (const via of ['join', 'request']) {
+        fresh();
+        const first = await relay.start(VID, 'v480', 0, 'a');
+        await idleEnd(first.id);
+        const broken = await relay.start(VID, 'v480', 0, 'b'); // first leads to it
+        spawned[spawned.length - 1].child.emit('close', 1);
+        const third = newId();
+        fresh.store.put(third, rec({ viewers: ['c'] }));
+        await hush(() => withServer(async (get) => {
+            await comeBack(get, third);
+            assert.ok(T.sessions.has(broken.id) && T.sessions.has(third));
+            if (via === 'join') assert.strictEqual((await relay.start(VID, 'v480', 0, 'c')).id, third);
+            else await plays(get, broken.id, 'the broken address');
+            assert.deepStrictEqual([...T.sessions.keys()], [third]);
+            assert.deepStrictEqual(holders(third), ['a', 'b', 'c']);
+            assert.deepStrictEqual(listed(third), ['a', 'b', 'c']);
+            assert.strictEqual(T.aliases.get(broken.id), third);
+            assert.strictEqual(T.aliases.get(first.id), third, 'what led to the broken one follows');
+            for (const v of ['c', 'b']) assert.strictEqual(await relay.stop(third, { viewer: v }), false);
+            await plays(get, first.id, 'the oldest address, for a');
+            assert.strictEqual(await relay.stop(first.id, { viewer: 'a' }), true);
+            assert.strictEqual(fresh.store.all().length, 0, 'nothing of the video is left');
+        }));
+    }
+});
+
+ok('#1410 a start that fails ends only its own address: another player\'s address that was pointed at it keeps its record', async () => {
+    fresh(null, ctlSpawn);
+    const old = newId();
+    fresh.store.put(old, rec({ viewers: ['a'] }));
+    const p = relay.start(VID, 'v480', 0, 'b');
+    const failed = assert.rejects(() => p, /did not start|stopped arriving/);
+    await until(() => spawned.length === 1);
+    const id = spawned[0].session.id;
+    await withServer(async (get) => {
+        await get(old, 'index.m3u8'); // leads to the session that is starting
+        assert.strictEqual(T.aliases.get(old), id);
+        spawned[0].child.emit('close', 1);
+        await failed;
+        assert.strictEqual(fresh.store.get(id), null);
+        assert.deepStrictEqual(listed(old), ['a']);
+        assert.ok(!T.aliases.has(old));
+        await hush(async () => {
+            assert.strictEqual((await get(old, 'index.m3u8')).status, 503);
+            await until(() => spawned.length === 2 && spawned[1].session.id === old);
+        });
+    });
+});
+
+ok('#1410 a player with no name (and a name that is not one) behaves as before', async () => {
+    fresh();
+    const a = await relay.start(VID, 'v480', 0, 'a');
+    await relay.start(VID, 'v480', 0, 'has space');
+    await relay.start(VID, 'v480', 0, 'x'.repeat(65));
+    await relay.start(VID, 'v480', 0, { toString: () => 'obj' });
+    assert.deepStrictEqual(listed(a.id), ['a']);
+    assert.strictEqual(await relay.stop(a.id, { viewer: 'bad name!' }), true, 'a stop with no name ends it');
+    assert.strictEqual(fresh.store.get(a.id), null);
+    // no names anywhere: another place replaces, one session
+    const b = await relay.start(VID, 'v480', 0);
+    const c = await relay.start(VID, 'v480', 300);
+    assert.deepStrictEqual([...T.sessions.keys()], [c.id]);
+    assert.strictEqual(fresh.store.get(b.id), null);
+    // a start with no name does not cut a named player, and a named start ends what nobody is listed on
+    const d = await relay.start(VID, 'v480', 500, 'd');
+    assert.deepStrictEqual([...T.sessions.keys()], [d.id]);
+    const e = await relay.start(VID, 'v480', 0);
+    assert.deepStrictEqual([...T.sessions.keys()], [d.id, e.id]);
+    assert.deepStrictEqual(listed(d.id), ['d']);
+});
+
+ok('#1410 a session lists at most 16 names, the oldest goes first', async () => {
+    fresh();
+    let id;
+    for (let i = 0; i < 20; i++) id = (await relay.start(VID, 'v480', 0, `v${i}`)).id;
+    assert.strictEqual(T.sessions.get(id).viewers.size, 16);
+    assert.deepStrictEqual(fresh.store.get(id).viewers, Array.from({ length: 16 }, (_x, i) => `v${i + 4}`));
+});
+
+ok('#1410 state() of an address with no session says gone although a record exists; its next playlist request brings it back', async () => {
+    fresh();
+    const a = await relay.start(VID, 'v480', 0, 'a');
+    await idleEnd(a.id);
+    assert.ok(fresh.store.get(a.id));
+    assert.deepStrictEqual(relay.state(a.id), { id: a.id, state: 'gone' });
+    assert.strictEqual(spawned.length, 1, 'asking the state starts nothing');
+    await hush(() => withServer(async (get) => comeBack(get, a.id)));
+    assert.strictEqual(relay.state(a.id).state, 'live');
+});
+
+ok('the two-session bound: a session somebody else holds is pushed out with its record kept; the requester\'s own and a nameless one end for good', async () => {
+    for (const [victim, kept] of [['vx', true], ['vc', false], [undefined, false]]) {
+        fresh();
+        const x = await relay.start('abcdefghijk', 'v480', 0, victim);
+        await relay.start('lmnopqrstuv', 'v480', 0, 'vy');
+        T.sessions.get(x.id).lastHit -= 10000;
+        await relay.start('wxyzabcdefg', 'v480', 0, 'vc');
+        assert.ok(!T.sessions.has(x.id));
+        assert.strictEqual(!!fresh.store.get(x.id), kept, `victim held by ${victim}`);
+        await withServer(async (get) => {
+            assert.strictEqual((await get(x.id, 'index.m3u8')).status, kept ? 503 : 404);
+        });
+    }
+});
+
+ok('one of two seeks while a third player watches something else: nobody\'s address is ended for good', async () => {
+    fresh();
+    const shared = await relay.start('abcdefghijk', 'v480', 0, 'va');
+    await relay.start('abcdefghijk', 'v480', 0, 'vb');
+    const other = await relay.start('lmnopqrstuv', 'v480', 0, 'vc');
+    await relay.start('abcdefghijk', 'v480', 300, 'va');
+    assert.strictEqual(T.sessions.size, 2);
+    assert.ok(fresh.store.get(shared.id) && fresh.store.get(other.id), 'whichever made room can come back');
+});
+
 const realStoreFile = path.join(__dirname, '..', 'modules', 'videosRelayStore.js');
 if (fs.existsSync(realStoreFile)) {
+    ok('#1410 against the real store: the viewers are on disk by the next tick and the rule holds in a new process\'s store', async () => {
+        const mod = require(realStoreFile);
+        const file = path.join(tmp, 'real-store-viewers.json');
+        fresh();
+        const st = mod.open(file, { ttlMs: 24 * 3600000 });
+        T.setStore(st);
+        const a = await relay.start(VID, 'v480', 0, 'a');
+        await relay.start(OTHER, 'v480', 0, 'z');
+        await relay.start(VID, 'v480', 0, 'b');
+        await new Promise((r) => setImmediate(r));
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).sessions[a.id].viewers, ['a', 'b'], 'no 20 s wait');
+        st.close();
+        T.reset();
+        const st2 = mod.open(file, { ttlMs: 24 * 3600000 });
+        T.setStore(st2);
+        assert.strictEqual(await relay.stop(a.id, { viewer: 'a' }), false);
+        assert.deepStrictEqual(st2.get(a.id).viewers, ['b']);
+        await relay.stop(a.id, { viewer: 'b' });
+        assert.strictEqual(st2.get(a.id), null);
+        st2.close();
+    });
+
     ok('the restart case against the real store in a temp file', async () => {
         const mod = require(realStoreFile);
         const file = path.join(tmp, 'real-store.json');

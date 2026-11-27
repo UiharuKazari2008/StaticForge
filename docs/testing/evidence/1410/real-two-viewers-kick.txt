@@ -1,0 +1,11 @@
+15:59:52 phone started 8a51355a88052276bc8dce89, desktop got 8a51355a88052276bc8dce89: one shared session
+15:59:52 both on it: playlist 200 (2 pieces) piece s00001.ts 200 133292 bytes
+15:59:52 records: {"v":1,"sessions":{"8a51355a88052276bc8dce89":{"slug":"asmongold","mode":"160","startedAt":1795813187889,"lastHit":1795813192719,"viewers":["v:phone","v:desktop"]}}}
+15:59:52 phone stops -> stopped: false
+15:59:53 records: {"v":1,"sessions":{"8a51355a88052276bc8dce89":{"slug":"asmongold","mode":"160","startedAt":1795813187889,"lastHit":1795813192733,"viewers":["v:desktop"]}}}
+15:59:58 desktop still playing: playlist 200 (3 pieces) piece s00002.ts 200 138180 bytes
+16:00:03 desktop still playing: playlist 200 (4 pieces) piece s00003.ts 200 138368 bytes
+16:00:08 desktop still playing: playlist 200 (5 pieces) piece s00004.ts 200 134796 bytes
+16:00:08 desktop (last) stops -> stopped: true
+16:00:09 after the last stop: playlist 404 (0 pieces)
+16:00:09 state: gone; records: {"v":1,"sessions":{}}

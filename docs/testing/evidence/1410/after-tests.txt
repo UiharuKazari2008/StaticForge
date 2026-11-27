@@ -1,0 +1,156 @@
+# After: all videos test scripts, 2026-11-27T15:58:45-05:00
+== scripts/test-videos-kick-chat.js
+  ok  a delivery is taken only with Kick's signature over id.timestamp.body, and only when fresh
+  ok  chat is off until switched on; the gate opens the webhook only then
+  ok  the first panel subscribes at Kick with the app token; the last one closing unsubscribes
+  ok  viewers get batches: new messages only, at most 30, with the count of what was skipped
+  ok  a message for a channel nobody watches is dropped; a stream change makes the sources look
+  ok  linking an account: PKCE, the answer accepted once and only for a state given out; then a message is sent as the user
+  ok  an emote picture is fetched once and kept on disk; a bad id is refused
+  ok  switching chat off removes every subscription
+8 passed, 0 failed
+exit 0
+== scripts/test-videos-kick-relay.js
+  ok  renditions: parsed best first; a mode takes its height, else the next one down
+  ok  modes: pass-through copies; no re-encode goes over 30 fps; Audio First is one picture a second
+  ok  a session starts once its list has pieces; the same channel and mode joins it
+  ok  another quality replaces the channel's session; at most two streams run
+  ok  the encoder stopping while someone watches: a fresh address and another run
+  ok  the channel going offline ends the session
+  ok  stop removes the session and its files
+  ok  ffmpegArgs: -start_number only when asked for; the rest is unchanged
+  ok  real ffmpeg: -start_number gives the first piece its number, and a restart into the same folder continues after the last piece
+  ok  unknown address, no record: 404 and nothing read or started
+  ok  the restart case: a record and no session - the playlist starts the stream again under the same address
+  ok  a brand-new session keeps today's numbering (no -start_number)
+  ok  the idle end keeps the record: a later playlist starts the stream again; the viewer's stop ends it for good
+  ok  stop() of an address with no session (after a restart) removes its record too
+  ok  the encoder giving up with nobody watching is an idle end: the record stays
+  ok  "replaced" removes the old record; a record of another quality with no session goes when the viewer picks a quality
+  ok  a piece never brings a stream back
+  ok  budget (fake): a failed revive keeps the record; no Kick request until the budget allows another try
+  ok  a failed revive: a channel Kick does not know removes the record; any other failure keeps it
+  ok  budget (real, clock moved): 20 s, then 40 s, then 80 s apart
+  ok  budget (real, clock moved): five tries in ten minutes, then wait for the window
+  ok  alias: a running session of the channel answers for the old address - no spawn, no Kick request, no budget
+  ok  alias: the viewer ending the stream ends the old address too
+  ok  full: a revive never pushes a running stream out
+  ok  a channel taken off the list, an unknown quality or a bad record: 404 and the record is removed
+  ok  proven() is called once, after five pieces were served for a revived session
+  ok  the route is late-bound: a reload that replaces serve() needs no new route
+  ok  a module reload (dispose) ends the sessions like a restart, keeps the records, and the next playlist brings the stream back
+  ok  #1410 acceptance: two viewers on one session, one stops, the other's playlist still answers 200; the last one ends it and then it is 404
+  ok  a single viewer's stop ends the stream for good; the same viewer starting twice is still one viewer
+  ok  no viewer id (or a bad one) works as before: its stop ends the stream; ids are cleaned and the list is capped at 16
+  ok  viewer changes are on disk by the next tick (the real store), not after the 20 s of the touches
+  ok  one of two takes another quality: the other's stream still answers 200, and each is ended by its own viewer
+  ok  the join path leaves the other quality too: it ends once nobody is on it
+  ok  a sole viewer's quality change replaces the stream as before
+  ok  a player with no id changing quality does not cut a named viewer; the two-stream bound stays
+  ok  the two-stream bound: with three qualities wanted, the least recently asked one goes
+  ok  the two-stream bound: another channel somebody else is on keeps its record; the requester's own and a nameless one end for good
+  ok  records of other qualities: the viewer is taken off; only those with nobody left (or that name nobody) go
+  ok  after a module reload the list comes from the record: one leaving does not end it, the last one does
+  ok  after the idle end and the revive the same rule holds
+  ok  stop with no session in memory: the record loses the viewer and stays while others are listed
+  ok  leaving while a revive reads the address: it goes on for the others, with the list as it is now
+  ok  the only viewer leaving while a revive reads the address: it ends without a session
+  ok  leaving while the revived session is starting: one of two lets it go on, the last one ends it
+  ok  alias merge: the old address's viewer is protected when the running session's viewer leaves
+  ok  an old address nobody is left on goes while the session stays; one that names nobody stays with it
+  ok  alias merge into a session still starting: its record gets the merged list
+  ok  two starts of one quality at the same time are ONE session with both viewers
+  ok  the same with a stream to replace on the way: still one session
+  ok  an Audio First viewer is not handed another viewer's 1080p: its own quality is started when there is room
+  ok  the revive budget applies to it: a refused try waits and is not aliased to the other quality
+  ok  another quality still answers when all its viewers are on it, or when there is no room
+  ok  a running session of the same quality is preferred over another one of the channel
+  ok  another quality started while a revive reads the address: the same rule after the read
+  ok  state() of an address with no session is "gone" even with a record (decided so), and its playlist comes back
+  ok  a broken run others are on is replaced: their address answers from the new one and their viewers come over
+  ok  a broken run only the starter is on is replaced for good; a nameless start carries named viewers over
+  ok  a failed start takes no other viewer's address with it, even one already pointed at it
+  ok  a failed revive clears only its own run, never the newer session its address has moved to
+  ok  stopped while a restart reads the address: no encoder is started for the gone session
+61 passed
+exit 0
+== scripts/test-videos-media-session.js
+test-videos-media-session: ok
+exit 0
+== scripts/test-videos-relay-store.js
+  ok  put / get / touch / remove / all
+  ok  records are copies, not references
+  ok  ttl: an expired record is gone (and removed); touched ones live on
+  ok  max: the records with the oldest lastHit are dropped
+  ok  bad ids: put ignores them, get / touch / remove say no
+  ok  a missing, empty or garbage file is an empty store
+  ok  writes are atomic, coalesced, mode 0600, and a second open reads them
+  ok  put and remove make one write for any number of calls
+  ok  touch is debounced: at most one write per touchWriteMs, by a one-shot timer
+  ok  flush writes now and cancels the timers; close flushes and lets a new open read afresh
+  ok  the same file gives the same store object
+  ok  a write error never throws: one warning, the store carries on in memory
+  ok  ReviveBudget: the gap is 20 s, 20 s, 40 s, 80 s ... up to 5 minutes
+  ok  ReviveBudget: five in the window, then no, until the oldest has left it
+  ok  ReviveBudget: proven() starts the gap over but keeps the count; forget() drops everything
+  ok  ReviveBudget: an id not taken within the window is dropped by the next take, no timer
+  ok  defaults: 20 s, 5 min, 10 min window, 5 tries
+17 passed
+exit 0
+== scripts/test-videos-youtube-relay.js
+  ok  each mode asks yt-dlp for H.264 + AAC no taller than its height; Audio First for the sound alone
+  ok  ffmpeg reads picture and sound from pipes (yt-dlp downloads), from the start place, mapped, copied into a growing list
+  ok  a session starts, the same request joins it, another place replaces it, stop removes the files
+  ok  what yt-dlp refuses fails the start (the program then uses YouTube's own player); bad ids and places too
+  ok  ffmpeg finishing closes the session as done; breaking off marks it an error
+  ok  SponsorBlock: only a hash prefix is sent, the wanted video is picked from the answer, whole-skip parts in order, kept for later
+  ok  an address nobody knows is a 404 and starts nothing (also a malformed one)
+  ok  a record with no session (the restart case): the playlist answers 503 + Retry-After and one start at the record's place; a second request joins it
+  ok  the catch-up gate: the list is held back until it covers the old place + 8 pieces (or ends); pieces are served at once; the gate stays open
+  ok  adopt: a video written whole comes back from its files after sweep() with no request to YouTube; an incomplete folder goes and the address starts again
+  ok  stop(id) removes the record; the idle end keeps it and the address starts again; a new start at another place removes the old record
+  ok  a start at the same place and quality takes the old address along: it serves the new session's list; stopping the video ends both
+  ok  a piece of a dead address never brings it back
+  ok  a session that broke part way is started again in place by a playlist request, within the budget
+  ok  budget: a failed revive keeps the record and the next request within the gap asks nobody; "live" removes the record for good
+  ok  a full house: sessions being watched are never pushed out (503); one quiet for over a minute makes room and keeps its record
+  ok  the record learns the highest piece sent and that the video was written whole
+  ok  a reload ends every session like a restart: records stay, whole folders stay, the rest goes; the next request brings the address back
+  ok  #1410 acceptance: two viewers on one session, one stops, the other's list and pieces are still served; the last one stopping ends it
+  ok  #1410 one viewer: its stop ends the video for good; starting the same twice still takes one stop
+  ok  #1410 one of two moves or changes quality: the other's stream plays on; each ends its own
+  ok  #1410 a sole viewer moving replaces its session as before, also an address with no session
+  ok  #1410 an address with no session keeps its record while somebody else is listed on it
+  ok  #1410 joining a running session leaves the video's other sessions: one nobody else holds ends, one that others hold stays
+  ok  #1410 two starts of the very same at once make ONE session that both hold (also when both leave an older one)
+  ok  #1410 stop does its bookkeeping before it first waits: a start right behind it sees it
+  ok  #1410 the rule holds after a reload: the record lists the viewers (put at once, lastHit as it was), the address comes back with them
+  ok  #1410 two players at two places both come back after a reload, in either order
+  ok  #1410 another place's session still makes an address stale when it holds everybody listed there, or the record lists nobody
+  ok  #1410 a video written whole comes back from its files with its viewers
+  ok  #1410 a stop that arrives while the files are read stays: the ended video does not come back, a leaver is not listed again
+  ok  #1410 stop with no session in memory: the record loses the viewer and goes with the last one; a record with no list goes as before
+  ok  #1410 an older address's viewer is protected: it joins the session that serves it, and neither the other's stop nor its move ends it
+  ok  #1410 an older address that only the leaving viewer had ends; the session stays for the other
+  ok  #1410 an address that leads to a session by its own request brings its viewers along
+  ok  #1410 a broken pull of the very same is set aside: its viewers go to the session that takes over, started again or revived
+  ok  #1410 a broken pull beside a healthy one of the very same (another old address revived): joining or its own request moves its viewers and older addresses over
+  ok  #1410 a start that fails ends only its own address: another player's address that was pointed at it keeps its record
+  ok  #1410 a player with no name (and a name that is not one) behaves as before
+  ok  #1410 a session lists at most 16 names, the oldest goes first
+  ok  #1410 state() of an address with no session says gone although a record exists; its next playlist request brings it back
+  ok  the two-session bound: a session somebody else holds is pushed out with its record kept; the requester's own and a nameless one end for good
+  ok  one of two seeks while a third player watches something else: nobody's address is ended for good
+  ok  #1410 against the real store: the viewers are on disk by the next tick and the rule holds in a new process's store
+  ok  the restart case against the real store in a temp file
+45 passed, 0 failed
+exit 0
+== handler 308 (collaborators stubbed)
+[["live.start","a","480","v:abc123"],
+["live.stop","x","viewer",{"viewer":"v:abc123"}],
+["yt.start","v","v480",3,"v:abc123"],
+["yt.stop","x",{"viewer":"v:abc123"}],
+["live.stop","x","viewer",{"viewer":"s:92788a3a775421c280d61d9e"}],
+["live.stop","x","viewer",{"viewer":"s:92788a3a775421c280d61d9e"}],
+["yt.stop","x",{"viewer":""}]]
+handler check: ok

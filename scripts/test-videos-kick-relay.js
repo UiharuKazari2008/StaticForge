@@ -52,6 +52,7 @@ function fakeSpawn(args, session) {
 }
 T.setHooks({ address: async () => { addressReads++; return live ? { live: true, playback: 'https://video.example/master.m3u8?token=t' } : { live: false, playback: '' }; }, spawn: fakeSpawn });
 global.fetch = async () => ({ status: 200, text: async () => MASTER });
+const stdFetch = global.fetch;
 relay.bind({ allowed: (slug) => ['streamer_one', 'other_two', 'third_3', 'fourth_4'].includes(slug) });
 
 (async () => {
@@ -211,6 +212,7 @@ relay.bind({ allowed: (slug) => ['streamer_one', 'other_two', 'third_3', 'fourth
     const stdAddress = async () => { addressReads++; return live ? { live: true, playback: 'https://video.example/master.m3u8?token=t' } : { live: false, playback: '' }; };
     function fresh(recs = {}) {
         T.reset();
+        global.fetch = stdFetch; // a test that failed with its gate shut must not hold up the next one
         encoderDelay = 0; // the encoder has its list at once, but for the tests that watch a session start
         T.setHooks({ address: stdAddress, spawn: fakeSpawn });
         live = true;
@@ -625,6 +627,509 @@ relay.bind({ allowed: (slug) => ['streamer_one', 'other_two', 'third_3', 'fourth
             await relay.start('other_two', '480');
         });
     });
+
+    // ------------------------------------------------------------------------------------------ #1410: two viewers of one stream
+
+    // holds every read of the stream's list until open(): what is under way can be looked at, and raced
+    function gateFetch() {
+        let release;
+        const held = new Promise((r) => { release = r; });
+        const gate = { waiting: 0, open() { global.fetch = stdFetch; release(); } };
+        global.fetch = async (...args) => { gate.waiting++; await held; return stdFetch(...args); };
+        return gate;
+    }
+    // an encoder that never writes a list: its session stays "starting" until the test fails it (child = null)
+    function silentSpawn(args, session) {
+        const child = new EventEmitter();
+        child.kill = () => { child.killed = true; setImmediate(() => child.emit('close', 0)); };
+        spawned.push({ args, child, session });
+        return child;
+    }
+    // a run that broke: no encoder, and the state a failed restart leaves
+    const breakRun = (id) => { const s = T.sessions.get(id); s.child = null; s.state = 'error'; return s; };
+    const status = async (id) => (await get(id, 'index.m3u8')).status;
+    const onIt = (id) => [...T.sessions.get(id).viewers].sort();
+    const listed = (st, id) => { const r = st.get(id); return r && r.viewers ? [...r.viewers].sort() : r && 'no list'; };
+    const leaves = (id, viewer) => relay.stop(id, 'closed', { viewer });
+    const idleEnd = (id) => { T.sessions.get(id).lastHit = Date.now() - T.IDLE_MS - 1000; T.sweep(); };
+
+    await ok('#1410 acceptance: two viewers on one session, one stops, the other\'s playlist still answers 200; the last one ends it and then it is 404', async () => {
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        const b = await relay.start('streamer_one', '480', 'vb');
+        assert.strictEqual(b.id, a.id, 'one session for both');
+        assert.strictEqual(await leaves(a.id, 'va'), false, 'nothing ended');
+        const r = await get(a.id, 'index.m3u8');
+        assert.strictEqual(r.status, 200);
+        assert.ok(r.body.includes('#EXTINF'));
+        assert.ok(!spawned[0].child.killed, 'the encoder goes on');
+        assert.deepStrictEqual([onIt(a.id), listed(st, a.id)], [['vb'], ['vb']]);
+        assert.strictEqual(await leaves(a.id, 'va'), false, 'the one who left saying so again ends nothing');
+        assert.strictEqual(await leaves(a.id, 'a-stranger'), false, 'nor does one who was never on it');
+        assert.strictEqual(await status(a.id), 200);
+        assert.strictEqual(await leaves(a.id, 'vb'), true, 'the last one ends it');
+        assert.strictEqual(await status(a.id), 404);
+        assert.strictEqual(st.get(a.id), null);
+        assert.ok(spawned[0].child.killed);
+        assert.strictEqual(spawned.length, 1);
+    });
+
+    await ok('a single viewer\'s stop ends the stream for good; the same viewer starting twice is still one viewer', async () => {
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        assert.strictEqual(await leaves(a.id, 'va'), true);
+        assert.deepStrictEqual([st.get(a.id), T.sessions.size, await status(a.id)], [null, 0, 404]);
+        const b = await relay.start('streamer_one', '480', 'va');
+        assert.strictEqual((await relay.start('streamer_one', '480', 'va')).id, b.id);
+        assert.deepStrictEqual(listed(st, b.id), ['va']);
+        assert.strictEqual(await leaves(b.id, 'va'), true);
+        assert.deepStrictEqual([st.get(b.id), T.sessions.size, await status(b.id)], [null, 0, 404]);
+        assert.strictEqual(spawned.length, 2, 'an ended stream stays ended');
+    });
+
+    await ok('no viewer id (or a bad one) works as before: its stop ends the stream; ids are cleaned and the list is capped at 16', async () => {
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        await relay.start('streamer_one', '480');
+        for (const bad of ['', 'two words', 'x'.repeat(65), 'a,b', 'a\n', 7, {}, ['vb'], null]) await relay.start('streamer_one', '480', bad);
+        assert.deepStrictEqual([onIt(a.id), listed(st, a.id)], [['va'], ['va']]);
+        assert.strictEqual(await relay.stop(a.id, 'closed', { viewer: 'two words' }), true, 'a bad id is no id: it ends for everybody, as before');
+        assert.deepStrictEqual([st.get(a.id), await status(a.id)], [null, 404]);
+        const b = await relay.start('streamer_one', '480', `Aa0_.:-${'x'.repeat(57)}`);
+        assert.strictEqual(onIt(b.id).length, 1, '64 characters of the allowed ones');
+        for (let i = 1; i <= 20; i++) await relay.start('streamer_one', '480', `v${i}`);
+        const want = Array.from({ length: 16 }, (_, i) => `v${i + 5}`);
+        assert.deepStrictEqual([...T.sessions.get(b.id).viewers], want, 'the ones longest here are dropped');
+        assert.deepStrictEqual(st.get(b.id).viewers, want);
+        assert.strictEqual(await relay.stop(b.id), true, 'a stop with no viewer is unconditional');
+        assert.strictEqual(await status(b.id), 404);
+    });
+
+    await ok('viewer changes are on disk by the next tick (the real store), not after the 20 s of the touches', async () => {
+        fresh();
+        const file = path.join(tmp, 'viewers-real.json');
+        const real = require('../modules/videosRelayStore').open(file);
+        T.setStore(real);
+        const tick = () => new Promise((r) => setImmediate(() => setImmediate(r)));
+        const onDisk = (id) => JSON.parse(fs.readFileSync(file, 'utf8')).sessions[id].viewers;
+        const a = await relay.start('streamer_one', '480', 'va');
+        await tick();
+        assert.deepStrictEqual(onDisk(a.id), ['va']);
+        await relay.start('streamer_one', '480', 'vb');
+        await tick();
+        assert.deepStrictEqual(onDisk(a.id), ['va', 'vb']);
+        await leaves(a.id, 'va');
+        await tick();
+        assert.deepStrictEqual(onDisk(a.id), ['vb']);
+        await leaves(a.id, 'vb');
+        real.close();
+    });
+
+    await ok('one of two takes another quality: the other\'s stream still answers 200, and each is ended by its own viewer', async () => {
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        await relay.start('streamer_one', '480', 'vb');
+        const b = await relay.start('streamer_one', '360', 'vb');
+        assert.notStrictEqual(b.id, a.id);
+        assert.ok(!spawned[0].child.killed, 'va\'s encoder goes on');
+        assert.deepStrictEqual([await status(a.id), await status(b.id)], [200, 200]);
+        assert.deepStrictEqual([onIt(a.id), listed(st, a.id), onIt(b.id), listed(st, b.id)], [['va'], ['va'], ['vb'], ['vb']]);
+        assert.strictEqual(await leaves(a.id, 'va'), true);
+        assert.deepStrictEqual([await status(a.id), await status(b.id), st.get(a.id)], [404, 200, null]);
+        assert.strictEqual(await leaves(b.id, 'vb'), true);
+        assert.strictEqual(await status(b.id), 404);
+    });
+
+    await ok('the join path leaves the other quality too: it ends once nobody is on it', async () => {
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        await relay.start('streamer_one', '480', 'vb');
+        const b = await relay.start('streamer_one', '360', 'vc'); // two qualities side by side
+        assert.strictEqual(T.sessions.size, 2);
+        assert.strictEqual((await relay.start('streamer_one', '360', 'vb')).id, b.id, 'vb joins');
+        assert.deepStrictEqual([onIt(a.id), onIt(b.id), await status(a.id)], [['va'], ['vb', 'vc'], 200]);
+        assert.strictEqual((await relay.start('streamer_one', '360', 'va')).id, b.id, 'va joins as the last one off the first');
+        assert.deepStrictEqual([T.sessions.size, await status(a.id), st.get(a.id)], [1, 404, null]);
+        assert.ok(spawned[0].child.killed);
+        assert.deepStrictEqual([onIt(b.id), listed(st, b.id)], [['va', 'vb', 'vc'], ['va', 'vb', 'vc']]);
+    });
+
+    await ok('a sole viewer\'s quality change replaces the stream as before', async () => {
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        const b = await relay.start('streamer_one', '360', 'va');
+        assert.deepStrictEqual([T.sessions.size, st.get(a.id), await status(a.id), await status(b.id)], [1, null, 404, 200]);
+        assert.ok(spawned[0].child.killed);
+        assert.ok(!fs.existsSync(path.join(process.env.VIDEOS_LIVE_DIR, a.id)), 'its files are gone when start() answers');
+    });
+
+    await ok('a player with no id changing quality does not cut a named viewer; the two-stream bound stays', async () => {
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        const b = await relay.start('streamer_one', '360');
+        assert.deepStrictEqual([T.sessions.size, await status(a.id), await status(b.id)], [2, 200, 200]);
+        assert.deepStrictEqual(listed(st, a.id), ['va']);
+        T.sessions.get(a.id).lastHit -= 10000; // asked for longest ago, but there is room once the nameless one is gone
+        const c = await relay.start('streamer_one', '160', 'vc');
+        assert.deepStrictEqual([...T.sessions.keys()].sort(), [a.id, c.id].sort(), 'the nameless stream of another quality ends (nobody on it); va\'s stays');
+        assert.deepStrictEqual([st.get(b.id), await status(b.id), await status(a.id)], [null, 404, 200]);
+    });
+
+    await ok('the two-stream bound: with three qualities wanted, the least recently asked one goes', async () => {
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        const b = await relay.start('streamer_one', '360', 'vb');
+        T.sessions.get(a.id).lastHit -= 10000;
+        const c = await relay.start('streamer_one', '160', 'vc');
+        assert.deepStrictEqual([...T.sessions.keys()].sort(), [b.id, c.id].sort());
+        assert.ok(st.get(a.id), 'va is somebody else: the bound does not end va\'s address for good');
+        assert.strictEqual(await status(a.id), 200, 'with no room another quality of the channel answers it');
+        assert.strictEqual(T.sessions.size, 2);
+    });
+
+    await ok('the two-stream bound: another channel somebody else is on keeps its record; the requester\'s own and a nameless one end for good', async () => {
+        for (const [victim, kept] of [['vx', true], ['vc', false], [undefined, false]]) {
+            const { st } = fresh();
+            const x = await relay.start('other_two', '480', victim);
+            await relay.start('third_3', '480', 'vy');
+            T.sessions.get(x.id).lastHit -= 10000;
+            await relay.start('streamer_one', '480', 'vc');
+            assert.ok(!T.sessions.has(x.id));
+            assert.strictEqual(!!st.get(x.id), kept, `victim held by ${victim}`);
+            assert.strictEqual(await status(x.id), kept ? 503 : 404, 'kept: full house, come back later');
+        }
+    });
+
+    await ok('records of other qualities: the viewer is taken off; only those with nobody left (or that name nobody) go', async () => {
+        const mine = idN(11);
+        const shared = idN(12);
+        const empty = idN(13);
+        const legacy = idN(14);
+        const theirs = idN(15);
+        const sameQ = idN(16);
+        const { st } = fresh({ [mine]: REC({ mode: '360', viewers: ['va'] }), [shared]: REC({ mode: '360', viewers: ['va', 'vb'] }), [empty]: REC({ mode: '160', viewers: [] }), [legacy]: REC({ mode: 'audio' }), [theirs]: REC({ mode: 'audio', viewers: ['vc'] }), [sameQ]: REC({ viewers: ['va'] }) });
+        await relay.start('streamer_one', '480', 'va');
+        assert.deepStrictEqual([st.get(mine), st.get(empty), st.get(legacy)], [null, null, null]);
+        assert.deepStrictEqual([listed(st, shared), listed(st, theirs), listed(st, sameQ)], [['vb'], ['vc'], ['va']]);
+    });
+
+    await ok('after a module reload the list comes from the record: one leaving does not end it, the last one does', async () => {
+        await logged(async () => {
+            const { st } = fresh();
+            const a = await relay.start('streamer_one', '480', 'va');
+            await relay.start('streamer_one', '480', 'vb');
+            T.accept(T.dispose());
+            assert.strictEqual(T.sessions.size, 0);
+            comeBack(await get(a.id, 'index.m3u8'));
+            await until200(a.id);
+            assert.deepStrictEqual(onIt(a.id), ['va', 'vb']);
+            assert.strictEqual(await leaves(a.id, 'va'), false);
+            assert.deepStrictEqual([await status(a.id), listed(st, a.id)], [200, ['vb']]);
+            assert.strictEqual(await leaves(a.id, 'vb'), true);
+            assert.deepStrictEqual([await status(a.id), st.get(a.id)], [404, null]);
+        });
+    });
+
+    await ok('after the idle end and the revive the same rule holds', async () => {
+        await logged(async () => {
+            const { st } = fresh();
+            const a = await relay.start('streamer_one', '480', 'va');
+            await relay.start('streamer_one', '480', 'vb');
+            const dir = T.sessions.get(a.id).dir;
+            idleEnd(a.id);
+            assert.strictEqual(T.sessions.size, 0);
+            assert.deepStrictEqual(listed(st, a.id), ['va', 'vb'], 'an idle end takes nobody off');
+            await until(() => !fs.existsSync(dir));
+            comeBack(await get(a.id, 'index.m3u8'));
+            await until200(a.id);
+            assert.deepStrictEqual(onIt(a.id), ['va', 'vb']);
+            assert.strictEqual(await leaves(a.id, 'vb'), false);
+            assert.deepStrictEqual([await status(a.id), listed(st, a.id)], [200, ['va']]);
+            assert.strictEqual(await leaves(a.id, 'va'), true);
+            assert.strictEqual(await status(a.id), 404);
+        });
+    });
+
+    await ok('stop with no session in memory: the record loses the viewer and stays while others are listed', async () => {
+        const legacy = idN(2);
+        const { st, b } = fresh({ [OLD]: REC({ viewers: ['va', 'vb'] }), [legacy]: REC() });
+        assert.strictEqual(await leaves(OLD, 'va'), false);
+        assert.deepStrictEqual(listed(st, OLD), ['vb']);
+        assert.strictEqual(await leaves(OLD, 'va'), false);
+        assert.deepStrictEqual([listed(st, OLD), b.forgotten], [['vb'], []]);
+        assert.strictEqual(await leaves(OLD, 'vb'), false, 'there was no session to stop');
+        assert.deepStrictEqual([st.get(OLD), await status(OLD)], [null, 404]);
+        assert.ok(b.forgotten.includes(OLD));
+        assert.strictEqual(await leaves(legacy, 'va'), false);
+        assert.deepStrictEqual([st.get(legacy), await status(legacy)], [null, 404], 'a record with no list: as before');
+        assert.strictEqual(spawned.length, 0);
+    });
+
+    await ok('leaving while a revive reads the address: it goes on for the others, with the list as it is now', async () => {
+        await logged(async () => {
+            const { st } = fresh({ [OLD]: REC({ viewers: ['va', 'vb'] }) });
+            const gate = gateFetch();
+            comeBack(await get(OLD, 'index.m3u8'));
+            await until(() => gate.waiting === 1);
+            assert.strictEqual(await leaves(OLD, 'va'), false);
+            gate.open();
+            await until200(OLD);
+            await settle();
+            assert.deepStrictEqual([onIt(OLD), listed(st, OLD), spawned.length], [['vb'], ['vb'], 1], 'va does not come back with the session');
+            assert.strictEqual(await leaves(OLD, 'vb'), true);
+            assert.strictEqual(await status(OLD), 404);
+        });
+    });
+
+    await ok('the only viewer leaving while a revive reads the address: it ends without a session', async () => {
+        await logged(async () => {
+            const { st } = fresh({ [OLD]: REC({ viewers: ['va'] }) });
+            const gate = gateFetch();
+            comeBack(await get(OLD, 'index.m3u8'));
+            await until(() => gate.waiting === 1);
+            assert.strictEqual(await leaves(OLD, 'va'), false);
+            gate.open();
+            await settle();
+            assert.deepStrictEqual([T.sessions.size, spawned.length, st.get(OLD), await status(OLD)], [0, 0, null, 404]);
+        });
+    });
+
+    await ok('leaving while the revived session is starting: one of two lets it go on, the last one ends it', async () => {
+        await logged(async () => {
+            const { st } = fresh({ [OLD]: REC({ viewers: ['va', 'vb'] }) });
+            T.setHooks({ address: stdAddress, spawn: silentSpawn });
+            comeBack(await get(OLD, 'index.m3u8'));
+            await until(() => spawned.length === 1);
+            assert.strictEqual(await leaves(OLD, 'va'), false);
+            assert.deepStrictEqual([T.sessions.size, onIt(OLD), listed(st, OLD)], [1, ['vb'], ['vb']]);
+            assert.strictEqual(await leaves(OLD, 'vb'), true);
+            await settle();
+            assert.deepStrictEqual([T.sessions.size, st.get(OLD), await status(OLD)], [0, null, 404]);
+        });
+    });
+
+    await ok('alias merge: the old address\'s viewer is protected when the running session\'s viewer leaves', async () => {
+        const { st, b } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        st.put(OLD, REC({ viewers: ['vb'] }));
+        assert.strictEqual(await status(OLD), 200);
+        assert.strictEqual(T.aliases.get(OLD), a.id);
+        assert.deepStrictEqual([onIt(a.id), listed(st, a.id), listed(st, OLD)], [['va', 'vb'], ['va', 'vb'], ['vb']]);
+        assert.strictEqual(await leaves(a.id, 'va'), false);
+        assert.deepStrictEqual([await status(a.id), await status(OLD)], [200, 200]);
+        assert.ok(!spawned[0].child.killed);
+        assert.strictEqual(await leaves(OLD, 'vb'), true);
+        assert.deepStrictEqual([await status(a.id), await status(OLD), st.get(a.id), st.get(OLD), T.aliases.size], [404, 404, null, null, 0]);
+        assert.deepStrictEqual([spawned.length, b.calls.length], [1, 0]);
+    });
+
+    await ok('an old address nobody is left on goes while the session stays; one that names nobody stays with it', async () => {
+        const legacy = idN(2);
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        st.put(OLD, REC({ viewers: ['vb'] }));
+        st.put(legacy, REC());
+        assert.deepStrictEqual([await status(OLD), await status(legacy)], [200, 200]);
+        assert.strictEqual(await leaves(OLD, 'vb'), false);
+        assert.deepStrictEqual([st.get(OLD), T.aliases.has(OLD), await status(OLD)], [null, false, 404]);
+        assert.deepStrictEqual([await status(a.id), await status(legacy), listed(st, legacy)], [200, 200, 'no list']);
+        assert.strictEqual(await leaves(a.id, 'va'), true);
+        assert.deepStrictEqual([await status(a.id), await status(legacy), st.get(legacy)], [404, 404, null]);
+    });
+
+    await ok('alias merge into a session still starting: its record gets the merged list', async () => {
+        const { st } = fresh();
+        encoderDelay = 150;
+        const pending = relay.start('streamer_one', '480', 'va');
+        await until(() => spawned.length === 1);
+        st.put(OLD, REC({ viewers: ['vb'] }));
+        comeBack(await get(OLD, 'index.m3u8'));
+        const a = await pending;
+        assert.deepStrictEqual([onIt(a.id), listed(st, a.id)], [['va', 'vb'], ['va', 'vb']]);
+        assert.strictEqual(await leaves(a.id, 'va'), false);
+        assert.strictEqual(await status(OLD), 200);
+    });
+
+    await ok('two starts of one quality at the same time are ONE session with both viewers', async () => {
+        const { st } = fresh();
+        const gate = gateFetch();
+        const both = [relay.start('streamer_one', '480', 'va'), relay.start('streamer_one', '480', 'vb')];
+        await until(() => gate.waiting === 2);
+        gate.open();
+        const [a, b] = await Promise.all(both);
+        assert.strictEqual(a.id, b.id);
+        assert.deepStrictEqual([T.sessions.size, spawned.length, a.state, b.state], [1, 1, 'live', 'live']);
+        assert.deepStrictEqual([onIt(a.id), listed(st, a.id)], [['va', 'vb'], ['va', 'vb']]);
+    });
+
+    await ok('the same with a stream to replace on the way: still one session', async () => {
+        fresh();
+        const old = await relay.start('streamer_one', '360');
+        const gate = gateFetch();
+        const both = [relay.start('streamer_one', '480', 'va'), relay.start('streamer_one', '480', 'vb')];
+        await until(() => gate.waiting === 2);
+        gate.open();
+        const [a, b] = await Promise.all(both);
+        assert.strictEqual(a.id, b.id);
+        assert.deepStrictEqual([T.sessions.size, spawned.length, onIt(a.id), await status(old.id)], [1, 2, ['va', 'vb'], 404]);
+    });
+
+    await ok('an Audio First viewer is not handed another viewer\'s 1080p: its own quality is started when there is room', async () => {
+        await logged(async () => {
+            const { st, b } = fresh();
+            const big = await relay.start('streamer_one', 'hw1080', 'desk');
+            st.put(OLD, REC({ mode: 'audio', viewers: ['phone'] }));
+            comeBack(await get(OLD, 'index.m3u8'));
+            await until200(OLD);
+            assert.deepStrictEqual([T.sessions.size, T.sessions.get(OLD).mode.id, T.aliases.size, b.calls], [2, 'audio', 0, [OLD]]);
+            assert.deepStrictEqual([onIt(OLD), onIt(big.id), await status(big.id)], [['phone'], ['desk'], 200]);
+            assert.ok(!spawned[0].child.killed);
+        });
+    });
+
+    await ok('the revive budget applies to it: a refused try waits and is not aliased to the other quality', async () => {
+        const { st, b } = fresh();
+        await relay.start('streamer_one', 'hw1080', 'desk');
+        st.put(OLD, REC({ mode: 'audio', viewers: ['phone'] }));
+        b.allow = false;
+        b.wait = 12000;
+        assert.strictEqual(comeBack(await get(OLD, 'index.m3u8')), 12);
+        assert.deepStrictEqual([T.aliases.size, T.sessions.size, spawned.length], [0, 1, 1]);
+    });
+
+    await ok('another quality still answers when all its viewers are on it, or when there is no room', async () => {
+        const { st, b } = fresh();
+        const big = await relay.start('streamer_one', 'hw1080', 'desk');
+        st.put(OLD, REC({ mode: 'audio', viewers: ['desk'] }));
+        assert.strictEqual(await status(OLD), 200);
+        assert.strictEqual(T.aliases.get(OLD), big.id);
+        await relay.start('other_two', '480', 'x');
+        const full = idN(2);
+        st.put(full, REC({ mode: 'audio', viewers: ['phone'] }));
+        assert.strictEqual(await status(full), 200);
+        assert.deepStrictEqual([T.aliases.get(full), T.sessions.size, spawned.length, b.calls.length], [big.id, 2, 2, 0]);
+        assert.deepStrictEqual(onIt(big.id), ['desk', 'phone'], 'and the phone is on it now');
+    });
+
+    await ok('a running session of the same quality is preferred over another one of the channel', async () => {
+        const { st } = fresh();
+        await relay.start('streamer_one', '480', 'va');
+        const sound = await relay.start('streamer_one', 'audio', 'vb');
+        st.put(OLD, REC({ mode: 'audio', viewers: ['vc'] }));
+        assert.strictEqual(await status(OLD), 200);
+        assert.deepStrictEqual([T.aliases.get(OLD), spawned.length], [sound.id, 2]);
+    });
+
+    await ok('another quality started while a revive reads the address: the same rule after the read', async () => {
+        await logged(async () => {
+            fresh({ [OLD]: REC({ mode: 'audio', viewers: ['phone'] }) });
+            const gate = gateFetch();
+            comeBack(await get(OLD, 'index.m3u8'));
+            await until(() => gate.waiting === 1);
+            const pending = relay.start('streamer_one', 'hw1080', 'desk');
+            await until(() => gate.waiting === 2);
+            gate.open();
+            const big = await pending;
+            await until200(OLD);
+            await settle();
+            assert.deepStrictEqual([T.sessions.size, T.sessions.get(OLD).mode.id, onIt(OLD), onIt(big.id), T.aliases.size], [2, 'audio', ['phone'], ['desk'], 0]);
+        });
+    });
+
+    await ok('state() of an address with no session is "gone" even with a record (decided so), and its playlist comes back', async () => {
+        await logged(async () => {
+            const { st } = fresh({ [OLD]: REC({ viewers: ['va'] }) });
+            assert.deepStrictEqual(relay.state(OLD), { id: OLD, state: 'gone' });
+            assert.deepStrictEqual([addressReads, spawned.length, T.sessions.size, T.reviving.size], [0, 0, 0, 0], 'asking for the state starts nothing');
+            assert.ok(st.get(OLD));
+            assert.strictEqual(comeBack(await get(OLD, 'index.m3u8')), 3);
+            await until200(OLD);
+        });
+    });
+
+    await ok('a broken run others are on is replaced: their address answers from the new one and their viewers come over', async () => {
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        await relay.start('streamer_one', '480', 'vb');
+        breakRun(a.id);
+        const b = await relay.start('streamer_one', '480', 'va');
+        assert.notStrictEqual(b.id, a.id);
+        assert.deepStrictEqual([T.sessions.size, T.aliases.get(a.id), onIt(b.id), listed(st, b.id)], [1, b.id, ['va', 'vb'], ['va', 'vb']]);
+        assert.ok(st.get(a.id), 'the old record stays');
+        assert.deepStrictEqual([await status(a.id), await status(b.id)], [200, 200]);
+        assert.strictEqual(await leaves(b.id, 'va'), false);
+        assert.deepStrictEqual([await status(a.id), await status(b.id)], [200, 200]);
+        assert.strictEqual(await leaves(a.id, 'vb'), true);
+        assert.deepStrictEqual([await status(a.id), await status(b.id), st.get(a.id), st.get(b.id)], [404, 404, null, null]);
+    });
+
+    await ok('a broken run only the starter is on is replaced for good; a nameless start carries named viewers over', async () => {
+        const { st } = fresh();
+        const a = await relay.start('streamer_one', '480', 'va');
+        breakRun(a.id);
+        const b = await relay.start('streamer_one', '480', 'va');
+        assert.deepStrictEqual([st.get(a.id), T.aliases.size, await status(a.id), await status(b.id)], [null, 0, 404, 200]);
+        breakRun(b.id);
+        const c = await relay.start('streamer_one', '480');
+        assert.deepStrictEqual([T.aliases.get(b.id), onIt(c.id), await status(b.id)], [c.id, ['va'], 200]);
+    });
+
+    await ok('a failed start takes no other viewer\'s address with it, even one already pointed at it', async () => {
+        await logged(async () => {
+            const nameless = idN(2);
+            const { st } = fresh();
+            const a = await relay.start('streamer_one', '480', 'va');
+            await relay.start('streamer_one', '480', 'vb');
+            breakRun(a.id);
+            T.setHooks({ address: stdAddress, spawn: silentSpawn });
+            const pending = relay.start('streamer_one', '480', 'va');
+            const failed = assert.rejects(pending, (e) => e.code === 'KICK_STREAM');
+            await until(() => spawned.length === 2);
+            const s = spawned[1].session;
+            st.put(nameless, REC());
+            comeBack(await get(a.id, 'index.m3u8')); // pointed at the one still starting
+            comeBack(await get(nameless, 'index.m3u8'));
+            assert.deepStrictEqual([T.aliases.get(a.id), T.aliases.get(nameless)], [s.id, s.id]);
+            s.child = null; // the encoder gave up: the start fails
+            await failed;
+            assert.deepStrictEqual([T.sessions.size, T.aliases.size, st.get(nameless)], [0, 0, null], 'an address that names nobody goes with it, as before');
+            assert.ok(listed(st, a.id).includes('vb'), 'vb\'s record stays');
+            T.setHooks({ address: stdAddress, spawn: fakeSpawn });
+            comeBack(await get(a.id, 'index.m3u8'));
+            await until200(a.id);
+        });
+    });
+
+    await ok('a failed revive clears only its own run, never the newer session its address has moved to', async () => {
+        await logged(async () => {
+            const { st } = fresh({ [OLD]: REC({ viewers: ['va'] }) });
+            T.setHooks({ address: stdAddress, spawn: silentSpawn });
+            comeBack(await get(OLD, 'index.m3u8'));
+            await until(() => spawned.length === 1);
+            T.sessions.get(OLD).state = 'error'; // it broke while starting
+            T.setHooks({ address: stdAddress, spawn: fakeSpawn });
+            const b = await relay.start('streamer_one', '480', 'vb');
+            await settle(); // the revive notices its run is gone and fails
+            assert.deepStrictEqual([[...T.sessions.keys()], T.aliases.get(OLD)], [[b.id], b.id]);
+            assert.ok(!spawned[1].child.killed, 'the new encoder runs');
+            assert.deepStrictEqual([await status(OLD), await status(b.id), listed(st, OLD), onIt(b.id)], [200, 200, ['va'], ['va', 'vb']]);
+        });
+    });
+
+    await ok('stopped while a restart reads the address: no encoder is started for the gone session', () => logged(async () => {
+        fresh();
+        const a = await relay.start('streamer_one', '480');
+        let release = null;
+        T.setHooks({ address: async () => { await new Promise((r) => { release = r; }); return stdAddress(); }, spawn: fakeSpawn });
+        spawned[0].child.emit('close', 1);
+        await until(() => !!release); // the restart is reading a fresh address
+        const n = spawned.length;
+        assert.strictEqual(await relay.stop(a.id), true);
+        release();
+        await wait(100);
+        assert.strictEqual(spawned.length, n, 'nothing started');
+        assert.strictEqual(T.sessions.size, 0);
+    }));
 
     server.close();
     T.reset();

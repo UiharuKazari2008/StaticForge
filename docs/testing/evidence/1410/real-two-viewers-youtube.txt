@@ -1,0 +1,11 @@
+16:00:17 phone started cd1c04ccae4ce283879446a1, desktop got cd1c04ccae4ce283879446a1: one shared session
+16:00:17 both on it: playlist 200 (20 pieces) piece s00019.ts 200 447064 bytes
+16:00:17 records: {"v":1,"sessions":{"cd1c04ccae4ce283879446a1":{"video":"aqz-KE-bpKQ","mode":"v144","at":0,"startedAt":1795813214890,"lastHit":1795813214890,"maxSeg":0,"done":false,"duration":635,"title":"Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film","height":144,"kbit":442,"copied":true,"viewers":["v:phone","v:desktop"]}}}
+16:00:17 phone stops -> stopped: false
+16:00:17 records: {"v":1,"sessions":{"cd1c04ccae4ce283879446a1":{"video":"aqz-KE-bpKQ","mode":"v144","at":0,"startedAt":1795813214890,"lastHit":1795813217097,"maxSeg":19,"done":false,"duration":635,"title":"Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film","height":144,"kbit":442,"copied":true,"viewers":["v:desktop"]}}}
+16:00:22 desktop still playing: playlist 200 (151 pieces) piece s00150.ts 200 283504 bytes
+16:00:27 desktop still playing: playlist 200 (151 pieces) piece s00150.ts 200 283504 bytes
+16:00:32 desktop still playing: playlist 200 (151 pieces) piece s00150.ts 200 283504 bytes
+16:00:32 desktop (last) stops -> stopped: true
+16:00:34 after the last stop: playlist 404 (0 pieces)
+16:00:34 state: gone; records: {"v":1,"sessions":{}}

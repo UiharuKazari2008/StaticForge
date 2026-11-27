@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const wsPacketRegistry = require('../wsPacketRegistry');
 const statusHub = require('../statusHub');
 const youtubeService = require('../../youtubeService');
@@ -25,10 +26,10 @@ const ytRelay = require('../../videosYoutubeRelay');
 //   youtube_later            { id, on }                admins; add to / remove from Watch Later -> { id, later, youtube }
 //                                                      youtube: done | failed | browser-signin | browser-offline (the account's own list)
 //   youtube_live_modes       {}                        { modes[{ id, label, note, kbit, heavy }] }: the qualities a Kick stream can be watched in
-//   youtube_live_start       { slug, mode }            admins; starts (or joins) the server's relay of a listed Kick channel's live stream
+//   youtube_live_start       { slug, mode, viewer }    admins; starts (or joins) the server's relay of a listed Kick channel's live stream
 //                                                      -> { id, url, mode, state, source, modes } (url: HLS under /api/videos/live/<id>/; modules/videosKickRelay.js)
 //   youtube_live_state       { id }                    admins -> { state: live | restarting | ended | error | gone, error }
-//   youtube_live_stop        { id }                    admins -> { stopped }
+//   youtube_live_stop        { id, viewer }            admins; this player leaves -> { stopped } (false while another still plays it)
 //   youtube_chat_setup       { on }                    admins; switches Kick chat on or off (on: Kick's webhook is answered) -> { chat }
 //   youtube_chat_status      { check? }                { chat: { enabled, linked, ready, deliveries, watching[], webhookUrl, redirectUrl } };
 //                                                      check: also { kick[] }, the subscriptions Kick has on record for the app
@@ -40,12 +41,12 @@ const ytRelay = require('../../videosYoutubeRelay');
 //   youtube_chat_send        { slug, text }            admins; says it in the channel's chat as the linked account -> { sent, id }
 //                                                      a chat message is { id, at (ms), name, color ('' | #rrggbb), badges[], text };
 //                                                      text carries emotes as [emote:<id>:<NAME>] (picture: /api/videos/kick/emote/<id>)
-//   youtube_video_start      { id, mode, at }          admins; a YouTube video through the server from `at` seconds (modules/videosYoutubeRelay.js)
+//   youtube_video_start      { id, mode, at, viewer }  admins; a YouTube video through the server from `at` seconds (modules/videosYoutubeRelay.js)
 //                                                      -> { id, url, mode, state, at, duration, title, height, kbit, copied, modes } (url: HLS under /api/videos/yt/<id>/)
 //                                                      fails (YT_REFUSED, YT_LIVE, YT_TOO_LONG...) for what a server cannot be given: the program then uses YouTube's embedded player
 //   youtube_segments         { id }                    { id, segments[{ start, end, category }] }: SponsorBlock's marked parts (modules/videosSponsorBlock.js); [] when none or unreachable
 //   youtube_video_state      { id }                    admins -> { state: live | done | error | gone, error }
-//   youtube_video_stop       { id }                    admins -> { stopped }
+//   youtube_video_stop       { id, viewer }            admins; as youtube_live_stop -> { stopped }
 //   youtube_kick_add         { name }                  admins; a Kick channel by its name -> { channel, live, channels[] } (needs Service key `kick`)
 //   youtube_kick_notify      { slug, on }              admins; the channel's bell: the server tells when it goes live -> { channels[] }
 //   youtube_kick_remove      { slug }                  admins -> { channels[] }
@@ -69,6 +70,17 @@ const ytRelay = require('../../videosYoutubeRelay');
 const canRead = (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || '')));
 const isAdmin = (info) => !!(info && info.userType === 'admin');
 
+/**
+ * Who is watching, for a relay session more than one player can share (#1410): the page's own id of its player, else
+ * (a page from before it sent one) a hash of its login session, never the session id itself: this is kept on disk.
+ */
+function viewerOf(message, clientInfo) {
+    const sent = typeof message.viewer === 'string' && /^[\w.-]{1,48}$/.test(message.viewer) ? message.viewer : '';
+    if (sent) return `v:${sent}`;
+    const login = String((clientInfo && clientInfo.sessionId) || '');
+    return login ? `s:${crypto.createHash('sha256').update(login).digest('hex').slice(0, 24)}` : '';
+}
+
 function reply(handlersCtx, ws, message, data) {
     handlersCtx.sendToClient(ws, {
         type: `${message.type}_response`,
@@ -86,7 +98,7 @@ function packet(admin, fallback, run) {
             return;
         }
         try {
-            reply(handlersCtx, ws, message, await run(message));
+            reply(handlersCtx, ws, message, await run(message, clientInfo));
         } catch (error) {
             handlersCtx.sendError(ws, (error && error.message) || fallback, (error && error.code) || 'YOUTUBE_ERROR', message.requestId);
         }
@@ -161,19 +173,19 @@ function registerPackets(handlersCtx) {
     }, { owner: 'youtube' });
     // a YouTube video through the server (yt-dlp + ffmpeg, #920): public videos; anything else fails and the program uses YouTube's embedded player
     ytRelay.sweep();
-    reg('youtube_video_start', packet(true, 'The video could not be started', async (m) => Object.assign(await ytRelay.start(String(m.id || ''), m.mode, m.at), { modes: ytRelay.modes() })));
+    reg('youtube_video_start', packet(true, 'The video could not be started', async (m, who) => Object.assign(await ytRelay.start(String(m.id || ''), m.mode, m.at, viewerOf(m, who)), { modes: ytRelay.modes() })));
     reg('youtube_segments', packet(false, 'The marked parts could not be read', async (m) => ({ id: String(m.id || ''), segments: await require('../../videosSponsorBlock').segments(String(m.id || '')) })));
     reg('youtube_video_state', packet(true, 'The video could not be read', async (m) => ytRelay.state(m.id)));
-    reg('youtube_video_stop', packet(true, 'The video could not be stopped', async (m) => ({ stopped: await ytRelay.stop(m.id) })));
+    reg('youtube_video_stop', packet(true, 'The video could not be stopped', async (m, who) => ({ stopped: await ytRelay.stop(m.id, { viewer: viewerOf(m, who) }) })));
     reg('youtube_live_modes', packet(false, 'The qualities could not be read', async () => ({ modes: kickRelay.modes() })));
-    reg('youtube_live_start', packet(true, 'The stream could not be started', async (m) => {
-        const r = await kickRelay.start(m.slug, m.mode);
+    reg('youtube_live_start', packet(true, 'The stream could not be started', async (m, who) => {
+        const r = await kickRelay.start(m.slug, m.mode, viewerOf(m, who));
         // opening the stream answers the waiting "is live" notice: cleared everywhere (#1106)
         try { require('../../notificationInbox').bind(handlersCtx.globalResources).clear(undefined, `videos:live:${String(m.slug || '')}`, 'open'); } catch (e) { console.warn(`[youtube] live notice clear: ${e.message}`); }
         return Object.assign(r, { modes: kickRelay.modes() });
     }));
     reg('youtube_live_state', packet(true, 'The stream could not be read', async (m) => kickRelay.state(m.id)));
-    reg('youtube_live_stop', packet(true, 'The stream could not be stopped', async (m) => ({ stopped: await kickRelay.stop(m.id) })));
+    reg('youtube_live_stop', packet(true, 'The stream could not be stopped', async (m, who) => ({ stopped: await kickRelay.stop(m.id, 'viewer', { viewer: viewerOf(m, who) }) })));
     reg('youtube_kick_add', packet(true, 'The Kick channel could not be added', async (m) => sources.kickAdd(m.name)));
     reg('youtube_kick_notify', packet(true, 'The setting could not be saved', async (m) => ({ channels: sources.kickNotify(m.slug, m.on !== false) })));
     reg('youtube_kick_remove', packet(true, 'The Kick channel could not be removed', async (m) => ({ channels: sources.kickRemove(m.slug) })));

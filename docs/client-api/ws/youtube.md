@@ -65,9 +65,9 @@ the program's own player plays (hls.js, `public/dist/hlsjs`): 4 s pieces, the ne
 | Request | Body -> reply |
 |---|---|
 | `youtube_live_modes` | `{}` -> `{ modes: [{ id, label, note, kbit, heavy }] }` |
-| `youtube_live_start` | `{ slug, mode }` -> `{ id, url, mode, state, source: { height, fps, kbit }, modes }`. Starts the relay or joins the one running; answers once the list has pieces. Another mode of the same channel replaces its session; at most two streams run. Errors `KICK_NOT_LISTED`, `KICK_OFFLINE`, `KICK_STREAM`, `KICK_PAGE`, `ALCHEMY_OFFLINE`. Admin. |
-| `youtube_live_state` | `{ id }` -> `{ state: 'live' \| 'restarting' \| 'ended' \| 'error' \| 'gone', error }`. Admin. |
-| `youtube_live_stop` | `{ id }` -> `{ stopped }`. Admin. |
+| `youtube_live_start` | `{ slug, mode, viewer? }` -> `{ id, url, mode, state, source: { height, fps, kbit }, modes }`. Starts the relay or joins the one running; answers once the list has pieces. Another mode of the same channel replaces its session unless another viewer plays it (see Shared streams); at most two streams run. Errors `KICK_NOT_LISTED`, `KICK_OFFLINE`, `KICK_STREAM`, `KICK_PAGE`, `ALCHEMY_OFFLINE`. Admin. |
+| `youtube_live_state` | `{ id }` -> `{ state: 'live' \| 'restarting' \| 'ended' \| 'error' \| 'gone', error }`. `gone`: see State asks. Admin. |
+| `youtube_live_stop` | `{ id, viewer? }` -> `{ stopped }`. This viewer leaves. `stopped: false`: another viewer still plays the stream, so it goes on (also `false` when no session was in memory). Admin. |
 
 `GET /api/videos/live/<id>/index.m3u8` and `/s<n>.ts` (signed-in session): the stream. A session ends by itself
 45 s after the last request. Modes: `480`, `360`, `160` pass Kick's own renditions through (no encoding);
@@ -76,6 +76,38 @@ bitrate (about two processor threads each); `audio` is one picture a second with
 
 The stream's address is only on the channel's Kick page: the Alchemy browser reads it in a hidden tab (nothing
 is played there). Yukimi allowed that step herself; `scripts/kick-stream-probe.js` is the same read for tests.
+
+## Shared streams (both relays, StaticForge #1410)
+
+Two players (phone and desktop, two phones, two windows) can play one relay session: the same channel and quality,
+or the same video, quality and start place. `viewer` is one player's own id (1 to 48 of `A-Z a-z 0-9 _ . -`; the
+program keeps one per window in `sessionStorage` and takes it up again only after a reload of that page). Without it the server uses a hash of
+the login session, so two windows of one login then count as one viewer.
+
+- A stop takes only that viewer off. The stream ends for good (its address answers 404) when no viewer is left.
+  With one viewer this is the same as before: the stop ends it, and it stays ended.
+- A viewer who changes quality (or, for a video, the start place) leaves the old session. It ends if nobody else is
+  on it; otherwise it goes on beside the new one. The limit of two sessions per relay still holds: when a third is
+  needed, the one asked for longest ago goes. When somebody else is on that one its record is kept (it is not ended
+  for good: its playlist answers `503` until there is room, or another quality of the Kick channel answers it);
+  else it ends as before.
+- The viewers are kept in the session's record, so the rule holds after a server restart, a module reload or an
+  idle end, when a playlist request brings the session back with no start.
+- Viewers are not timed out. One that vanished without a stop (app killed, connection lost at that moment) keeps
+  nothing running: the idle ends (45 s Kick, 20 minutes YouTube) look only at requests. Its one effect is that the
+  last remaining viewer's stop leaves the stream to that idle end, which keeps the record (forgotten after its
+  usual time to live).
+
+## State asks (`youtube_live_state`, `youtube_video_state`)
+
+`gone` means: no session is in memory for this address now. It does **not** say the address is over. After an idle
+end, a restart or a reload the address has a record and comes back on its next playlist request. The playlist is
+what tells the two apart: `503` with `Retry-After` (coming back) or `404` (over). A state ask never starts
+anything.
+
+Decided in #1410 to keep it this way instead of adding a `resting` state: the only reader is the program's
+reconnect (`plLost()` in `wmYouTube.js`), which on `gone` starts again, and that is right in both cases (it joins
+the running session or makes one). A new value would have nobody to read it.
 
 ## A Kick stream's chat (Yozora #919)
 
@@ -112,9 +144,9 @@ and downloads the files at the chosen size, ffmpeg joins them into HLS (H.264 + 
 
 | Packet | |
 | --- | --- |
-| `youtube_video_start` | `{ id, mode, at }` -> `{ id, url, mode, state, at, duration, title, height, kbit, copied, modes[] }`. Admin. Modes `v1080` `v720` `v480` `v360` `v144` `vaudio`; `at` is the start place in seconds; `url` is HLS under `/api/videos/yt/<id>/` (signed-in session). Public videos only, no account: a members' video, an age gate, a live stream or a refusal fails (`YT_REFUSED`, `YT_LIVE`, `YT_TOO_LONG`, `YT_STREAM`) and the program plays it in YouTube's embedded player instead. |
-| `youtube_video_state` | `{ id }` -> `{ state: live \| done \| error \| gone, error }`. Admin. |
-| `youtube_video_stop` | `{ id }` -> `{ stopped }`. Admin. Files also go 20 minutes after the last request. |
+| `youtube_video_start` | `{ id, mode, at, viewer? }` -> `{ id, url, mode, state, at, duration, title, height, kbit, copied, modes[] }`. Admin. Modes `v1080` `v720` `v480` `v360` `v144` `vaudio`; `at` is the start place in seconds; `url` is HLS under `/api/videos/yt/<id>/` (signed-in session). Public videos only, no account: a members' video, an age gate, a live stream or a refusal fails (`YT_REFUSED`, `YT_LIVE`, `YT_TOO_LONG`, `YT_STREAM`) and the program plays it in YouTube's embedded player instead. |
+| `youtube_video_state` | `{ id }` -> `{ state: live \| done \| error \| gone, error }`. `gone`: see State asks. Admin. |
+| `youtube_video_stop` | `{ id, viewer? }` -> `{ stopped }`. This viewer leaves, as with `youtube_live_stop`. Admin. Files also go 20 minutes after the last request. |
 | `youtube_history_refresh` | `{}` -> `{ changed }`. Reads the account's watch history now unless it was read in the last 20 s (the phone asks a few seconds after coming back from YouTube's app); a change is pushed as `youtube_status`, so the video leaves Today. |
 | `youtube_segments` | `{ id }` -> `{ id, segments[{ start, end, category }] }`. SponsorBlock's marked parts (`modules/videosSponsorBlock.js`; the server asks with a hash prefix, never the id; kept 6 h; `[]` when none or unreachable). The player skips `sponsor`, `selfpromo` and `interaction` while the setting `skipSegments` is on (default), and marks all of them on its seek bar. |
 
