@@ -4,7 +4,9 @@
 // emulator and a DreamOS test VM never get a row or a log line in activesync.db; they live in the test lane's
 // registry, are the lane's partner on an administrator's sign-in, are in no household list, broadcast, event or
 // primary-device choice, rows already stored are moved by the server, and gone entries are dropped with what was kept
-// beside them. The household's phones (the Fold, the A53) and computers are unchanged and cannot be marked.
+// beside them. The household's phones (the Fold, the A53) and computers are unchanged and cannot be marked, but for
+// one thing: the agents' notice test on the A53 (PUT, test notices to it alone, DELETE) is a FENCE-ONLY mark that
+// changes nothing of it in ActiveSync.
 
 const assert = require('assert');
 const { execFileSync } = require('child_process');
@@ -18,6 +20,13 @@ const REGISTRY = path.join(tmp, 'test-devices.json');
 // before any module: nothing of this test may touch the server's registry, database or adb
 process.env.TEST_DEVICES_FILE = REGISTRY;
 process.env.DREAMSCAPE_ADB = '/bin/false';
+process.env.NOTIFICATION_INBOX_DB = ':memory:';
+process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
+process.env.AGENT_COORD_DB = path.join(tmp, 'coord.db'); // the update hold reads its setting there
+// the Fleet notice is stubbed: the real one tells the Supervisor
+const fleetRaised = [];
+const fleetPath = require.resolve('../modules/fleetNotices');
+require.cache[fleetPath] = { id: fleetPath, filename: fleetPath, loaded: true, exports: { routine: (kind, n) => { fleetRaised.push({ kind, n }); return { told: true, published: false }; } } };
 
 const Database = require('better-sqlite3');
 const testDevices = require('../modules/testDevices');
@@ -463,7 +472,7 @@ function guard() {
         rowFor(PRIMARY_ONLY, 'Primary', 'Pixel 9', 0), rowFor(PIXEL, 'A guest', 'Pixel 7', 0)
     ], PRIMARY_ONLY);
     as.list(gr, server);
-    const hers = [FOLD, A53, MAC, PRIMARY_ONLY];
+    const hers = [FOLD, MAC, PRIMARY_ONLY];
     addWallpaper(FOLD);
     addWallpaper(A53);
     const before = db().prepare('SELECT * FROM as_devices ORDER BY device_id').all();
@@ -479,6 +488,23 @@ function guard() {
     assert.ok(hasWallpaper(FOLD) && hasWallpaper(A53));
     for (const id of hers) assert.strictEqual(count('as_log', id), 1);
 
+    // the agents' test phone: marked, as a fence only, with a partnership or without one
+    for (const partner of [1, 0]) {
+        db().prepare('UPDATE as_devices SET partner = ? WHERE device_id = ?').run(partner, A53);
+        const rowsThen = db().prepare('SELECT * FROM as_devices ORDER BY device_id').all();
+        const fenced = testDevices.mark(A53, { name: 'A53 notice test', kind: 'emulator' });
+        assert.ok(fenced && fenced.fenceOnly === true, `partner ${partner}`);
+        assert.ok(testDevices.isTestDevice(A53) && testDevices.isFenceOnly(A53) && !testDevices.inLane(A53));
+        assert.strictEqual(testDevices.row(A53), null);
+        assert.strictEqual(testDevices.setRow(A53, { name: 'x' }, { create: true }), false, 'a fence holds no record, ever');
+        assert.ok(!readRegistry().devices[A53].record && !readRegistry().devices[A53].kind);
+        assert.deepStrictEqual(db().prepare('SELECT * FROM as_devices ORDER BY device_id').all(), rowsThen, 'its row stays');
+        assert.strictEqual(testDevices.unmark(A53), true);
+        assert.deepStrictEqual(db().prepare('SELECT * FROM as_devices ORDER BY device_id').all(), rowsThen);
+        assert.ok(hasWallpaper(A53) && count('as_log', A53) === 1);
+    }
+    db().prepare('UPDATE as_devices SET partner = 1 WHERE device_id = ?').run(A53);
+
     // an unpartnered row, an emulator's row even with a partnership, and an id nothing knows yet: the lane's to mark
     assert.ok(testDevices.mark(PIXEL, { name: 'Lane guest' }));
     assert.strictEqual(count('as_devices', PIXEL) + count('as_log', PIXEL), 0);
@@ -489,7 +515,7 @@ function guard() {
     assert.strictEqual(testDevices.row(EMU).partner, 1);
     assert.strictEqual(testDevices.row(EMU).name, 'Lane aemu-fold-1');
     assert.ok(testDevices.mark(EMU2, { name: 'Lane not seen yet' }));
-    assert.deepStrictEqual(storedIds(), [...hers].sort());
+    assert.deepStrictEqual(storedIds(), [...hers, A53].sort(), 'hers and the A53 are all that is left in the store');
 }
 
 /**
@@ -518,6 +544,7 @@ const put = (id) => new Promise((resolve) => {
 });
 (async () => {
     for (const id of process.env.IDS.split(',')) out.codes.push(await put(id));
+    out.fencedAfterAsking = require(mod('testDevices')).list().filter((e) => e.fenceOnly).map((e) => e.id);
     if (process.env.OPEN === '1') {
         out.storedAfterAsking = stored();
         require(mod('activeSync')).list(gr, null);
@@ -525,6 +552,7 @@ const put = (id) => new Promise((resolve) => {
     }
     const testDevices = require(mod('testDevices'));
     out.registry = Object.fromEntries(testDevices.list().map((e) => [e.id, testDevices.row(e.id)]));
+    out.fenced = testDevices.list().filter((e) => e.fenceOnly).map((e) => e.id);
     process.stdout.write('\\nRESULT ' + JSON.stringify(out) + '\\n');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
@@ -550,10 +578,13 @@ function routeFirst() {
     as.resetForTests(); // closed, as before a start
     const out = runRoute(store, [FOLD, A53, EMU, EMU2], true);
     assert.strictEqual(out.loadedBefore, false, 'the route is the first to load ActiveSync');
-    assert.deepStrictEqual(out.codes, [400, 400, 200, 200], 'hers are refused, the lane\'s are marked');
+    assert.deepStrictEqual(out.codes, [400, 200, 200, 200], 'the Fold is refused, the A53 fenced, the lane\'s marked');
+    assert.deepStrictEqual(out.fencedAfterAsking, [A53], 'a fence from the PUT itself, before anything opened the database');
+    assert.deepStrictEqual(out.fenced, [A53]);
     assert.deepStrictEqual(out.storedAfterAsking, [A53, EMU, FOLD].sort(), 'asking moved and wrote nothing');
     assert.deepStrictEqual(out.storedAfterOpen, [A53, FOLD].sort(), 'the server\'s first open moves the lane\'s row');
-    assert.deepStrictEqual(Object.keys(out.registry).sort(), [EMU, EMU2].sort());
+    assert.deepStrictEqual(Object.keys(out.registry).sort(), [A53, EMU, EMU2].sort());
+    assert.strictEqual(out.registry[A53], null, 'a fence holds no record');
     assert.strictEqual(out.registry[EMU].partner, null);
 
     // a store that is there and cannot be asked: the answer is no
@@ -611,7 +642,9 @@ function adoption() {
         devices: {
             [GUEST_EMU]: marked,
             [HAND]: { name: 'A mark on one of hers', markedAt: Date.now(), status: {} },
-            [HAND_GUEST]: { name: 'Marked by hand', markedAt: Date.now(), status: {} }
+            [HAND_GUEST]: { name: 'Marked by hand', markedAt: Date.now(), status: {} },
+            // as the agents' notice test marked it before marks on it were fences
+            [A53]: { name: 'A53 mark from before', markedAt: Date.now(), status: { mail: { unread: 2 } } }
         },
         sessions: {}
     });
@@ -671,7 +704,10 @@ function adoption() {
     assert.strictEqual(testDevices.row(HAND_GUEST).name, 'Marked by hand');
     assert.strictEqual(testDevices.kindOf(VM2), 'test-vm');
     assert.strictEqual(testDevices.kindOf(HAND_GUEST), 'marked');
-    for (const id of [FOLD, A53, MAC, PIXEL, HAND]) assert.ok(!testDevices.isTestDevice(id) && !readRegistry().devices[id], `${id.slice(0, 4)} is the household's`);
+    for (const id of [FOLD, MAC, PIXEL, HAND]) assert.ok(!testDevices.isTestDevice(id) && !readRegistry().devices[id], `${id.slice(0, 4)} is the household's`);
+    assert.ok(testDevices.isFenceOnly(A53) && !testDevices.inLane(A53), 'a whole mark left on the A53 is a fence now');
+    assert.ok(!readRegistry().devices[A53].record && readRegistry().devices[A53].fenceOnly);
+    assert.deepStrictEqual(testDevices.statusOverrides(A53), { mail: { unread: 2 } });
     assert.strictEqual(as.primaryOf(gr), FOLD, 'the primary is intact');
     assert.deepStrictEqual(ids(as.list(gr, server)), stay);
 
@@ -685,7 +721,7 @@ function adoption() {
     // the A53 connects as the household's partner, as ever
     const a53 = connect();
     assert.strictEqual(phoneHello(a53, A53, 'SM-A536U1', { speaker: 'service' }).session, 'partner');
-    assert.ok(!testDevices.isTestDevice(A53) && count('as_log', A53) === 2);
+    assert.ok(!testDevices.inLane(A53) && count('as_log', A53) === 2);
 
     // the adopted partner's background link needs no row
     const link = connect();
@@ -908,6 +944,336 @@ function cleanup() {
     testDevices._test.setClock(null);
 }
 
+// ---------------------------------------------------------------- the agents' notice test on the A53 (#1322): a fence and nothing else
+
+function filesUnder(folder, into) {
+    if (!fs.existsSync(folder)) return into;
+    for (const e of fs.readdirSync(folder, { withFileTypes: true })) {
+        const file = path.join(folder, e.name);
+        if (e.isDirectory()) filesUnder(file, into);
+        else into.push(`${path.relative(dir, file)} ${fs.readFileSync(file).toString('base64')}`);
+    }
+    return into.sort();
+}
+
+/** Everything ActiveSync keeps for the household, as it is now: every table row and every kept picture. */
+function householdState() {
+    const out = {};
+    for (const t of ['as_devices', 'as_prefs', 'as_log', 'as_queue', 'as_received', 'as_notify_apps', 'as_notify_prefs']) out[t] = db().prepare(`SELECT * FROM ${t} ORDER BY rowid`).all();
+    out.files = filesUnder(path.join(dir, 'activesync-icons'), filesUnder(path.join(dir, 'activesync-wallpapers'), []));
+    return out;
+}
+
+/** The test lane's real admin routes: call('put /api/test-devices/:id', { params, body }) -> { code, body }. */
+function testRoutes() {
+    const routes = {};
+    const app = {};
+    for (const m of ['get', 'put', 'post', 'delete']) app[m] = (p, ...handlers) => { routes[`${m} ${p}`] = handlers[handlers.length - 1]; };
+    require('../modules/testDevicesRoute').mount(app, null, gr);
+    return (route, { params = {}, body = {} } = {}) => new Promise((resolve) => {
+        const res = { headersSent: false, code: 200, status(c) { this.code = c; return this; }, json(o) { this.headersSent = true; resolve({ code: this.code, body: o }); } };
+        routes[route]({ params, body, query: {}, userType: 'admin' }, res);
+    });
+}
+
+const eventsOf = (peer, name) => peer.ws.inbox.filter((m) => m.type === 'as_event' && m.data.event === name).map((m) => m.data.detail);
+const noticesTo = (peer) => eventsOf(peer, 'inbox.notice').map((d) => d.id);
+
+async function fenceFlow() {
+    freshRegistry(null);
+    freshStore('fence');
+    seed([rowFor(FOLD, 'Galaxy Fold', 'SM-F966U', 1), rowFor(A53, 'A53 Test', 'SM-A536U1', 1)], FOLD);
+    as.list(gr, server);
+    addWallpaper(A53);
+    addWallpaper(FOLD);
+    assert.ok(require('../modules/activeSyncIcons').keep({ getPath: () => dir }, `n:${A53}:com.example.app`, PICTURE));
+    const inbox = require('../modules/notificationInbox');
+    inbox.bind(gr);
+    const api = testRoutes();
+    const put = (id, body = { name: 'A53 notice test' }) => api('put /api/test-devices/:id', { params: { id }, body });
+    const del = (id) => api('delete /api/test-devices/:id', { params: { id } });
+
+    // PUT and DELETE with nothing connected: not one byte of the household's changes
+    const untouched = householdState();
+    let r = await put(A53, { name: 'A53 notice test', status: { mail: { unread: 3 } }, sessionId: 'sess-a53-early' });
+    assert.strictEqual(r.code, 200);
+    assert.strictEqual(r.body.device.fenceOnly, true);
+    assert.deepStrictEqual(householdState(), untouched);
+    assert.ok(testDevices.isTestDevice(A53) && testDevices.isFenceOnly(A53) && !testDevices.inLane(A53));
+    assert.strictEqual(testDevices.row(A53), null);
+    assert.ok(!readRegistry().devices[A53].record);
+    const earlyPage = { authenticated: true, userType: 'admin', sessionId: 'sess-a53-early' };
+    assert.ok(testDevices.isTestInfo(earlyPage) && !testDevices.isLaneInfo(earlyPage));
+    assert.strictEqual(inbox.userOf(earlyPage), 'test', 'its page is fenced by its session');
+    r = await del(A53);
+    assert.strictEqual(r.body.success, true);
+    assert.deepStrictEqual(householdState(), untouched);
+    assert.deepStrictEqual(readRegistry(), { devices: {}, sessions: {} });
+
+    // her other devices are refused by the same route
+    r = await put(FOLD);
+    assert.strictEqual(r.code, 400);
+    assert.ok(!testDevices.isTestDevice(FOLD));
+    assert.deepStrictEqual(householdState(), untouched);
+
+    // the same with the phones connected
+    const seen = []; // the test flag the server's hello taps get for the A53 (Messaging skips a test device by it)
+    as.onDeviceHello((d) => { if (d.id === A53) seen.push(d.test); });
+    const pc = connect();
+    as.hello(gr, server, pc.info, { kind: 'computer', id: PC, name: 'LUMINA-XR7' });
+    const fold = connect('admin', { sessionId: 'sess-fold' });
+    assert.strictEqual(phoneHello(fold, FOLD, 'SM-F966U', { speaker: 'service', ops: ['status.*'] }).session, 'partner');
+    const linkOps = ['status.*', 'apps.update', 'stream.receive'];
+    let page = connect('admin', { sessionId: 'sess-a53' });
+    assert.strictEqual(phoneHello(page, A53, 'SM-A536U1').session, 'partner');
+    let link = connect('admin', { sessionId: 'sess-a53' });
+    assert.strictEqual(phoneHello(link, A53, 'SM-A536U1', { speaker: 'service', ops: linkOps }).session, 'partner');
+    assert.deepStrictEqual(seen, [false, false]);
+    await settle();
+    clearPushes(pc, fold, page, link);
+    let before = householdState();
+    r = await put(A53, { name: 'A53 notice test', sessionId: 'sess-a53' });
+    assert.strictEqual(r.code, 200);
+    assert.ok(r.body.device.fenceOnly && r.body.device.partner && r.body.device.service);
+    await settle();
+    assert.deepStrictEqual(householdState(), before, 'marking it changes no row, partnership or primary');
+    assert.strictEqual(pushes(pc).length + pushes(page).length, 0, 'no list changed, so none is sent');
+    assert.strictEqual(as.primaryOf(gr), FOLD);
+    for (const s of [page, link]) assert.strictEqual(s.info.as.session, 'partner');
+
+    // listed like any phone, everywhere
+    for (const data of [as.list(gr, server), as.list(gr, server, { includeTest: true }), as.listFor(gr, server, page.info), as.listFor(gr, server, pc.info)]) {
+        assert.deepStrictEqual(ids(data), [FOLD, A53].sort(), 'once, beside the Fold');
+        const mine = data.devices.find((d) => d.deviceId === A53);
+        assert.strictEqual(mine.test, false, 'no list hides it as a test device');
+        assert.ok(mine.partner && mine.online);
+    }
+    assert.strictEqual(as.partnerLinks(gr, server).find((l) => l.deviceId === A53).name, 'A53 Test');
+
+    // the notice fence is on
+    assert.strictEqual(inbox.userOf(link.info), 'test');
+    assert.strictEqual(inbox.userOf(fold.info), 'admin');
+    clearPushes(pc, fold, page, link);
+    inbox.publish({ id: 'mail:house:1', title: 'New E-mail Message', text: 'x', app: 'messaging' });
+    assert.ok(noticesTo(fold).includes('mail:house:1'));
+    assert.ok(!noticesTo(link).includes('mail:house:1'), 'the household\'s notices do not reach it');
+    clearPushes(fold, link);
+    r = await api('post /api/test-devices/:id/notice', { params: { id: A53 }, body: { id: 'test:a53:1', title: 'Sound test', text: 'one phone' } });
+    assert.strictEqual(r.code, 200);
+    assert.ok(r.body.sent >= 1);
+    assert.deepStrictEqual(noticesTo(link), ['test:a53:1']);
+    r = await api('post /api/test-devices/notice', { body: { id: 'test:a53:2', title: 'To the lane', text: 'all' } });
+    assert.strictEqual(r.code, 200);
+    assert.ok(noticesTo(link).includes('test:a53:2'));
+    clearPushes(link);
+    r = await api('post /api/test-devices/:id/catch-up', { params: { id: A53 } });
+    assert.ok(r.body.sent >= 1);
+    assert.ok(noticesTo(link).includes('test:a53:1') && !noticesTo(link).includes('mail:house:1'));
+    r = await api('post /api/test-devices/notice/:nid/clear', { params: { nid: 'test:a53:1' } });
+    assert.strictEqual(r.body.success, true);
+    assert.ok(eventsOf(link, 'inbox.cleared').some((d) => d.id === 'test:a53:1'));
+    assert.deepStrictEqual(noticesTo(fold), [], 'no test notice reaches the Fold');
+    assert.deepStrictEqual(eventsOf(fold, 'inbox.cleared'), []);
+    r = await api('get /api/test-devices');
+    assert.strictEqual(r.body.devices.find((d) => d.id === A53).fenceOnly, true);
+    assert.deepStrictEqual(householdState(), before, 'notices touch nothing in ActiveSync');
+
+    // its events, as for any marked device before: its Android notifications go nowhere, the rest is relayed
+    const heard = [];
+    as.onDeviceEvent((name, detail, me) => { if (me.id === A53) heard.push(name); });
+    clearPushes(pc);
+    assert.ok(as.event(gr, server, link.info, { event: 'storage.changed', detail: { root: 'internal' } }) > 0);
+    assert.strictEqual(eventsOf(pc, 'storage.changed').length, 1);
+    for (const name of ['notify.posted', 'notify.removed', 'inbox.posted', 'apps.updateWaiting']) assert.strictEqual(as.event(gr, server, link.info, { event: name, detail: {} }), 0, name);
+    assert.deepStrictEqual(heard, ['inbox.posted', 'apps.updateWaiting']);
+    assert.ok(as.tellComputers(gr, server, 'notify.filter', { deviceId: A53 }) > 0);
+
+    // an app update stays held for it, and its waiting update is still told; a device of the lane is neither
+    const LANE = EMU;
+    assert.ok(testDevices.mark(LANE, { name: 'Lane aemu-fold-1' }));
+    const push = require('../modules/androidAppUpdatePush');
+    const sends = [];
+    const deliveries = new Map();
+    const release = { id: 7, versionCode: 200, versionName: '1.0.200', sha: 'a'.repeat(40), sha256: 'b'.repeat(64), size: 1234, apkFile: '200.apk' };
+    const builds = {
+        events: new (require('events').EventEmitter)(), latestRelease: () => release, releaseApkPath: () => '/nowhere/200.apk', recordDeviceVersion() {},
+        recordDelivery: (id, versionCode, state, detail) => deliveries.set(id, { versionCode, state, at: Date.now(), detail }), deliveryOf: (id) => deliveries.get(id) || null, deviceVersionOf: () => null
+    };
+    const phones = {
+        onDeviceHello() {}, onDeviceEvent() {}, deviceRow: (g, id) => ({ name: id.slice(0, 4), app: 'Dreamscape/1.0.100+100' }), deviceOnline: () => 'partner', devicePermits: () => true,
+        serverCall: async () => ({ state: 'staged' }), list: () => ({ devices: [] })
+    };
+    delete process.env.ANDROID_UPDATES_TEST_UNHELD; // held, as in the server
+    push._test.resetForTests();
+    const handle = push.start(gr, { activeSync: phones, androidBuilds: builds, sendFile: async (g, id) => { sends.push(id); return 'f'.repeat(32); } });
+    for (const id of [A53, LANE]) await push._test.onHello({ id, speaker: 'service', ops: ['apps.update', 'stream.receive'], name: id });
+    assert.deepStrictEqual(sends, [LANE], 'the fenced A53 is held');
+    assert.ok(!deliveries.has(A53));
+    const waiting = { package: 'jp.net.seventhreeseven.dreamscape', versionCode: 200, versionName: '1.0.200', state: 'waiting', why: 'no silent route' };
+    fleetRaised.length = 0;
+    push._test.onWaiting('apps.updateWaiting', waiting, { id: A53 });
+    assert.deepStrictEqual(fleetRaised.map((n) => n.n.data.deviceId), [A53], 'its waiting update is still told');
+    push._test.onWaiting('apps.updateWaiting', waiting, { id: LANE });
+    assert.strictEqual(fleetRaised.length, 1, 'a lane device raises none');
+    handle.stop();
+    push._test.resetForTests();
+    testDevices.unmark(LANE);
+    assert.deepStrictEqual(householdState(), before);
+
+    // in the store it stays the household's: everything about it is written there
+    clearPushes(pc);
+    as.status(gr, server, link.info, { battery: { level: 33 } });
+    assert.strictEqual(JSON.parse(as.deviceRow(gr, A53).last_status).battery.level, 33);
+    await settle();
+    assert.strictEqual(pushes(pc).length, 1, 'the household\'s computers hear its change');
+    assert.strictEqual(pushes(pc)[0].data.devices.find((d) => d.deviceId === A53).status.battery.level, 33);
+    assert.strictEqual(as.markSynced(gr, server, A53, 'Notes: 1 item'), true);
+    assert.ok(as.deviceRow(gr, A53).last_sync > before.as_devices.find((d) => d.device_id === A53).last_sync);
+    assert.strictEqual(as.getLog(gr, A53, 1)[0].text, 'Notes: 1 item');
+    assert.strictEqual(as.setPrimary(gr, server, A53), A53, 'it can be the primary device as before');
+    assert.strictEqual(as.primaryOf(gr), A53);
+    as.setPrimary(gr, server, FOLD);
+    let u = await as.partnership(gr, server, pc.info, { action: 'update', deviceId: A53, settings: { favoritesOnly: false } });
+    assert.strictEqual(u.device.settings.favoritesOnly, false);
+    assert.strictEqual(JSON.parse(db().prepare('SELECT settings FROM as_devices WHERE device_id = ?').get(A53).settings).favoritesOnly, false);
+
+    // hellos while fenced: the household's partner as ever, nothing auto-partnered or moved; its page is a test page for notices
+    close(page);
+    close(link);
+    seen.length = 0;
+    page = connect('admin', { sessionId: 'sess-a53' });
+    let h = phoneHello(page, A53, 'SM-A536U1');
+    assert.strictEqual(h.session, 'partner');
+    assert.deepStrictEqual(ids(h), [FOLD, A53].sort(), 'it is told the household list');
+    assert.strictEqual(h.device.test, false);
+    link = connect('admin', { sessionId: 'sess-a53' });
+    assert.strictEqual(phoneHello(link, A53, 'SM-A536U1', { speaker: 'service', ops: linkOps }).session, 'partner');
+    assert.deepStrictEqual(seen, [true, true], 'Messaging and the other hello taps see a test device');
+    const dex = connect('admin', { sessionId: 'sess-a53' });
+    h = as.hello(gr, server, dex.info, { kind: 'computer', id: DEX, name: 'DeX', link: 'usb', usbDevice: A53 });
+    assert.deepStrictEqual(ids(h), [FOLD, A53].sort(), 'its DeX window is a household computer');
+    assert.ok(computerIds(as.list(gr, server)).includes(DEX));
+    close(dex);
+    const spoofed = connect('admin', { sessionId: 'sess-a53' });
+    phoneHello(spoofed, A53, 'sdk_gphone64_x86_64');
+    close(spoofed);
+    assert.strictEqual(as.deviceRow(gr, A53).model, 'SM-A536U1');
+    assert.ok(testDevices.isFenceOnly(A53) && testDevices.row(A53) === null && !readRegistry().devices[A53].record);
+    assert.strictEqual(count('as_devices', A53), 1);
+
+    // DELETE with the phone connected: the fence goes and nothing else
+    await settle();
+    before = householdState();
+    clearPushes(pc, fold, page, link);
+    r = await del(A53);
+    assert.strictEqual(r.body.success, true);
+    await settle();
+    assert.deepStrictEqual(householdState(), before, 'rows, partnership, primary, log, queue, received, notification settings, pictures: identical');
+    for (const s of [page, link]) assert.ok(s.info.as && s.info.as.session === 'partner', 'its links stay connected as partner');
+    assert.strictEqual(eventsOf(page, 'partnership.changed').length + eventsOf(link, 'partnership.changed').length, 0);
+    assert.ok(!testDevices.isTestDevice(A53) && !readRegistry().devices[A53]);
+    assert.deepStrictEqual(readRegistry().sessions, {});
+    assert.strictEqual(inbox.userOf(link.info), 'admin');
+    clearPushes(link);
+    inbox.publish({ id: 'mail:house:2', title: 'New E-mail Message', text: 'y', app: 'messaging' });
+    inbox.publish({ user: 'test', id: 'test:after', title: 'After', text: 'z' });
+    assert.deepStrictEqual(noticesTo(link), ['mail:house:2'], 'the household\'s again, and no test notice');
+
+    // a fence is never swept, capped away or moved, however long it is away or however often the database opens
+    assert.strictEqual((await put(A53)).code, 200);
+    close(page);
+    close(link);
+    before = householdState();
+    let later = Date.now() + 72 * HOUR;
+    testDevices._test.setClock(() => later);
+    assert.deepStrictEqual(testDevices.sweep(() => false), []);
+    const crowd = [];
+    for (let i = 0; i < testDevices.MAX_ENTRIES + 2; i += 1) {
+        const id = (i + 4096).toString(16).padStart(32, '0');
+        crowd.push(id);
+        testDevices.mark(id, { name: `crowd ${i}` });
+        testDevices.setRow(id, { model: 'sdk_gphone64_x86_64', last_seen: later + i }, { create: true });
+    }
+    assert.ok(!testDevices.cap(() => false).includes(A53));
+    assert.ok(testDevices.isFenceOnly(A53));
+    for (const id of crowd) testDevices.unmark(id);
+    testDevices._test.setClock(null);
+    as.resetForTests(dir);
+    as.list(gr, server);
+    assert.deepStrictEqual(householdState(), before);
+    assert.ok(testDevices.isFenceOnly(A53));
+
+    // her Device Center forgets the fenced phone: the household's own removal; the fence stays a fence
+    assert.strictEqual(as.forget(gr, server, A53), true);
+    assert.ok(testDevices.isFenceOnly(A53));
+    assert.ok(hasWallpaper(A53) && count('as_received', A53) === 1, 'forgotten as a household phone is: Received Items and wallpapers stay');
+    // with no row there is nothing to tell it by: a later PUT keeps the fence a fence all the same
+    assert.strictEqual((await put(A53)).code, 200);
+    assert.ok(testDevices.isFenceOnly(A53), 'once a fence, a later PUT keeps it one');
+    const reborn = connect();
+    assert.strictEqual(phoneHello(reborn, A53, 'SM-A536U1').session, 'pending', 'a new household phone: asked how to connect, never auto-partnered');
+    assert.ok(testDevices.isFenceOnly(A53) && testDevices.row(A53) === null);
+    assert.strictEqual(count('as_devices', A53), 1);
+    close(reborn);
+    // and removing the fence of a phone with no row cleans nothing up
+    assert.strictEqual(as.forget(gr, server, A53), true);
+    const rowless = householdState();
+    assert.strictEqual((await del(A53)).body.success, true);
+    assert.deepStrictEqual(householdState(), rowless, 'removing the fence cleans nothing up, row or no row');
+    assert.ok(hasWallpaper(A53) && count('as_received', A53) === 1 && !testDevices.isTestDevice(A53));
+}
+
+/** The corners: a mark made before the A53 had any row, a row without a partnership, a whole mark with a record. */
+async function fenceCorners() {
+    freshRegistry(null);
+    freshStore('fence-norow');
+    as.list(gr, server);
+    assert.ok(testDevices.mark(A53, { name: 'before any row' }));
+    assert.ok(testDevices.inLane(A53), 'with no row there is nothing to tell it by yet');
+    const first = connect();
+    let r = phoneHello(first, A53, 'SM-A536U1', { name: 'A53' });
+    assert.strictEqual(r.session, 'pending', 'its hello makes the mark a fence: no lane partnership');
+    assert.ok(testDevices.isFenceOnly(A53) && testDevices.row(A53) === null);
+    assert.deepStrictEqual(storedIds(), [A53], 'and it is stored like any phone');
+    assert.strictEqual(count('as_log', A53), 1);
+    close(first);
+
+    freshRegistry(null);
+    freshStore('fence-unpartnered');
+    seed([rowFor(A53, 'A53 Test', 'SM-A536U1', 0)], '');
+    as.list(gr, server);
+    assert.strictEqual(testDevices.mark(A53, { name: 'x' }).fenceOnly, true);
+    const before = householdState();
+    const phone = connect();
+    r = phoneHello(phone, A53, 'SM-A536U1');
+    assert.strictEqual(r.session, 'pending', 'never auto-partnered');
+    assert.strictEqual(as.deviceRow(gr, A53).partner, 0);
+    const service = connect();
+    throwsCode(() => phoneHello(service, A53, 'SM-A536U1', { speaker: 'service' }), 'NOT_PARTNER');
+    close(phone);
+    // (a household device without a partnership takes the name the phone says, as ever)
+    assert.deepStrictEqual(db().prepare('SELECT partner, permissions, model FROM as_devices').all(), before.as_devices.map((d) => ({ partner: d.partner, permissions: d.permissions, model: d.model })));
+
+    // an old whole mark, and the first thing to use the database is a lookup of that very row
+    freshRegistry({ devices: { [A53]: { name: 'A53 mark from before', markedAt: Date.now(), status: {} } }, sessions: {} });
+    freshStore('fence-lookup');
+    seed([rowFor(A53, 'A53 Test', 'SM-A536U1', 1)], '');
+    const looked = as.deviceRow(gr, A53);
+    assert.strictEqual(looked && looked.model, 'SM-A536U1', 'the row, though the mark became a fence in the middle of the lookup');
+    assert.ok(testDevices.isFenceOnly(A53));
+
+    // a whole mark with a record beside the A53's row (as an in-between server could leave): a fence, the row untouched
+    freshRegistry({ devices: { [A53]: { name: 'left over', markedAt: Date.now(), status: {}, record: { device_id: A53, name: 'left over', model: 'SM-A536U1', partner: 1 } } }, sessions: {} });
+    freshStore('fence-record');
+    seed([rowFor(A53, 'A53 Test', 'SM-A536U1', 1)], A53);
+    const stored = db().prepare('SELECT * FROM as_devices').all();
+    as.list(gr, server);
+    assert.deepStrictEqual(db().prepare('SELECT * FROM as_devices').all(), stored);
+    assert.ok(testDevices.isFenceOnly(A53) && !readRegistry().devices[A53].record);
+    assert.strictEqual(as.primaryOf(gr), A53);
+    assert.deepStrictEqual(ids(as.list(gr, server)), [A53]);
+}
+
 // the module's timers are unref'd (they never hold the server open): keep this process alive for them
 const keepAlive = setInterval(() => {}, 1000);
 
@@ -922,6 +1288,8 @@ async function main() {
     notMovedUnlessSaved();
     writes();
     cleanup();
+    await fenceCorners();
+    await fenceFlow();
     assert.strictEqual(process.env.TEST_DEVICES_FILE, REGISTRY);
     as.resetForTests();
     testDevices._test.reset();

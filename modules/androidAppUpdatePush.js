@@ -189,13 +189,17 @@ async function sendServerFile(globalResources, deviceId, filePath, opts = {}) {
  * coord setting 'androidUpdates' { hold: true } stops all deliveries until it is lifted (Fleet / a work item that proved the
  * silent install on the emulator lane lifts it). Default: held.
  */
+/**
+ * A device of the test lane (modules/testDevices.js). The agents' A53 with a fence-only mark is not one (#1334): only its
+ * notices are fenced, so it is held and its waiting update is told like any household phone's.
+ */
 function isTest(deviceId) {
-    try { return require('./testDevices').isTestDevice(deviceId); } catch (_) { return false; }
+    try { return require('./testDevices').inLane(deviceId); } catch (_) { return false; }
 }
 
 function held(deviceId) {
     if (process.env.ANDROID_UPDATES_TEST_UNHELD === '1') return false; // the delivery tests; never set in the server
-    // a marked test device (the emulator lane, modules/testDevices.js) is never held: the lane proves the real delivery path
+    // a device of the test lane (the emulator lane, modules/testDevices.js) is never held: the lane proves the real delivery path
     // and the silent install on emulators, and no person's phone is in it (#1309)
     if (deviceId && isTest(deviceId)) return false;
     try { const s = require('./agentCoord/store').getSetting('androidUpdates'); return !(s && s.hold === false); } catch (_) { return true; }

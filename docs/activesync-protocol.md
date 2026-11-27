@@ -250,34 +250,55 @@ permission (no All files access).
 ## Test devices (StaticForge #1334)
 
 A test device is never written into the household's ActiveSync store (`as_devices`, `as_log`). It lives in the test
-lane's own registry, `<databases>/test-devices.json` (`modules/testDevices.js`).
+lane's own registry, `<databases>/test-devices.json` (`modules/testDevices.js`). There is one other kind of mark, the
+**fence-only** mark on the agents' A53 (below): it fences notices and nothing else.
 
-**What is a test device.** Anything marked through `PUT /api/test-devices/:id`, and anything its `as_hello` shows to be
-one (`testDevices.classify`, from the model and platform, never the name a user chose):
+**What is a test device** (of the lane). Anything marked through `PUT /api/test-devices/:id` other than the household's
+own, and anything its `as_hello` shows to be one (`testDevices.classify`, from the model and platform, never the name a
+user chose):
 
 | kind | recognised by |
 | --- | --- |
 | `emulator` | an emulator model (`sdk_gphone`, `aemu`, `ranchu`, ...) |
 | `test-vm` | a CaféReady host on a virtual machine (VMware, QEMU, VirtualBox, ...) |
 
-A device that already has a partnership under a model that is none of these is never reclassified by a hello, and
-`PUT /api/test-devices/:id` refuses to mark it (or the primary device). The agents' A53 is **not** a test device here:
-Yukimi keeps it in Device Center (Nov 26 2026: "delete every single device that is not the fold or the a53"), so it
-stays a household partnership.
+**The household's own devices** are those with a partnership, or the primary device, under a model that is neither. A
+hello never reclassifies one, and `PUT /api/test-devices/:id` refuses it (400), with one exception.
+
+**The agents' A53: a fence-only mark.** The A53 (model `SM-A536*`) is a household device that Yukimi keeps in Device
+Center (Nov 26 2026: "delete every single device that is not the fold or the a53"), and agents run notice tests on it:
+`PUT /api/test-devices/:id`, the test notice routes, then `DELETE`. When the store has a row of it, with a partnership
+or without one, the `PUT` stores `{ fenceOnly: true }` and never a record:
+
+- **Fenced, as any marked device is:** its notices are the inbox's `test` lane (the household's never reach it; the
+  per-device notice, catch-up and clear routes work), its page is fenced by its session, Messaging takes nothing from it
+  and sends it nothing, and its own Android notifications (`notify.*`) are neither taken nor relayed.
+- **Everything else is the household's:** its row stays in `as_devices` and is read and written there (hellos, status,
+  log, partnership, queue), it is in every household list and broadcast with `test: false`, its other events reach the
+  computers, it can be the primary device, app updates stay held and its "update waits" notice is raised, and no hello
+  partners, marks or moves it.
+- **It is never moved, swept or capped away.** It stays a fence until `DELETE`, which removes the fence and nothing else
+  (no partnership, queue, Received Items, log, notification settings, icons or wallpapers change; its links stay up).
+- A mark made while the store had no row of it becomes a fence at its first hello, and a whole mark left on its row from
+  before becomes one when the server opens the database.
+
+In code, `testDevices.isTestDevice(id)` / `isTestInfo(info)` ask "are its notices the test lane's" (both kinds of mark),
+and `testDevices.inLane(id)` / `isLaneInfo(info)` ask "is it out of the household's store and lists" (the lane's only).
+`isFenceOnly(id)` names the fenced one. Everything below is about devices of the lane.
 
 **The connection.** The same packets as any phone. On an administrator sign-in a new test device is the test lane's
 partner at once (no partnership question), so its background link is accepted. Until then (a first hello that is not an
 administrator's, or a row moved over without a partnership) it is undecided and the next administrator hello partners it;
-only a partnership `end` stays ended. Its partnership, permissions and name are
-kept in its registry entry. `as_queue` and `as_received` work for it and go when it is dropped.
+only a partnership `end` stays ended. Its partnership, permissions and name are kept in its registry entry. `as_queue`
+and `as_received` work for it and go when it is dropped.
 
 **Who sees it.** No household list, `as_peers_updated`, primary device (`TEST_DEVICE` from `as_set_primary`), computer
-list or relayed event. Its own page (and its DeX window) sees its own row and the computers. A computer that says `testLane: true` in its
-hello (a harness) is left out of the household's computer list. Server code that works for agents or the lane asks for
-test devices: `activeSync.list(gr, ws, { includeTest: true })`; `GET /api/test-devices` lists them.
+list or relayed event. Its own page and its DeX window see its own row and the computers. A computer that says
+`testLane: true` in its hello (a harness) is left out of the household's computer list. Server code that works for agents
+or the lane asks for test devices: `activeSync.list(gr, ws, { includeTest: true })`; `GET /api/test-devices` lists them.
 
-**Notices** run in the inbox's `test` lane. Android app updates are delivered to test devices without the hold, and a
-test device raises no "update waits" notice.
+**Notices** run in the inbox's `test` lane. Android app updates are delivered to devices of the lane without the hold,
+and they raise no "update waits" notice.
 
 **Cleanup.** A recognised entry that has been offline for 24 hours is dropped (checked when a device says hello, no
 timer), with its queue, received items, icons and wallpapers; the next hello registers it again. A hand-marked device that
