@@ -170,9 +170,30 @@ function runGate(gateFiles) {
 
 // ---------------------------------------------------------------- recording
 
-// P4b: agent-coord build target module-reload (storeV2 change pending)
-// The planner wires the coord build gate (who, files, why, result as a build with target module-reload) here later.
-function recordReload({ agentId, files, why, result }) { // eslint-disable-line no-unused-vars
+/**
+ * The reload as an agent-coord build with target module-reload (who, files, why, result), like builds: a 'running' row
+ * while it runs (a restart gate and other reloads wait for it), 'done' with the result after. Written straight into the
+ * builds table: a reload has no participants to ask (the light gate above already did), so no gate messages go out.
+ * Returns the row id, or 0 when the coord DB is not there.
+ */
+function recordReloadStart({ agentId, by, files, why }) {
+    const store = require('../modules/agentCoord/store');
+    const d = store.open();
+    const t = Date.now();
+    const note = `${String(why || '').slice(0, 180)} | files: ${files.join(', ')}`.slice(0, 300);
+    const r = d.prepare("INSERT INTO builds (target, repo, requested_by, note, state, created_at, expires_at, started_at) VALUES ('module-reload', 'staticforge', ?, ?, 'running', ?, ?, ?)")
+        .run(agentId || 'reload-gate', note, t, t + 10 * 60000, t);
+    if (!agentId) { try { store.upsertAgent({ id: 'reload-gate', kind: 'other', name: 'Reload gate', task: `module reload by ${String(by || '').slice(0, 80)}`, pid: null }); } catch (_) { /* named later */ } }
+    return Number(r.lastInsertRowid) || 0;
+}
+function recordReloadEnd(id, result) {
+    if (!id) return;
+    const store = require('../modules/agentCoord/store');
+    const ok = result && result.ok;
+    const text = ok
+        ? `ok: reloaded ${(result.results || []).filter((x) => x.ok && !x.rolledBack).map((x) => x.file).join(', ') || 'nothing'}`
+        : `failed, rolled back: ${(result && result.error) || 'no answer'}`;
+    store.open().prepare("UPDATE builds SET state = 'done', ended_at = ?, result = ? WHERE id = ?").run(Date.now(), text.slice(0, 300), id);
 }
 
 /** '<agent name> (<claude-xxxxxxxx>)' for the reload record; the login name when this is not a Claude session. */
@@ -248,9 +269,18 @@ async function main() {
     // g/h. record and reload
     const sessionId = opts.by ? '' : require('./restart-gate').selfSessionId();
     const who = identity(sessionId);
-    const result = await ask({ op: 'reload', files, why: opts.why, by: who.by }, sockFile);
+    let recordId = 0;
+    try { recordId = recordReloadStart({ agentId: who.agentId, by: who.by, files, why: opts.why }); } catch (_) { recordId = 0; /* no coord DB: the reload still runs */ }
+    let result;
+    try {
+        result = await ask({ op: 'reload', files, why: opts.why, by: who.by }, sockFile);
+    } catch (e) {
+        try { recordReloadEnd(recordId, { ok: false, error: e.message }); } catch (_) { /* recorded best effort */ }
+        throw e;
+    }
     state.result = result;
-    try { recordReload({ agentId: who.agentId, files, why: opts.why, result }); } catch (_) { /* a record failure never undoes a reload */ }
+    state.record = recordId;
+    try { recordReloadEnd(recordId, result); } catch (_) { /* a record failure never undoes a reload */ }
     (result.results || []).forEach((r) => {
         if (r.ok && r.rolledBack) say(`  ${r.file}: rolled back with the batch`);
         else if (r.ok) say(`  ${r.file}: reloaded in ${r.ms} ms`);

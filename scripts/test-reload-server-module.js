@@ -132,6 +132,14 @@ async function part1() {
         r = runScript([G, '--why', 'test good change']);
         p = await probe();
         check('a good change reloads: exit 0, "reloaded <file>", the child answers v2', r.code === 0 && new RegExp(`reloaded ${G}$`, 'm').test(r.out) && /reloaded in \d+ ms/.test(r.out) && p.good === 'v2', `${r.code} ${r.out} ${JSON.stringify(p)}`);
+        {
+            // the reload is recorded like a build: agent-coord builds row, target module-reload, done with its result
+            const Database = require('better-sqlite3');
+            const db = new Database(DB, { readonly: true });
+            const row = db.prepare("SELECT * FROM builds WHERE target = 'module-reload' ORDER BY id DESC LIMIT 1").get();
+            db.close();
+            check('the reload is recorded as an agent-coord build module-reload (done, ok, files and why in it)', !!row && row.state === 'done' && /^ok: reloaded /.test(row.result) && row.note.includes(G) && row.note.includes('test good change') && row.ended_at >= row.started_at, JSON.stringify(row));
+        }
         check('dispose() of the old version ran once', p.disposes === 1, JSON.stringify(p));
 
         fs.writeFileSync(f('good.js'), goodSrc('v3'));
