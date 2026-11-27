@@ -1,20 +1,20 @@
 {
  "sources": {
   "text-message": {
-   "area": "native: activesync/TextMessageNotifier.kt, one MessagingStyle notification per conversation",
+   "area": "native: InboxNotifier.kt, the sms: WM box (TextMessageNotifier.kt removed, #1321). No Android notification",
    "trigger": "server-push",
-   "action": "tap opens the conversation (ACTION_OPEN_TEXT_MESSAGE); Reply and Mark as read on the card",
+   "action": "Reply | Menu on the box; View opens the conversation",
    "sound": true,
-   "switch": "Settings > Sounds & Notifications > the Text Messaging 'New text message' event (sound, vibrate, display); Android's own Text messages channel settings",
-   "note": "N1 data the user asked for (a text), N4 yes, N6 by conversation id, channel silent: the sound is the person's WM choice via NoteAlerts. A delivery guarantee (cafeready-background); unchanged by wave C."
+   "switch": "Settings > Sounds & Notifications > Text Messaging 'New text message' (sound, vibrate, display)",
+   "note": "N1 data asked for; N4 yes; N6 by conversation id; N7 the WM sms sound once."
   },
   "inbox-notice": {
-   "area": "native: activesync/InboxNotifier.kt, every server notice (mail, Director, Fleet, prints, weather, reminders) while the page is not on screen",
+   "area": "native: activesync/InboxNotifier.kt, a server notice with the page asleep: the app's own WM box, the bar's icons and the '...' holder. No Android notification (#1321)",
    "trigger": "server-push",
-   "action": "tap opens Melaton Mobile; reminders carry Snooze / Dismiss, device consents carry Allow / Deny",
+   "action": "the box's keys (Dismiss | Menu with View and Snooze; a question's answer keys); the holder re-opens it",
    "sound": true,
-   "switch": "Settings > Sounds & Notifications per notice class (sound, vibrate, display on screen); the source's own notify setting (e.g. a mail account). Display off does not stop the Android card: see #1314",
-   "note": "N1 data the user asked for or a real alert; N4 yes; N6 by id (page-shown ack, stack coalescing, shown map); channel silent, the sound is NoteAlerts. Channel is HIGH for every class including status ones: needs a decision, #1314. A delivery guarantee; unchanged by wave C."
+   "switch": "Settings > Sounds & Notifications > each notice class (sound, vibrate, display on screen); the source's own notify setting",
+   "note": "N1 data asked for or a real alert; N4 yes; N6 by id (page claim, stack coalescing, shown map); N7 the class's WM sound once from the app; N9 newest held box once after the unlock. Locked phone or bars off: no box, sound plus holder."
   },
   "alarm-ring": {
    "area": "native: DeviceNotices.kt, the Melaton Mobile alarm ringing with the page asleep",
@@ -22,31 +22,31 @@
    "action": "tap opens Melaton Mobile; Dismiss and Snooze 5 minutes buttons; full-screen intent",
    "sound": true,
    "switch": "the alarm itself (Settings > Clock & Alarms > Alarms: delete or switch it off) and its sound mode (once / repeat / vibrate)",
-   "note": "N7 satisfied: an alarm the person set. Channel silent, the alarm's own WM sound plays from the app. Unchanged by wave C."
+   "note": "Kept in Android's shade under #1321 (design-decisions.md): only a full-screen-intent notification wakes a locked phone for an alarm she set. Channel silent; the alarm's own chosen sound plays from the app (default is no Alarm file)."
   },
   "battery-low": {
-   "area": "native: DeviceNotices.kt, Main Battery Low / Very Low while Melaton Mobile is not in front",
+   "area": "native: DeviceNotices.kt, the bat:low WM box while Melaton Mobile is not in front. No Android notification (#1321); Android's own low battery warning stands",
    "trigger": "boot",
-   "action": "tap opens Melaton Mobile",
+   "action": "Dismiss on the box",
    "sound": true,
-   "switch": "none",
-   "note": "A real alert (the phone is about to die), N1 ok, N4 yes. N5 no switch and N7: the channel is DEFAULT and plays Android's default tone nobody picked (fixed at creation). Needs a decision (route through NoteAlerts as a 'battery' event), #1313."
+   "switch": "Settings > Sounds & Notifications > Battery: Main battery low / very low (sound, vibrate, display)",
+   "note": "N1 a real alert; N5 now switched by the two battery events; N7 the event's own WM sound, never Android's default tone."
   },
   "battery-full": {
-   "area": "native: DeviceNotices.kt, Battery Fully Charged while Melaton Mobile is not in front",
+   "area": "native: DeviceNotices.kt, the bat:full WM box. No Android notification (#1321)",
    "trigger": "boot",
-   "action": "tap opens Melaton Mobile",
+   "action": "Dismiss on the box",
    "sound": false,
-   "switch": "none",
-   "note": "Wave C: sound removed (N7, a status): new silent LOW channel melaton_battery_full, setSilent. Still a status with no switch (N5), #1313."
+   "switch": "Settings > Sounds & Notifications > Battery: Fully charged (sound off as shipped, display)",
+   "note": "N5 now switched by its event; N7 silent unless she chose a sound."
   },
   "camera-alert": {
-   "area": "native: DriveWatch.kt postCameraNote, a speed or red light camera 1 mile ahead; also CafeTasks.cameraAlert",
+   "area": "native: CafeTasks.cameraAlert, the cam: WM box for a speed or red light camera ahead. No Android notification (#1321)",
    "trigger": "server-push",
-   "action": "tap opens Dreamscape (launch intent); WM popup Dismiss",
+   "action": "the box's keys (Hide | Dismiss)",
    "sound": true,
-   "switch": "the Traffic way-home watch (armed from Traffic); WM event 'traffic-camera' sound / vibrate / display in Settings > Sounds & Notifications; the Android heads-up copy has no own off, #1313",
-   "note": "N7 satisfied: an alert she configured by arming the watch; navigation-guidance audio. With the WM table known the Android copy is quiet. Delivery guarantee, unchanged by wave C."
+   "switch": "the Traffic way-home watch; Settings > Sounds & Notifications > Traffic: Speed camera (sound, vibrate, display)",
+   "note": "N7 an alert she armed; the same camera is announced once in 20 s (N6). No Android heads-up: on a locked phone only the sound (and the approach strip where it shows)."
   },
   "traffic-watch-fgs": {
    "area": "native: DriveWatch.kt ongoing() and CafeTasks.kt CafeLocationService, the location foreground service's notification (channel traffic_drive)",
@@ -65,12 +65,12 @@
    "note": "Foreground-service notice: LOW, silent, ongoing, collapses. Stays."
   },
   "miniport-state": {
-   "area": "native: MelatonMiniport.kt, the Melaton Cafe Miniport state (its own notification, or merged into the foreground service's on a phone that runs Dreamscape as home)",
+   "area": "native: MelatonMiniport.kt, the Miniport state on the foreground service notification only (Dreamscape as home screen); no notification of its own (#1321)",
    "trigger": "server-push",
    "action": "tap opens Dreamscape (added by wave C: it had none); Disconnect / Reconnect and Restart Devices buttons",
    "sound": false,
    "switch": "Android requires it while the app runs (merged into the foreground service); the Disconnect button",
-   "note": "MIN, silent, ongoing state notice posted only when the state changed. It echoes ActiveSync status and workspace text; kept as the home-screen design (#945). N4 fixed by wave C."
+   "note": "Required foreground service entry; silent, ongoing."
   },
   "download-progress": {
    "area": "native: MainActivity.kt, the Downloads channel and the Saving... progress notice",
@@ -78,7 +78,7 @@
    "action": "none while running (progress); the finished notice opens the picture",
    "sound": false,
    "switch": "none",
-   "note": "LOW, silent progress of a Save the user started: N7 ok. No in-app switch (N5), #1313."
+   "note": "REMOVED by #1321 (DSApp fix/1321-no-android-notices): no emit site there. This entry stays only until that branch is on DSApp main, so other app branches pass the check."
   },
   "download-saved": {
    "area": "native: MainActivity.kt, the Saved notice with the picture after a Save",
@@ -86,15 +86,15 @@
    "action": "tap opens the saved picture (ACTION_VIEW)",
    "sound": false,
    "switch": "none",
-   "note": "A deliverable the user started (N1 exempt), LOW, silent. Wave C: the duplicate Image saved toast now only shows when notifications are off (N2 / N6). No in-app switch (N5), #1313."
+   "note": "REMOVED by #1321 (DSApp fix/1321-no-android-notices): no emit site there. This entry stays only until that branch is on DSApp main, so other app branches pass the check."
   },
   "download-failed": {
-   "area": "native: MainActivity.kt, Save failed",
+   "area": "native: MainActivity.kt, an Android toast 'Could not save <name>: <error>' only when the page that started the save cannot be reached (#1321); no notification",
    "trigger": "user-action",
-   "action": "tap opens the app (added by wave C: it had none)",
+   "action": "none: the text is the information",
    "sound": false,
    "switch": "none",
-   "note": "An error that stopped the user's own Save (real failure), LOW, silent. N4 fixed by wave C. No in-app switch (N5), #1313."
+   "note": "N1 a real failure of her own Save, told once (N10); silent."
   },
   "download-folder": {
    "area": "native: MainActivity.kt, Download folder not set",
@@ -102,7 +102,7 @@
    "action": "tap brings the app to the front where the folder picker is open",
    "sound": false,
    "switch": "none",
-   "note": "A call to action raised by the user's own Save, LOW, silent; the picker opens at the same moment. No in-app switch (N5), #1313."
+   "note": "REMOVED by #1321 (DSApp fix/1321-no-android-notices): no emit site there. This entry stays only until that branch is on DSApp main, so other app branches pass the check."
   },
   "app-notifications-bridge": {
    "area": "native: MainActivity.kt NotificationBridge (window.AndroidNotification), a page toast mirrored as an Android notification in desktop (DeX) mode",
@@ -110,7 +110,7 @@
    "action": "tap opens the app (added by wave C: it had none); a toast's own buttons answer the page",
    "sound": false,
    "switch": "the app's Settings > In-app notifications; the page's notificationBridgeEnabled preference",
-   "note": "Channel js_notifications is silent but IMPORTANCE_HIGH, so every mirrored toast heads-up, progress included. In DeX the mirror is the only place such a toast shows, so lowering it needs a decision (the page toast policy decides which toasts reach it, other wave). N4 fixed by wave C."
+   "note": "REMOVED by #1321 (DSApp fix/1321-no-android-notices): no emit site there. This entry stays only until that branch is on DSApp main, so other app branches pass the check."
   },
   "media-playback": {
    "area": "native: MediaLibraryBridge.kt and videos/VideoPlayback.kt (#1322): the media notification of what Dreamscape plays (Melaton Media, XM Radio, Videos)",
@@ -126,7 +126,7 @@
    "action": "tap opens Android's installer prompt / the Install unknown apps page",
    "sound": false,
    "switch": "none",
-   "note": "Wave C: new silent LOW channel activesync_install_quiet (was HIGH with Android's default tone: N7). A last-resort fallback that apk-installs-via-adb says should not be reached; no switch (N5), #1313."
+   "note": "REMOVED by #1309 (DSApp fix/1309-no-installer); stays only until that branch is on DSApp main."
   },
   "instant-hotspot-use": {
    "area": "native: hotspot/InstantHotspot.kt, a computer is using this phone's mobile data",
@@ -134,7 +134,7 @@
    "action": "none",
    "sound": false,
    "switch": "none",
-   "note": "LOW, silent, ongoing for as long as the hotspot is shared: a data-use indicator. No tap target and no switch (N4, N5); not changed in wave C because the destination is Yukimi's call (Android hotspot settings or a Dreamscape page), #1313."
+   "note": "REMOVED by #1321 (DSApp fix/1321-no-android-notices): no emit site there. This entry stays only until that branch is on DSApp main, so other app branches pass the check."
   },
   "widget-generation-fgs": {
    "area": "native: widget/PresetWidget.kt GenerationService, a widget-started generation's progress",
