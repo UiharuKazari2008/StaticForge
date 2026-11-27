@@ -52,7 +52,7 @@ function req(method, path, headers, body) {
     });
     await new Promise((r, j) => { ws.once('open', r); ws.once('error', j); });
     await new Promise((r) => setTimeout(r, 1500)); // the server authenticates the socket from its session
-    const h = await send('as_hello', { kind: 'computer', id: COMPUTER, name: 'lane harness', ops: [] });
+    const h = await send('as_hello', { kind: 'computer', id: COMPUTER, name: 'lane harness', ops: [], testLane: true });
     if (!h.data || !h.data.success) throw new Error(`hello refused: ${JSON.stringify(h.data || h).slice(0, 200)}`);
     console.log(`proposing "${NAME}" to ${DEV.slice(0, 8)} - accept it on the emulator (lane.sh taps it)`);
     const p = await send('as_partnership', { action: 'propose', deviceId: DEV, mode: 'partner', name: NAME, syncItems: [] }, 200000);

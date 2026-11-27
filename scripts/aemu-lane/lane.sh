@@ -160,14 +160,36 @@ SR() { adb -s "$SERIAL" shell "$@" | tr -d '\r'; }
 open_port() { (exec 3<>/dev/tcp/127.0.0.1/"$1") 2>/dev/null; }
 
 tunnel() {
-  # one ssh session per instance: Ruiko's adb server (kept alive by the remote loop), the emulator console, the DevTools port
-  open_port "$TPORT" && return 0
+  # one ssh session per instance: Ruiko's adb server (kept alive by the remote loop), the emulator console, the DevTools port.
+  # A tunnel left from before the instance's ports changed (an old console port such as 5600) forwards the wrong console: it is
+  # replaced (found by its own command line, only the ssh that carries this instance's adb tunnel port).
+  local old; old=$(pgrep -ax ssh 2>/dev/null | grep -- "-L $TPORT:127.0.0.1:5037" | head -1)
+  if open_port "$TPORT"; then
+    case "$old" in *"-L $PORT:127.0.0.1:$PORT "*"-L $CDP:127.0.0.1:$CDP "*) return 0;; "") return 0;; esac
+    kill "${old%% *}" 2>/dev/null; sleep 1
+  fi
   nohup ssh -o ConnectTimeout=8 -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
     -L "$TPORT:127.0.0.1:5037" -L "$PORT:127.0.0.1:$PORT" -L "$CDP:127.0.0.1:$CDP" "$RHOST" \
     "\$a='$RADB'; & \$a start-server | Out-Null; while (\$true) { Start-Sleep 30; & \$a start-server | Out-Null }" \
     > "$TLOG" 2>&1 &
   local _; for _ in $(seq 1 12); do sleep 1; open_port "$TPORT" && return 0; done
   die "tunnel to Ruiko failed (see $TLOG)"
+}
+
+# An emulator whose adb registration did not happen (Ruiko's adb server was restarted or was not up when the emulator started) is
+# running but `emulator-<port>` is not in the server's list. The emulator registers itself with the server's smart socket
+# `host:emulator:<adb port>`; sending the same line again does what the emulator did at its start (a no-op when it is already known).
+# It addresses only this instance's own adb port. Never a reason to stop a process: register first, judge after.
+adb_register() {
+  python3 - "$TPORT" "$((PORT + 1))" <<'PY' >/dev/null 2>&1
+import socket, sys
+s = socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=8)
+c = "host:emulator:" + sys.argv[2]
+s.sendall(("%04x" % len(c) + c).encode()); s.settimeout(5)
+try: s.recv(16)
+except Exception: pass
+s.close()
+PY
 }
 
 running() { [ "$(A get-state 2>/dev/null | tr -d '\r')" = device ]; }
@@ -341,6 +363,8 @@ wait_boot() { # wait_boot <secs>
   local t0 now; t0=$(date +%s)
   while :; do
     if running && booted; then echo $(( $(date +%s) - t0 )); return 0; fi
+    # adb does not list the serial (or lists it offline) after the first 40 s: register it again before judging the boot failed
+    [ $(( $(date +%s) - t0 )) -ge 40 ] && [ "$(A get-state 2>/dev/null | tr -d '\r')" != device ] && adb_register
     now=$(date +%s); [ $(( now - t0 )) -gt "${1:-240}" ] && return 1
     sleep 4
   done
@@ -643,6 +667,17 @@ adb_settings() { # the app's Android Bridge > Advanced Tools settings (LocalAdb)
   cdp_js eval "$js"
 }
 
+restore_app_port() { # restore_app_port [secs] : the app's local-ADB port preference back to $LANE_ADB_PORT (a reboot test moves it to 5556); never dies
+  local t0 i; t0=$(date +%s)
+  while [ $(( $(date +%s) - t0 )) -lt "${1:-60}" ]; do
+    if page_forward >/dev/null 2>&1 && cdp_js eval "(function(){var st=JSON.parse(AndroidActiveSync.adbStatus()).settings||{}; st.port=$LANE_ADB_PORT; AndroidActiveSync.setAdbSettings(JSON.stringify(st)); return JSON.parse(AndroidActiveSync.adbStatus()).settings.port})()" 2>/dev/null | grep -q "\"value\":$LANE_ADB_PORT"; then
+      meta_set adb_port "$LANE_ADB_PORT"; return 0
+    fi
+    sleep 5
+  done
+  return 1
+}
+
 partner_device() { # propose the ActiveSync partnership as the lane's harness computer and accept it on the page
   local dev=$1 out
   ( NODE_PATH=${NODE_PATH:-/home/kanmi/staticforge/node_modules} timeout 150 node "$HERE/lib/partner.js" "$dev" "Lane $ID" > "$STATE/partner-$ID.out" 2>&1 ) &
@@ -774,7 +809,12 @@ $(lane_probe_ps "$ID" 0)") || die_unreachable
     rm -f "$CFG/$ID.env" "$CFG/$ID.ports" "$STATE/$ID.last" "$STATE/$ID.keep"; rm -rf "$STATE/avd-$ID"
     J ok=b:true id="$ID" deleted=b:true state=absent;;
   status)
-    running || { J ok=b:true id="$ID" running=b:false; exit 0; }
+    if ! running; then
+      # a process of this instance that adb does not list is registered again (adb_register), not called dead
+      emu_up; ec=$?
+      if [ "$ec" = 0 ]; then adb_register; sleep 3; fi
+      if ! running; then J ok=b:true id="$ID" running=b:false "emulatorProcess=b:$([ "$ec" = 0 ] && echo true || echo false)" "adbState=$(A get-state 2>&1 | tr -d '\r' | head -1)"; exit 0; fi
+    fi
     status_json;;
   provision) need_running provision; provision_lock; provision;;
   partner) dev=$(dev_id); partner_device "$dev" && J ok=b:true id="$ID" partnered=b:true || die "partnership not accepted: $(cat "$STATE/partner-$ID.out" 2>/dev/null | tail -2)";;
@@ -785,7 +825,8 @@ $(lane_probe_ps "$ID" 0)") || die_unreachable
     secs=$(wait_boot 300) || die "golden did not boot (Ruiko $RBASE\\logs\\$ID.txt)"
     noaudio_check || { con kill >/dev/null 2>&1; die "the emulator started without -no-audio: stopped it"; }
     quiet_volumes
-    J ok=b:true id="$ID" state=golden "bootSecs=n:$secs" noAudio=b:true;;
+    restore_app_port 60 && portback=true || portback=false
+    J ok=b:true id="$ID" state=golden "bootSecs=n:$secs" noAudio=b:true "appPort5555Restored=b:$portback";;
   golden)
     need_running golden
     CON_TIMEOUT=240 con avd snapshot save golden >/dev/null 2>&1 || die "snapshot save failed"
@@ -904,6 +945,8 @@ $(lane_probe_ps "$ID" 0)") || die_unreachable
       wireless) case "${2:-}" in on) S settings put global adb_wifi_enabled 1;; off) S settings put global adb_wifi_enabled 0;; *) die "adbd wireless on|off" 2;; esac; sleep 2; wifi_dialog >/dev/null 2>&1; adb_state;;
       *) die "adbd status|tcpip [port]|usb|gate on|off|wireless on|off" 2;;
     esac;;
+  app-port) # the app's local-ADB port preference (Advanced Tools > Port); default $LANE_ADB_PORT
+    LANE_ADB_PORT=${1:-$LANE_ADB_PORT}; restore_app_port 30 && J ok=b:true "appPort=n:$LANE_ADB_PORT" || die "the app's port preference was not set (is the page up?)";;
   keep)
     m=${1:-60}; t=$(( $(date +%s) + m * 60 )); echo "$t" > "$STATE/$ID.keep"
     rps "New-Item -ItemType Directory -Force '$RBASE\\last' | Out-Null; Set-Content -Path '$RBASE\\last\\$ID.txt' -Value $t" >/dev/null || die_unreachable
