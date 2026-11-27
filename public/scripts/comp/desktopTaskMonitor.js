@@ -69,8 +69,8 @@
     }
 
     function isSilentType(type) {
-        const C = clientClass();
-        if (C && C.SILENT_TICKER_REQUEST_TYPES) return C.SILENT_TICKER_REQUEST_TYPES.has(type);
+        const BM = win && win.BannerManager ? win.BannerManager : null;
+        if (BM && BM.TICKER_OFF_TYPES) return type === 'ping' || BM.TICKER_OFF_TYPES.has(type);
         return type === 'ping';
     }
 

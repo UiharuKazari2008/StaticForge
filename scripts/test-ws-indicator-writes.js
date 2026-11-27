@@ -350,7 +350,7 @@ assert.ok(Object.isFrozen(BM.REQUEST_TYPE_NAMES), 'the table is frozen');
 assert.ok(Object.keys(BM.REQUEST_TYPE_NAMES).length > 500, 'and complete');
 const fmt = BM.prototype.formatRequestType;
 assert.strictEqual(fmt('generate_image'), 'Generate Image');
-assert.strictEqual(fmt('workspace_image_added'), 'Image Added');
+assert.strictEqual(fmt('upscale_image'), 'Upscale Image');
 assert.strictEqual(fmt('no_such_type'), 'no_such_type', 'unknown types pass through');
 
 // ---- 8. wsInboundRegistry: pre-sorted map, the dev flag read once -------------------------------

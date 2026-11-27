@@ -22,6 +22,12 @@ if [ -f "$root/scripts/check-notifications.js" ] && ! node "$root/scripts/check-
     echo "pre-commit: blocked by scripts/check-notifications.js (a notice with no registered source id: .cursor/rules/notification-discipline.mdc)." >&2
     exit 1
 fi
+# WebSocket request names (Yozora #1350, rule notification-discipline.mdc N1/N11): every request type has words a person
+# reads or an explicit ticker:false; undecided counts per file may only go down. Runs only when modules/ws/ is staged.
+if [ -f "$root/scripts/check-ws-names.js" ] && ! node "$root/scripts/check-ws-names.js" --staged >&2; then
+    echo "pre-commit: blocked by scripts/check-ws-names.js (a WebSocket request with no name and no ticker decision, or a stale client block: .cursor/rules/notification-discipline.mdc, #1350)." >&2
+    exit 1
+fi
 # CaféReady tasks (#908, rule cafeready-background): the Android app runs its own bundled copy. A change here reaches
 # phones only after `node scripts/sync-cafe-tasks.js --dsapp <DSApp tree>`, a DSApp commit and an app build.
 if git diff --cached --name-only | grep -q '^public/scripts/tasks/'; then
