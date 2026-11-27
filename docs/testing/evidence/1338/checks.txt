@@ -1,0 +1,101 @@
+#1338 repo checks, run from /home/kanmi/staticforge on the live tree (HEAD 895fcc692, tree clean for the five #1338 files). No --update was passed to any check.
+
+(a) $ node scripts/check-ui-standard.js
+exit code: 1  -> FAIL
+output:
+    UI standard: 12 count(s) rose. docs/design/ui-standard.md
+    
+      public/css/vista-explorer.css
+        theme-negative: 533 -> 535  (:not(.windows-classic-theme) used to mean Vista (scope by the theme id))
+      public/css/window-switcher.css
+        colour-literal: 24 -> 43  (hex / rgb() / hsl() colour in app CSS (use a theme token))
+      public/css/window-switcher.css
+        font-literal: 0 -> 1  (font family named in app CSS (inherit, or use the theme font token))
+      public/css/wm-settings-connections.css
+        theme-art-path: 0 -> 3  (art path naming a theme folder (wm61 / wm65) outside the shell (use the art helper))
+      public/css/wm-settings-personal.css
+        own-control: 17 -> 18  (app-private button / tab / spin / check / combo class (use the kit control))
+      public/css/wm-stage.css
+        colour-literal: 9 -> 10  (hex / rgb() / hsl() colour in app CSS (use a theme token))
+      public/css/wm-wallet.css
+        colour-literal: 22 -> 24  (hex / rgb() / hsl() colour in app CSS (use a theme token))
+      public/scripts/comp/dexStartMenu.js
+        theme-test-copy: 0 -> 1  (own Vista / Classic / WM version test in a script (use the shared theme helper))
+      public/scripts/comp/keyboardShortcuts.js
+        colour-in-script: 0 -> 1  (hex colour in a script (use a class or a theme token))
+      public/scripts/comp/keyboardShortcuts.js
+        theme-test-copy: 0 -> 1  (own Vista / Classic / WM version test in a script (use the shared theme helper))
+      public/scripts/comp/melatonBars.js
+        theme-test-copy: 2 -> 3  (own Vista / Classic / WM version test in a script (use the shared theme helper))
+      public/scripts/comp/wmTraffic.js
+        theme-art-path: 0 -> 1  (art path naming a theme folder (wm61 / wm65) outside the shell (use the art helper))
+    
+    Show the lines:  node scripts/check-ui-standard.js --list <rule> <file>
+
+(b) $ node scripts/check-perf-rules.js scripts/build-wm65-holder-kind-icons.py public/static_images/wm65/holder-car.png public/static_images/wm65/holder-car@2x.png public/static_images/wm65/holder-car@4x.png public/static_images/app_icons/holder-car.png
+exit code: 0  -> PASS
+output:
+    perf rules: ok (5 files)
+
+(c) $ node scripts/check-perf-rules.js
+exit code: 0  -> PASS
+output:
+    perf rules: ok (1572 files)
+
+(d) $ node scripts/check-notifications.js
+exit code: 0  -> PASS
+output:
+    Notifications: ok (599 files)
+
+(e) $ node scripts/check-app-scope.js
+exit code: 0  -> PASS
+output:
+    app scope: ok (597 files)
+
+== (a) failure analysis ==
+Named files (12 counters in 10 files); none of them is one of the five #1338 files
+(scripts/build-wm65-holder-kind-icons.py, wm65/holder-car.png, @2x, @4x, app_icons/holder-car.png).
+`git status --short -- <file>` is empty (no uncommitted changes) for every one of them. Last committer of each (`git log -1 --format='%h %an %s'`), all by Yukimi Kazari (the shared git identity of the sessions):
+  public/css/vista-explorer.css
+    status: []
+89ab8d01d Yukimi Kazari fix(grimoire): restored tabs show their title and icon at once and sleep (dimmed) until opened; a page lands in the tab that asked for it; Refresh
+  public/css/window-switcher.css
+    status: []
+0d5ca1bc2 Yukimi Kazari fix(desktop): Alt+Tab pane is Vista's see-through glass, measured on the VM - default intensity tint from the workspace colour, sigma-3 blur, the 
+  public/css/wm-settings-connections.css
+    status: []
+2523d2630 Yukimi Kazari fix(mobile): Wi-Fi list size in the stylesheet, not an inline style (#1038)
+  public/css/wm-settings-personal.css
+    status: []
+3ec3fc4a5 Yukimi Kazari fix(chime): Settings > Sounds > Chime: each Play button sits beside its sound combo (it wrapped to a row of its own under the label column); disab
+  public/css/wm-stage.css
+    status: []
+bbc7f9d7e Yukimi Kazari fix(mobile,desktop): the app's copies honour a gradient's background-size and -position (Task Manager's 1-unit lit rule was drawn over the whole t
+  public/css/wm-wallet.css
+    status: []
+c3cc2d24f Yukimi Kazari feat(wallet): the card's bank balance on Today and in Wallet, Bank accounts with Reconnect (#1123)
+  public/scripts/comp/dexStartMenu.js
+    status: []
+ca73e44a5 Yukimi Kazari fix(desktop): a key the app hands over while the page's own Start menu is open was replayed twice (androidTaskbar.js and dexStartMenu.js both) - t
+  public/scripts/comp/keyboardShortcuts.js
+    status: []
+62551d3f4 Yukimi Kazari feat(mobile): Continuity setting "Alt+Tab: selecting a Melaton window minimises all Android windows on the desktop" - on (default), Alt+Tab to a d
+  public/scripts/comp/melatonBars.js
+    status: []
+4f5fd5f13 Yukimi Kazari fix(phone): the soft keys the app draws over the keyboard are heard by wmShell, not by melatonBars.js - that feature loads only when the app first
+  public/scripts/comp/wmTraffic.js
+    status: []
+4291c9f0b Yukimi Kazari fix(traffic): the phone tells 'away' and tells again - drive-alerts reports a fix outside Home and Work as away, a report the server did not take 
+
+Clean copies (git worktree add --detach under the scratchpad, node_modules symlinked, `node scripts/check-ui-standard.js`, worktree removed afterwards):
+  origin/main (3dbcf4afc) -> exit 1, the SAME 12 counters, identical output to the live tree (shown in (a) above).
+  58af37765^ (db3e45c10, the commit before the fix) -> exit 1, the SAME 12 counters, identical output.
+So the two #1338 commits changed no count; the failure is already in the commit before the fix and in origin/main, and the cause is the other sessions' CSS/JS above (window-switcher.css, wm-wallet.css, wm-stage.css, wm-settings-*.css, vista-explorer.css, dexStartMenu.js, keyboardShortcuts.js, melatonBars.js, wmTraffic.js). Not fixed here.
+Note: the live tree HEAD (895fcc692) is 400 commits ahead of origin/main, but the 12 counters are identical in all three trees.
+
+== conclusions ==
+(a) check-ui-standard: FAILS (exit 1); cause is other sessions' files listed above, not #1338's; identical at 58af37765^ and origin/main.
+(b) check-perf-rules on the five #1338 files: PASSES (exit 0, "ok (5 files)").
+(c) check-perf-rules whole tree: PASSES (exit 0, "ok (1572 files)").
+(d) check-notifications: PASSES (exit 0, "ok (599 files)").
+(e) check-app-scope: PASSES (exit 0, "ok (597 files)").
