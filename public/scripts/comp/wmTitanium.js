@@ -1541,16 +1541,30 @@
         return true;
     }
 
-    /** One custom property on the picture layer and on the band's frosted copy of it (only they restyle). */
-    /** The glass light's slide and drift (#1413): only the shine layer restyles. */
+    /** The glass light's slide, slant and drift (#1413): only the shine layer restyles. */
     let shineEl = null;
     const shineSet = {};
-    function shineVar(name, v) {
-        if (shineSet[name] === v) return;
-        shineSet[name] = v;
-        if (!shineEl || !shineEl.isConnected) shineEl = host && host.querySelector('.wm-ti-shine > i');
-        if (shineEl) shineEl.style.setProperty(name, v);
+    function shineNode() {
+        if (!shineEl || !shineEl.isConnected) {
+            shineEl = host && host.querySelector('.wm-ti-shine > i');
+            // a layer built again has nothing set on it yet
+            for (const k of Object.keys(shineSet)) delete shineSet[k];
+        }
+        return shineEl;
     }
+    function shineVar(name, v) {
+        const el = shineNode();
+        if (!el || shineSet[name] === v) return;
+        shineSet[name] = v;
+        el.style.setProperty(name, v);
+    }
+    /** The drift eases only from an idle's start (wm-titanium.css .is-drift). Off, a change of the drift lands at once:
+     *  Today put away (hidden, the screen off, a program in front) starts no transition on a page nobody sees. */
+    function shineDrift(on) {
+        const el = shineNode();
+        if (el && el.parentNode) el.parentNode.classList.toggle('is-drift', !!on);
+    }
+    /** One custom property on the picture layer and on the band's frosted copy of it (only they restyle). */
     function wallVar(name, v) {
         if (wallVarsSet[name] === v) return;
         wallVarsSet[name] = v;
@@ -1580,6 +1594,7 @@
         wallVar('--wm-ti-tx', '0%');
         wallVar('--wm-ti-ty', '0%');
         shineVar('--wm-ti-sx', '0px');
+        shineVar('--wm-ti-sk', '0deg');
         if (parallaxOn) wallVar('--wm-ti-par', restPar().toFixed(4));
     }
     function wallThaw() {
@@ -1661,7 +1676,10 @@
         cancelAnimationFrame(tiltRaf); tiltRaf = 0;
         wallVar('--wm-ti-tx', '0%');
         wallVar('--wm-ti-ty', '0%');
+        // the glass light goes back at once (no transition: nothing runs while Today is not what shows)
+        shineDrift(false);
         shineVar('--wm-ti-sx', '0px');
+        shineVar('--wm-ti-sk', '0deg');
         shineVar('--wm-ti-dr', '0%');
     }
     function tiltIdleCheck() {
@@ -1673,6 +1691,7 @@
         tiltIdle = true;
         tiltListen(false);
         // the glass light drifts a little further the way it was leaning and settles: one CSS transition, nothing left running
+        shineDrift(true);
         shineVar('--wm-ti-dr', `${tiltNow.x > 0 ? -1.2 : 1.2}%`);
     }
     /** A touch or a key on the page: the tilt is in use (again). */
@@ -1740,9 +1759,12 @@
         const qy = Math.round((-tiltNow.y * k) / tiltPx.y) * tiltPx.y;
         wallVar('--wm-ti-tx', `${(qx || 0).toFixed(4)}%`);
         wallVar('--wm-ti-ty', `${(qy || 0).toFixed(4)}%`);
-        // the glass light follows the same smoothed lean: 9 % of the glass's width at full lean, whole device pixels
-        const sw = Math.max(1, window.innerWidth * (window.devicePixelRatio || 1));
-        shineVar('--wm-ti-sx', `${(Math.round(-tiltNow.x * 0.09 * sw) / (window.devicePixelRatio || 1)).toFixed(2)}px`);
+        // the glass light follows the same smoothed lean (#1413): it slides 9 % of the picture's width at full lean, in
+        // whole device pixels (tiltPx is the measured width, nothing is read from the layout here), and its slant
+        // tips up to 5 degrees the way it slides, so the light's angle moves with the phone
+        const dpr = window.devicePixelRatio || 1;
+        shineVar('--wm-ti-sx', `${(Math.round((-tiltNow.x * 9) / tiltPx.x) / dpr).toFixed(2)}px`);
+        shineVar('--wm-ti-sk', `${(tiltNow.x * 5 || 0).toFixed(1)}deg`);
         if (!done) tiltRaf = requestAnimationFrame(tiltFrame);
     }
 

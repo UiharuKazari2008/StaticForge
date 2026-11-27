@@ -459,9 +459,10 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-band::
         /* no middle line of its own: the art's middle edge stays as it was (Yukimi, Nov 25: put it back) */
 }
 
-/* the slanted light on the glass (#1413, Yukimi Nov 27): god rays of different widths on one layer a little wider than
- * the glass. The phone's lean slides it (transform, wmTitanium.js tiltFrame, the same smoothing as the picture's tilt);
- * `translate` is the idle drift, one slow transition that ends by itself. Nothing else moves; no keyframes. */
+/* the slanted light on the glass (#1413, Yukimi Nov 25): god rays of different widths on one layer a little wider than
+ * the glass. The phone's lean slides it and tips its slant (transform, wmTitanium.js tiltFrame, the same smoothing as
+ * the picture's tilt); `translate` is the idle drift, one slow transition that ends by itself. Nothing else moves; no
+ * keyframes. */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-shine { display: none; }
 html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-shine {
     display: block;
@@ -480,9 +481,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-shine > i {
     width: 160%;
     top: 0;
     bottom: 0;
-    transform: translate3d(var(--wm-ti-sx, 0px), 0, 0);
+    transform: translate3d(var(--wm-ti-sx, 0px), 0, 0) skewX(var(--wm-ti-sk, 0deg));
     translate: var(--wm-ti-dr, 0%) 0;
-    transition: translate 7s cubic-bezier(0.15, 0.6, 0.2, 1);
     background:
         linear-gradient(104deg, rgba(255, 255, 255, 0) 33%, rgba(255, 255, 255, 0.16) 33.5%, rgba(255, 255, 255, 0) 34.2%),
         linear-gradient(104deg, rgba(255, 255, 255, 0) 42%, rgba(255, 255, 255, 0.22) 42.6%, rgba(255, 255, 255, 0.22) 43%, rgba(255, 255, 255, 0) 43.7%),
@@ -491,6 +491,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-shine > i {
         linear-gradient(104deg, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, 0.05) 63%, rgba(255, 255, 255, 0.075) 65%, rgba(255, 255, 255, 0) 70%),
         linear-gradient(104deg, rgba(255, 255, 255, 0) 71.5%, rgba(255, 255, 255, 0.15) 72%, rgba(255, 255, 255, 0) 72.6%),
         linear-gradient(104deg, rgba(255, 255, 255, 0) 24%, rgba(255, 255, 255, 0.04) 28%, rgba(255, 255, 255, 0.065) 30.5%, rgba(255, 255, 255, 0) 32%);
+}
+/* the drift eases only from an idle's start (wmTitanium.js sets .is-drift). With Today put away - hidden, the screen
+ * off, a program in front - the class is gone: the light goes back at once and no transition runs on a page nobody sees */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-shine.is-drift > i {
+    transition: translate 7s cubic-bezier(0.15, 0.6, 0.2, 1);
 }
 
 /* the weather in the glass (wmTitanium.js syncWx, effect "weather"): over the frosted picture, under the art, the rows
