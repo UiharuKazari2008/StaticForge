@@ -535,8 +535,11 @@
         radio.url = new URL(r.url, location.origin).toString();
         radio.tuneAt = Date.now();
         const now = nowOf(id);
-        const list = stepList();
-        const at = Math.max(0, list.indexOf(id));
+        // (the playing channel is always in it, even when the list shown leaves it out: after a dead stream, a server
+        // restart say, the app tunes the channel `index` points at afresh, #1322)
+        const shownList = stepList();
+        const list = shownList.includes(id) ? shownList : [id].concat(shownList);
+        const at = list.indexOf(id);
         // the native player's own list: next / previous on its notification and headset change channel with the page asleep
         const native = { channels: list.slice(Math.max(0, at - 60), at + 60).map((x) => ({ id: x, title: chanLabel(chan(x)) })), q: quality(), back: radio.back };
         native.index = native.channels.findIndex((x) => x.id === id);
