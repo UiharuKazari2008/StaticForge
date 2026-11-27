@@ -2154,6 +2154,233 @@ sup._test.setFetch(async (url, opts) => {
         } finally { child.kill('SIGKILL'); fs.rmSync(rec, { force: true }); launcher.steer = realSteer; }
     });
 
+    // ---- permission prompts (#1351): a session sitting on Claude Code's "Do you want to proceed?" is answered after two quiet minutes
+    {
+        const coordP = require('../modules/agentCoord/store');
+        const PSID = (n) => `f${String(n).padStart(7, '0')}-aaaa-bbbb-cccc-000000000000`;
+        const mkPrompt = (cmd, sig) => ({ question: 'Do you want to proceed?', options: [{ n: 1, text: 'Yes', on: true }, { n: 2, text: 'No', on: false }], context: ['Bash command', `  ${cmd}`], signature: sig });
+        const world = { live: new Map(), prompts: {}, mtimes: {}, reads: [], answers: [], tells: [], answerResult: { answered: true, key: 1, option: 'Yes', gone: true } };
+        const decideFake = (p) => {
+            const cmd = p.context.slice(1).join(' ').trim();
+            if (/--force/.test(cmd)) return { decision: 'deny', kind: 'git-force', reason: 'a forced push can lose commits: push without --force', command: cmd };
+            if (/rm -rf/.test(cmd)) return { decision: 'hers', kind: 'delete', reason: 'it deletes files outside the work tree', command: cmd };
+            return { decision: 'approve', kind: 'repo-script', reason: 'a script of the repo itself', command: cmd };
+        };
+        const installDeps = (extra) => sup._setPromptDeps(Object.assign({
+            prompt: async (id) => { world.reads.push(id); const p = world.prompts[id]; if (p instanceof Error) throw p; return p || null; },
+            answer: async (id, choice, sig) => { world.answers.push([id, choice, sig]); return world.answerResult.answered ? Object.assign({}, world.answerResult, { key: choice === 'yes' ? 1 : 2 }) : world.answerResult; },
+            decide: decideFake,
+            mtime: (id) => world.mtimes[id],
+            tell: async (id, text) => { world.tells.push([id, text]); return true; }
+        }, extra || {}));
+        let issueNo = 7300;
+        const mkItem = (sid, state = 'running') => {
+            issueNo += 1;
+            const id = RAW().prepare("INSERT INTO supervisor_work (title, prompt, source, state, created_at, message, engine, issue_repo, issue_number, session_id) VALUES ('PromptItem', 'p', 'director', ?, ?, '', 'claude', 'DreamScape/StaticForge', ?, ?)").run(state, Date.now(), issueNo, sid).lastInsertRowid;
+            return { id, issue: issueNo, sid };
+        };
+        const addSession = (n, status = 'busy') => { const sid = PSID(n); world.live.set(sid, { id: sid, cwd: '/r', status, givenName: `P${n}`, pid: 1 }); return sid; };
+        const reset = () => {
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE state IN ('queued','starting','running','waiting','input')").run();
+            world.live = new Map(); world.prompts = {}; world.mtimes = {}; world.reads = []; world.answers = []; world.tells = [];
+            world.answerResult = { answered: true, key: 1, option: 'Yes', gone: true };
+            sup._test.promptWatch.clear();
+            installDeps();
+            sup._test.setCollisionDeps({ live: () => world.live });
+        };
+        const comments = (issue) => yzCalls.filter((c) => c.method === 'POST' && new RegExp(`issues/${issue}/comments$`).test(c.url)).map((c) => c.body.body);
+        const quietSince = (sid, base) => { world.mtimes[sid] = base - 5 * 60000; };
+        const MIN = 60000;
+        try {
+            await test('permission prompt: seen once, then one minute on, nothing is pressed; at two minutes a repo script is approved (Yes) once, written on the item, the issue and the inbox; not again; one more try after ten minutes', async () => {
+                reset();
+                const sid = addSession(1); const it = mkItem(sid);
+                const base = Date.now(); quietSince(sid, base);
+                world.prompts[sid] = mkPrompt('node scripts/x.js', 'sigA');
+                assert.strictEqual(await sup.sweepPermissionPrompts(base), 0);
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + MIN), 0);
+                assert.strictEqual(world.answers.length, 0, 'a person has two minutes');
+                assert.strictEqual(sup._test.promptWatch.get(sid).since, base, 'the clock started at the first sighting');
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 2 * MIN), 1);
+                assert.deepStrictEqual(world.answers, [[sid, 'yes', 'sigA']]);
+                assert.match(sup.getWork(it.id).message, /^Permission prompt approved: node scripts\/x\.js \(a script of the repo itself\)$/);
+                assert.strictEqual(sup.getWork(it.id).state, 'running');
+                await settle(60);
+                const cm = comments(it.issue);
+                assert.strictEqual(cm.length, 1, JSON.stringify(cm));
+                assert.match(cm[0], /sat on a permission prompt for 2 minutes: approved \(pressed 1\) `node scripts\/x\.js` - a script of the repo itself\./);
+                const inbox = coordP.inbox(`claude-${sid.slice(0, 8)}`, { peek: true });
+                assert.ok(inbox.some((m) => /approved the permission prompt "node scripts\/x\.js"/.test(m.body)), JSON.stringify(inbox));
+                assert.deepStrictEqual(world.tells, [], 'approving types nothing');
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 3 * MIN), 0);
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 11 * MIN), 0);
+                assert.strictEqual(world.answers.length, 1, 'not answered twice');
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 12 * MIN + 1), 1, 'still there ten minutes after: one more try');
+                assert.strictEqual(world.answers.length, 2);
+                assert.match(sup.getWork(it.id).message, /a second try/);
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 13 * MIN), 0);
+            });
+
+            await test('permission prompt: a forced push is declined (No), the session is told the reason and not to retry; the item stays running', async () => {
+                reset();
+                const sid = addSession(2); const it = mkItem(sid);
+                const base = Date.now(); quietSince(sid, base);
+                world.prompts[sid] = mkPrompt('git push --force origin main', 'sigB');
+                await sup.sweepPermissionPrompts(base);
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 2 * MIN), 1);
+                assert.deepStrictEqual(world.answers, [[sid, 'no', 'sigB']]);
+                assert.strictEqual(world.tells.length, 1);
+                assert.strictEqual(world.tells[0][0], sid);
+                assert.ok(world.tells[0][1].startsWith(sup.STEER_PREFIX), 'a Supervisor note');
+                assert.match(world.tells[0][1], /declined the permission prompt "git push --force origin main" \(a forced push can lose commits: push without --force\)/);
+                assert.match(world.tells[0][1], /Do not retry the same command\./);
+                assert.strictEqual(sup.getWork(it.id).state, 'running');
+                assert.match(sup.getWork(it.id).message, /^Permission prompt declined: git push --force origin main/);
+                await settle(60);
+                assert.match(comments(it.issue)[0], /declined \(pressed 2\) `git push --force origin main` - a forced push can lose commits/);
+            });
+
+            await test('permission prompt: a decision left to her declines it too and puts the item in Input Required with one question', async () => {
+                reset();
+                const sid = addSession(3); const it = mkItem(sid);
+                const base = Date.now(); quietSince(sid, base);
+                world.prompts[sid] = mkPrompt('rm -rf /home/kanmi/old', 'sigC');
+                await sup.sweepPermissionPrompts(base);
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 2 * MIN), 1);
+                assert.deepStrictEqual(world.answers, [[sid, 'no', 'sigC']]);
+                assert.strictEqual(world.tells.length, 1);
+                const w = sup.getWork(it.id);
+                assert.strictEqual(w.state, 'input');
+                assert.match(w.message, /^Input Required: /);
+                const q = JSON.parse(RAW().prepare('SELECT input_questions FROM supervisor_work WHERE id = ?').get(it.id).input_questions);
+                assert.strictEqual(q.length, 1);
+                assert.match(q[0].question, /rm -rf \/home\/kanmi\/old/);
+                assert.strictEqual(q[0].answer, '');
+                await settle(60);
+                assert.ok(comments(it.issue).some((c) => /declined \(pressed 2\) `rm -rf/.test(c)), 'the decision is on the issue');
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 3 * MIN), 0, 'an Input Required item is no longer read');
+            });
+
+            await test('permission prompt: a changed signature restarts the clock; a gone prompt clears the watch; moved transcript clears it and costs no read', async () => {
+                reset();
+                const sid = addSession(4); mkItem(sid);
+                const base = Date.now(); quietSince(sid, base);
+                world.prompts[sid] = mkPrompt('node scripts/a.js', 'sig1');
+                await sup.sweepPermissionPrompts(base);
+                world.prompts[sid] = mkPrompt('node scripts/b.js', 'sig2');
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 2 * MIN), 0, 'a different prompt: not acted on');
+                assert.strictEqual(sup._test.promptWatch.get(sid).sig, 'sig2');
+                assert.strictEqual(sup._test.promptWatch.get(sid).since, base + 2 * MIN);
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 3 * MIN), 0);
+                assert.strictEqual(world.answers.length, 0);
+                world.prompts[sid] = null; // answered by a person
+                await sup.sweepPermissionPrompts(base + 3 * MIN + 1000);
+                assert.ok(!sup._test.promptWatch.has(sid), 'a gone prompt deletes the entry');
+                world.prompts[sid] = mkPrompt('node scripts/b.js', 'sig2'); // the same one again: a new clock
+                await sup.sweepPermissionPrompts(base + 4 * MIN);
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 5 * MIN), 0, 'one minute is not two');
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 6 * MIN), 1);
+                // the transcript moved: it works, the watch is forgotten and the pane is not read
+                world.prompts[sid] = mkPrompt('node scripts/c.js', 'sig3');
+                await sup.sweepPermissionPrompts(base + 20 * MIN);
+                assert.ok(sup._test.promptWatch.has(sid));
+                world.mtimes[sid] = base + 20 * MIN - 5000;
+                const reads = world.reads.length;
+                await sup.sweepPermissionPrompts(base + 20 * MIN);
+                assert.ok(!sup._test.promptWatch.has(sid), 'a working session forgets its watch');
+                assert.strictEqual(world.reads.length, reads, 'and costs no tmux read');
+            });
+
+            await test('permission prompt: only live, not idle sessions with an active item are read; a prompt that cannot be read is no prompt', async () => {
+                reset();
+                const noItem = addSession(5);
+                const idle = addSession(6, 'idle'); mkItem(idle);
+                const notLive = PSID(7); mkItem(notLive);
+                const ended = addSession(8); mkItem(ended, 'done');
+                const thrower = addSession(9); mkItem(thrower);
+                const base = Date.now();
+                [noItem, idle, notLive, ended, thrower].forEach((x) => quietSince(x, base));
+                world.prompts[noItem] = mkPrompt('node scripts/a.js', 's5'); world.prompts[idle] = mkPrompt('node scripts/a.js', 's6'); world.prompts[ended] = mkPrompt('node scripts/a.js', 's8');
+                world.prompts[thrower] = Object.assign(new Error('Take Over in Fleet'), { code: 'NEEDS_TAKEOVER' });
+                await sup.sweepPermissionPrompts(base);
+                await sup.sweepPermissionPrompts(base + 5 * MIN);
+                assert.deepStrictEqual([...new Set(world.reads)], [thrower], `only the one that qualifies is read (${world.reads})`);
+                assert.strictEqual(world.answers.length, 0);
+                assert.ok(!sup._test.promptWatch.has(thrower));
+            });
+
+            await test('permission prompt: answerPermission answered:false is not retried in the same sweep, decided stays unset, the next sweep tries again', async () => {
+                reset();
+                const sid = addSession(10); const it = mkItem(sid);
+                const base = Date.now(); quietSince(sid, base);
+                world.prompts[sid] = mkPrompt('node scripts/x.js', 'sigD');
+                world.answerResult = { answered: false, why: 'prompt changed' };
+                await sup.sweepPermissionPrompts(base);
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 2 * MIN), 0);
+                assert.strictEqual(world.answers.length, 1, 'one press attempt in the sweep');
+                assert.strictEqual(sup._test.promptWatch.get(sid).decided, 0);
+                assert.strictEqual(sup.getWork(it.id).message, '', 'nothing is written for a press that did not happen');
+                world.answerResult = { answered: true, key: 1, option: 'Yes', gone: true };
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 3 * MIN), 1);
+                assert.strictEqual(world.answers.length, 2);
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 4 * MIN), 0);
+                assert.strictEqual(world.answers.length, 2);
+            });
+
+            await test('permission prompt: at most 12 sessions are read per sweep and the next sweep goes on where it stopped (none starves)', async () => {
+                reset();
+                const base = Date.now();
+                const sids = [];
+                for (let n = 20; n < 35; n += 1) { const sid = addSession(n); mkItem(sid); quietSince(sid, base); sids.push(sid); }
+                await sup.sweepPermissionPrompts(base);
+                assert.strictEqual(world.reads.length, 12);
+                const first = world.reads.slice();
+                await sup.sweepPermissionPrompts(base + MIN);
+                assert.strictEqual(world.reads.length, 24);
+                assert.deepStrictEqual(world.reads.slice(12, 15), sids.slice(12), 'the three it left out come first');
+                assert.strictEqual(new Set(world.reads).size, 15, 'every session was read');
+                assert.deepStrictEqual(first, sids.slice(0, 12));
+            });
+
+            await test('permission prompt: AGENT_SUPERVISOR_PROMPTS=0 turns the sweep off; a disabled Supervisor does nothing', async () => {
+                reset();
+                const sid = addSession(40); mkItem(sid);
+                const base = Date.now(); quietSince(sid, base);
+                world.prompts[sid] = mkPrompt('node scripts/x.js', 'sigE');
+                process.env.AGENT_SUPERVISOR_PROMPTS = '0';
+                try { assert.strictEqual(await sup.sweepPermissionPrompts(base + 5 * MIN), 0); } finally { delete process.env.AGENT_SUPERVISOR_PROMPTS; }
+                assert.strictEqual(world.reads.length, 0);
+                settingsCfg.agentSupervisor.enabled = false;
+                try { assert.strictEqual(await sup.sweepPermissionPrompts(base + 5 * MIN), 0); } finally { settingsCfg.agentSupervisor.enabled = true; }
+                assert.strictEqual(world.reads.length, 0);
+            });
+
+            await test('permission prompt: the real pane reader and the real policy end to end', async () => {
+                const policyFile = path.join(__dirname, '..', 'modules', 'permissionPromptPolicy.js');
+                if (!fs.existsSync(policyFile) || typeof launcher.readPermissionPrompt !== 'function') { console.log('     skipped: modules/permissionPromptPolicy.js does not exist yet'); return; }
+                reset();
+                const pane = [' Bash command', '   git -C /home/kanmi/staticforge status', '   Show status', ' This command requires approval', ' Do you want to proceed?', ' \u276f 1. Yes', '   2. No', ' Esc to cancel'];
+                const real = launcher.readPermissionPrompt(pane);
+                assert.ok(real && real.signature, 'the pane reads as a permission prompt');
+                const sid = addSession(41); mkItem(sid);
+                const base = Date.now(); quietSince(sid, base);
+                sup._setPromptDeps({
+                    prompt: async () => launcher.readPermissionPrompt(pane),
+                    answer: async (id, choice, sig) => { world.answers.push([id, choice, sig]); return world.answerResult; },
+                    mtime: (id) => world.mtimes[id], tell: async (id, t) => { world.tells.push([id, t]); return true; }
+                });
+                await sup.sweepPermissionPrompts(base);
+                assert.strictEqual(await sup.sweepPermissionPrompts(base + 2 * MIN), 1);
+                assert.deepStrictEqual(world.answers, [[sid, 'yes', real.signature]], 'git status is read only: approved');
+            });
+        } finally {
+            sup._setPromptDeps({});
+            sup._test.setCollisionDeps({});
+            sup._test.promptWatch.clear();
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE state IN ('queued','starting','running','waiting','input')").run();
+        }
+    }
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

@@ -295,6 +295,81 @@ async function main() {
         // a busy session's own footer ("esc to interrupt") is not a menu
         paneText = ['✽ Churning… (7s)', '─'.repeat(40), '❯ ', '─'.repeat(40), '  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt'].join('\n');
         assert.strictEqual((await launcher.steer(SID, 'still sends')).sent, true);
+        // tool-permission prompts (#1351): read from the pane and answered by digit
+        {
+            const RPP = launcher.readPermissionPrompt;
+            const three = [' Bash command', '   rm -rf build', ' Do you want to proceed?', ' ❯ 1. Yes', "   2. Yes, and don't ask again", '   3. No, and tell Claude what to do differently (esc)', ' Esc to cancel'];
+            const p3 = RPP(three);
+            assert.strictEqual(p3.question, 'Do you want to proceed?');
+            assert.deepStrictEqual(p3.options.map((o) => [o.n, o.on]), [[1, true], [2, false], [3, false]]);
+            assert.strictEqual(p3.options[0].text, 'Yes');
+            assert.deepStrictEqual(p3.context, [' Bash command', '   rm -rf build']);
+            assert.ok(/^[0-9a-f]{12}$/.test(p3.signature));
+            const two = (cmd) => ['● Bash(run it)', '─'.repeat(40), ' Bash command', '', ...cmd, '', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. No', ' Esc to cancel'];
+            const heredoc = ["   cat <<'EOF' > /tmp/x.txt", '   line one', '   EOF'];
+            const p2 = RPP(two(heredoc));
+            assert.deepStrictEqual(p2.options.map((o) => [o.n, o.text]), [[1, 'Yes'], [2, 'No']]);
+            assert.ok(p2.context.some((l) => /Bash command/.test(l)) && p2.context.some((l) => /line one/.test(l)) && p2.context.some((l) => /EOF/.test(l)));
+            assert.ok(!p2.context.some((l) => /^[\s─]+$/.test(l)), 'separator lines are dropped');
+            // the same stuck prompt reads the same, another command reads differently
+            assert.strictEqual(RPP(two(heredoc)).signature, p2.signature);
+            assert.notStrictEqual(RPP(two(['   rm -rf /tmp/y'])).signature, p2.signature);
+            // an edit prompt
+            const ed = RPP([' Edit file', ' modules/x.js', ' Do you want to make this edit to modules/x.js?', ' ❯ 1. Yes', '   2. Yes, allow all edits during this session (shift+tab)', '   3. No, and tell Claude what to do differently (esc)', ' Esc to cancel']);
+            assert.strictEqual(ed.question, 'Do you want to make this edit to modules/x.js?');
+            assert.strictEqual(ed.options.length, 3);
+            // a menu offer is not a permission prompt
+            assert.strictEqual(RPP(['  Make auto mode your default permission mode?', '', '  ❯ Yes, set auto mode as my default permission mode', '    No, keep bypass permissions', '', '  Not answered yet · ↑/↓ to choose · Esc to cancel']), null);
+            // old prompt text far above a normal input box
+            assert.strictEqual(RPP([...three, '● Done, ran it.', 'more output', 'more output', 'more output', '─'.repeat(40), '❯ ', '─'.repeat(40), '  ⏵⏵ bypass permissions on (shift+tab to cycle)']), null);
+            assert.strictEqual(RPP([]), null);
+            // answering through the pane
+            const stateOf = (lines) => { paneText = lines.join('\n'); };
+            const press = (lines) => { const sent = []; onKeys = (a) => { sent.push(a[a.length - 1]); stateOf(['● ran', '❯ ']); }; return sent; };
+            stateOf(three);
+            const live3 = await launcher.permissionPrompt(SID);
+            assert.strictEqual(live3.signature, p3.signature);
+            let sent = press();
+            calls.length = 0;
+            let r = await launcher.answerPermission(SID, 'yes', p3.signature);
+            assert.deepStrictEqual(sent, ['1'], 'yes sends exactly 1');
+            assert.deepStrictEqual([r.answered, r.key, r.option, r.gone], [true, 1, 'Yes', true]);
+            stateOf(three); sent = press();
+            r = await launcher.answerPermission(SID, 'no');
+            assert.deepStrictEqual(sent, ['3'], 'no is the third option there');
+            assert.strictEqual(r.key, 3);
+            stateOf(two(heredoc)); sent = press();
+            await launcher.answerPermission(SID, 'no', RPP(two(heredoc)).signature);
+            assert.deepStrictEqual(sent, ['2']);
+            // a stale answer sends nothing
+            stateOf(two(heredoc)); sent = press();
+            r = await launcher.answerPermission(SID, 'yes', RPP(two(['   rm -rf /tmp/y'])).signature);
+            assert.deepStrictEqual([r.answered, r.why, sent.length], [false, 'prompt changed', 0]);
+            stateOf(['● ran', '❯ ']); sent = press();
+            r = await launcher.answerPermission(SID, 'yes', p3.signature);
+            assert.deepStrictEqual([r.answered, r.why, sent.length], [false, 'prompt gone', 0]);
+            assert.strictEqual(await launcher.permissionPrompt(SID), null);
+            // a remember-forever option is never the yes, even when it comes first
+            const always = [' Do you want to proceed?', " ❯ 1. Yes, and don't ask again for rm commands", '   2. Yes', '   3. No', ' Esc to cancel'];
+            stateOf(always); sent = press();
+            r = await launcher.answerPermission(SID, 'yes');
+            assert.deepStrictEqual(sent, ['2']);
+            stateOf([' Do you want to proceed?', ' ❯ 1. Yes, always allow this', '   2. No', ' Esc to cancel']); sent = press();
+            r = await launcher.answerPermission(SID, 'yes');
+            assert.deepStrictEqual([r.answered, r.why, sent.length], [false, 'no such option', 0]);
+            // the digit did not take: Enter once, only when the pointer is on the chosen option
+            stateOf(two(heredoc)); sent = [];
+            onKeys = (a) => { sent.push(a[a.length - 1]); if (a[a.length - 1] === 'Enter') stateOf(['● ran', '❯ ']); };
+            r = await launcher.answerPermission(SID, 'yes');
+            assert.deepStrictEqual(sent, ['1', 'Enter']);
+            assert.strictEqual(r.gone, true);
+            stateOf(two(heredoc)); sent = [];
+            onKeys = (a) => { sent.push(a[a.length - 1]); };
+            r = await launcher.answerPermission(SID, 'no');
+            assert.deepStrictEqual(sent, ['2'], 'Enter never lands on a different option than the one chosen');
+            assert.strictEqual(r.gone, false);
+            onKeys = null;
+        }
         paneText = before;
         // Show Screen's live terminal: tmux attached to the session's own tmux session
         const at = await launcher.attachCommand(SID);

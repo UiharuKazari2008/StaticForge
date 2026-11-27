@@ -150,10 +150,11 @@ const sockServer = () => [...live.servers].find((s) => { try { return s.address(
     sup._test.issueTitles.set('x/y#1', 'a title');
     sup._test.statusBySession.set('bbbbbbbb-1111-2222-3333-444444444444', 'busy');
     sup._test.loginMoves.set('cccccccc-1111-2222-3333-444444444444', [1, 2]);
+    sup._test.promptWatch.set('99999999-1111-2222-3333-444444444444', { sig: 'abc', since: 5, decided: 0 });
     sup._late.scheduleStallCheck('dddddddd-1111-2222-3333-444444444444');
     sup._late.holdForRecheck('eeeeeeee-1111-2222-3333-444444444444');
     sup._late.armRecheck('ffffffff-1111-2222-3333-444444444444', 3 * 60000);
-    const held = { stallKicks: sup._test.stallKicks, issueTitles: sup._test.issueTitles, reviewingNow: sup._test.reviewingNow, statusBySession: sup._test.statusBySession };
+    const held = { promptWatch: sup._test.promptWatch, stallKicks: sup._test.stallKicks, issueTitles: sup._test.issueTitles, reviewingNow: sup._test.reviewingNow, statusBySession: sup._test.statusBySession };
     const withTimers = snap();
     const supIdentity = sup;
     const idScan = [];
@@ -192,6 +193,8 @@ const sockServer = () => [...live.servers].find((s) => { try { return s.address(
         assert.strictEqual(sup._test.stallKicks, held.stallKicks);
         assert.strictEqual(sup._test.issueTitles, held.issueTitles);
         assert.strictEqual(sup._test.reviewingNow, held.reviewingNow);
+        assert.strictEqual(sup._test.promptWatch, held.promptWatch, 'the permission prompt watch is the same Map after 20 reloads');
+        assert.deepStrictEqual(sup._test.promptWatch.get('99999999-1111-2222-3333-444444444444'), { sig: 'abc', since: 5, decided: 0 });
         assert.strictEqual(sup._test.statusBySession, held.statusBySession);
         assert.deepStrictEqual(sup._test.stallKicks.get(999), { at: 1, n: 2, reviewId: 3 });
         assert.strictEqual(sup._test.issueTitles.get('x/y#1'), 'a title');
@@ -317,6 +320,130 @@ const sockServer = () => [...live.servers].find((s) => { try { return s.address(
         const again = await reload();
         assert.ok(again.ok, again.error);
         assert.deepStrictEqual(snap(), countsBefore);
+    });
+
+    // ---- the socket is served reliably (#1351): a dead file, a live other process, a deleted or replaced file, a reload with no server
+    const SOCK = process.env.AGENT_SUPERVISOR_SOCKET;
+    const { spawn } = require('child_process');
+    const warned = [];
+    const realWarn = console.warn;
+    const catchWarn = () => { warned.length = 0; console.warn = (...a) => { warned.push(a.join(' ')); }; };
+    const stopWarn = () => { console.warn = realWarn; };
+    const listening = () => { const s = sockServer(); return !!(s && s.listening); };
+    // a socket file with no process behind it: a child binds it and is killed (SIGKILL leaves the file)
+    async function makeDeadSocket(file) {
+        const child = spawn(process.execPath, ['-e', "require('net').createServer().listen(process.argv[1], () => console.log('up'))", file], { stdio: ['ignore', 'pipe', 'inherit'] });
+        await new Promise((res, rej) => { child.stdout.once('data', res); child.once('error', rej); child.once('exit', () => rej(new Error('the child exited early'))); });
+        const gone = new Promise((res) => child.once('exit', res));
+        child.kill('SIGKILL');
+        await gone;
+        assert.ok(fs.existsSync(file), 'the dead socket file is left behind');
+    }
+
+    await test('ensureSocket on a healthy socket is one stat: ok, the same server, nothing re-listened', async () => {
+        const srv = sockServer();
+        assert.strictEqual(await sup.ensureSocket(), 'ok');
+        assert.strictEqual(sockServer(), srv);
+        assert.strictEqual(await sup._test.probeSocket(SOCK), 'own', 'its own pid answers the probe');
+        assert.strictEqual(await sup._test.probeSocket(path.join(tmp, 'state', 'none.sock')), 'dead');
+    });
+
+    await test('the socket file deleted under the running server: ensureSocket closes the orphan and listens again', async () => {
+        const old = sockServer();
+        const n = snap();
+        fs.unlinkSync(SOCK);
+        catchWarn();
+        try { assert.strictEqual(await sup.ensureSocket(), 'listening'); } finally { stopWarn(); }
+        assert.ok(warned.some((w) => /was not served .*no file/.test(w)), warned.join('|'));
+        const now = sockServer();
+        assert.ok(now && now !== old && now.listening, 'a new server listens');
+        assert.ok(!old.listening, 'the orphan is closed');
+        assert.strictEqual(snap().servers, n.servers, 'still one server');
+        assert.ok(fs.existsSync(SOCK), 'the new file exists (the orphan was closed before binding)');
+        assert.ok((await ask({ op: 'fleet_work_list', limit: 5 })).ok);
+        assert.strictEqual(now.listeners('connection')[0], sup._test.onSockConnection);
+        assert.strictEqual(await sup.ensureSocket(), 'ok');
+    });
+
+    await test('the socket file replaced by a dead file (a thief that exited): ensureSocket listens again', async () => {
+        const old = sockServer();
+        const dead = path.join(tmp, 'state', 'thief.sock');
+        await makeDeadSocket(dead);
+        fs.renameSync(dead, SOCK); // the live server now listens on an unlinked inode; the path is a dead file
+        await assert.rejects(ask({ op: 'fleet_work_list', limit: 5 }), /ECONNREFUSED/, 'refused, as in the incident');
+        catchWarn();
+        try { assert.strictEqual(await sup.ensureSocket(), 'listening'); } finally { stopWarn(); }
+        assert.ok(warned.some((w) => /a dead file/.test(w)), warned.join('|'));
+        assert.ok(sockServer() && sockServer() !== old && listening());
+        assert.ok((await ask({ op: 'fleet_work_list', limit: 5 })).ok, 'answers again');
+        assert.strictEqual(snap().servers, afterStart.servers);
+    });
+
+    await test('a reload whose old version had no server, or a closed one, listens again afterwards', async () => {
+        for (const how of ['closed', 'null']) {
+            const state = sup.hot.dispose({ rollback: true });
+            assert.ok(state.sockServer, 'the server is handed over');
+            state.sockServer.close(); // closing unlinks the path
+            if (how === 'null') state.sockServer = null;
+            assert.ok(!fs.existsSync(SOCK));
+            catchWarn();
+            try {
+                sup.hot.accept(state, { rollback: true });
+                assert.ok(await waitFor(listening), `${how}: listening again after the reload`);
+            } finally { stopWarn(); }
+            assert.ok((await ask({ op: 'fleet_work_list', limit: 5 })).ok, `${how}: answers`);
+            assert.strictEqual(snap().servers, afterStart.servers, `${how}: one server`);
+            assert.strictEqual(sockServer().listeners('connection')[0], sup._test.onSockConnection);
+        }
+    });
+
+    await test('a reload hands the inode over: a healthy socket is left alone (no re-listen, the same server)', async () => {
+        const srv = sockServer();
+        const ino = sup._test.sockIno;
+        assert.ok(ino > 0, 'the inode is recorded');
+        const r = await reload();
+        assert.ok(r.ok, r.error);
+        await pause(100);
+        assert.strictEqual(sockServer(), srv);
+        assert.strictEqual(sup._test.sockIno, ino);
+    });
+
+    await test('start() on a stale socket file (no listener): it listens, a client gets an answer; stop() leaves nothing', async () => {
+        sup.stop();
+        await pause(50);
+        assert.ok(!fs.existsSync(SOCK), 'stop removed its socket');
+        await makeDeadSocket(SOCK);
+        sup.start(gr);
+        assert.ok(await waitFor(listening), 'it listens although a dead file was in the way');
+        assert.ok((await ask({ op: 'fleet_work_list', limit: 5 })).ok);
+        assert.strictEqual(snap().servers - before.servers, 1);
+        sup.stop();
+        await pause(50);
+    });
+
+    await test('a live other process on the path is never taken over: warned once, its clients still get its answers, and it is served once it goes', async () => {
+        assert.ok(!fs.existsSync(SOCK));
+        const other = net.createServer((c) => { c.on('data', () => { c.end(`${JSON.stringify({ ok: true, result: 'the other process' })}\n`); }); });
+        await new Promise((res) => other.listen(SOCK, res));
+        catchWarn();
+        try {
+            sup.start(gr);
+            assert.ok(await waitFor(() => warned.some((w) => /served by another process; not taking it over/.test(w))), `warned: ${warned.join('|')}`);
+            assert.ok(warned.some((w) => w.includes(SOCK)), 'names the path');
+            assert.strictEqual(snap().servers - before.servers, 1, 'only the other server (the Supervisor made none)');
+            assert.strictEqual((await ask({ op: 'check' })).result, 'the other process', 'the other process still answers');
+            const n = warned.length;
+            assert.strictEqual(await sup.ensureSocket(), 'other');
+            assert.strictEqual(await sup.ensureSocket(), 'other');
+            assert.strictEqual(warned.length, n, 'one warning per situation, not one per minute');
+            assert.strictEqual((await ask({ op: 'check' })).result, 'the other process');
+        } finally { stopWarn(); }
+        await new Promise((res) => other.close(res)); // its path goes with it
+        assert.strictEqual(await sup.ensureSocket(), 'listening');
+        assert.ok(listening());
+        const a = await ask({ op: 'nonsense' });
+        assert.ok(!a.ok && /op must be/.test(a.error), 'now the Supervisor answers');
+        assert.strictEqual(snap().servers - before.servers, 1);
     });
 
     await test('stop() brings intervals, watchers and servers back to what they were before start()', async () => {

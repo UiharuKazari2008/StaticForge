@@ -647,4 +647,88 @@ async function attachCommand(id) {
     return { file: 'tmux', args: [...sock, 'attach-session', '-t', `=${name}`], title: name, sessionId: live.id };
 }
 
-module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, attachCommand, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE, EFFORTS, _test: { buildArgs, READY_RE, readDialog } };
+// ---------------------------------------------------------------- tool-permission prompts (#1351)
+
+/**
+ * A pending Claude Code tool-permission prompt ("Do you want to proceed?", "...make this edit to x?") at the bottom of a
+ * screen (non-empty lines, right-trimmed), or null. A menu offer ("Make auto mode your default permission mode?") is not
+ * one, and neither is old text further up: only the menu whose hint line sits in the last 4 lines is read.
+ * { question, options: [{ n, text, on }], context: [masked lines above the question], signature }
+ */
+function readPermissionPrompt(lines) {
+    const all = (Array.isArray(lines) ? lines : []).map((l) => String(l).replace(/\s+$/, ''));
+    const dlg = readDialog(all);
+    if (!dlg || !dlg.options.length || !/^Do you want to /i.test(dlg.question)) return null;
+    let qi = -1;
+    for (let i = all.length - 1; i >= 0; i -= 1) { if (all[i].trim() === dlg.question) { qi = i; break; } }
+    if (qi < 0) return null;
+    const mask = require('./claudeTranscript').mask;
+    let at = qi + 1;
+    const options = dlg.options.map((o, idx) => {
+        let n = idx + 1;
+        for (let i = at; i < all.length; i += 1) {
+            const m = /^\s*❯?\s*(\d+)[.)]\s+(.*)$/.exec(all[i]);
+            if (m && m[2].trim() === o.text) { n = Number(m[1]); at = i + 1; break; }
+        }
+        return { n, text: o.text, on: !!o.on };
+    });
+    const context = all.slice(0, qi).filter((l) => l.trim() && !/^[\s─-╿]+$/.test(l)).slice(-14).map((l) => mask(l).replace(/\s+$/, ''));
+    const signature = crypto.createHash('sha1').update([dlg.question, options.map((o) => o.text).join('\n'), context.join('\n')].join('\n--\n')).digest('hex').slice(0, 12);
+    return { question: dlg.question, options, context, signature };
+}
+
+async function permissionTail(sock, pane) {
+    const shot = await runner('tmux', [...sock, 'capture-pane', '-p', '-J', '-t', pane, '-S', '-60']);
+    return String(shot.stdout || '').split('\n').filter((l) => l.trim());
+}
+
+/** The permission prompt a running session is showing now, or null. Throws what paneFor throws (not running, NEEDS_TAKEOVER). */
+async function permissionPrompt(id) {
+    const { sock, pane } = await paneFor(id);
+    return readPermissionPrompt(await permissionTail(sock, pane));
+}
+
+const REMEMBER_RE = /don'?t ask again|and don'?t|always/i;
+
+/**
+ * Answers the permission prompt with 'yes' or 'no' by pressing the option's digit. `signature` (from permissionPrompt) makes
+ * the answer land only on that exact prompt. A remember-forever option is never chosen.
+ * { answered: true, key, option, gone } or { answered: false, why: 'prompt gone' | 'prompt changed' | 'no such option' }
+ */
+async function answerPermission(id, choice, signature) {
+    if (readOnly()) throw new Error('Sessions are read-only on this instance');
+    if (choice !== 'yes' && choice !== 'no') throw new Error('choice is yes or no');
+    const { sock, pane } = await paneFor(id);
+    const cur = readPermissionPrompt(await permissionTail(sock, pane));
+    if (!cur) return { answered: false, why: 'prompt gone' };
+    if (signature && signature !== cur.signature) return { answered: false, why: 'prompt changed' };
+    const opt = cur.options.find((o) => (choice === 'yes' ? /^Yes\b/i.test(o.text) && !REMEMBER_RE.test(o.text) : /^No\b/i.test(o.text)));
+    if (!opt) return { answered: false, why: 'no such option' };
+    await runner('tmux', [...sock, 'send-keys', '-t', pane, String(opt.n)]);
+    let gone = false;
+    let last = cur;
+    for (let i = 0; i < 10 && !gone; i += 1) {
+        await new Promise((res) => setTimeout(res, 150));
+        last = readPermissionPrompt(await permissionTail(sock, pane));
+        gone = !last;
+    }
+    if (!gone && last && last.signature === cur.signature) {
+        // the digit did not select: Enter only when the pointer sits on the option chosen (Enter on another would answer differently)
+        const on = last.options.find((o) => o.on);
+        if (on && on.n === opt.n) {
+            await runner('tmux', [...sock, 'send-keys', '-t', pane, 'Enter']);
+            await new Promise((res) => setTimeout(res, 150));
+            gone = !readPermissionPrompt(await permissionTail(sock, pane));
+        }
+    }
+    console.log(`[claudeDesk] answered permission prompt "${cur.question.slice(0, 80)}" with "${opt.text.slice(0, 60)}" for ${String(id).slice(0, 8)}${gone ? '' : ' (still on screen)'}`);
+    return { answered: true, key: opt.n, option: opt.text, gone };
+}
+
+module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, attachCommand, readPermissionPrompt, permissionPrompt, answerPermission, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE, EFFORTS, _test: { buildArgs, READY_RE, readDialog } };
+
+// hot reload (#1292): the carry-server promise and a test runner survive; the default runner is rebuilt from the new code
+require('./hotReload').mark(module, {
+    dispose() { return { runner: runner === defaultRunner ? null : runner, serverReady }; },
+    accept(state) { if (state) { if (state.runner) runner = state.runner; serverReady = state.serverReady; } }
+});

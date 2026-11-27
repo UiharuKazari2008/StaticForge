@@ -3551,6 +3551,120 @@ async function sweepClearGates(now = Date.now()) {
     return acted;
 }
 
+/**
+ * Permission prompts do not sit (#1351): a session of an active item that stands on Claude Code's "This command requires
+ * approval / Do you want to proceed?" stalls for good while background agents run (sweepStalled skips sessions with
+ * background work). Runs on the one-minute gate timer (no timer of its own). Only a live, not idle session of an active item
+ * whose main transcript has not moved for a minute costs a tmux read (one permissionPrompt per candidate, in sequence, at most
+ * PROMPT_SWEEP_MAX per sweep, rotating). A prompt is acted on only after the SAME signature has stood for PROMPT_WAIT_MS, so a
+ * person answering within two minutes is never overridden. The policy (permissionPromptPolicy.decide) says approve / deny /
+ * hers: approve presses Yes; deny and hers press No and tell the session why; hers also sends the item to Input Required with
+ * one question. Every decision is written on the item, on its issue and (approve) into the session's inbox (deny / hers: the
+ * steer note tellSession leaves there). Env: AGENT_SUPERVISOR_PROMPTS=0 turns the sweep off; AGENT_SUPERVISOR_PROMPT_WAIT_MS
+ * changes the two minutes.
+ */
+const PROMPT_WAIT_MS = envMs0('AGENT_SUPERVISOR_PROMPT_WAIT_MS', 2 * 60000);
+const PROMPT_QUIET_MS = 60000;          // the main transcript has not moved this long
+const PROMPT_RETRY_MS = 10 * 60000;     // the same prompt still there this long after we answered: one more try
+const PROMPT_SWEEP_MAX = 12;
+const PROMPT_WATCH_MAX = 300;
+let promptWatch = new Map(); // session id -> { sig, since, decided (ms of our answer, 0 = none) }; handed over on a reload
+let promptDeps = {};
+/** Test hook: { prompt(id), answer(id, choice, sig), decide(prompt, opts), mtime(id) (ms), tell(id, text) } */
+function _setPromptDeps(o) { promptDeps = o || {}; }
+const transcriptFiles = new Map(); // session id -> main transcript path (found once)
+let promptLast = '';               // the last session id read: the next sweep starts after it
+let promptSweeping = false;
+function transcriptMtime(sessionId) {
+    if (promptDeps.mtime) return Number(promptDeps.mtime(sessionId)) || 0;
+    let f = transcriptFiles.get(sessionId);
+    if (!f) {
+        try { const t = require('./claudeSessions')._findTranscript(sessionId); f = t && t.file ? t.file : ''; } catch (_) { f = ''; }
+        if (f) transcriptFiles.set(sessionId, f);
+    }
+    if (!f) return 0;
+    try { return fs.statSync(f).mtimeMs; } catch (_) { transcriptFiles.delete(sessionId); return 0; }
+}
+async function sweepPermissionPrompts(now = Date.now()) {
+    const st = stale('sweepPermissionPrompts'); if (st) return st(now);
+    if (process.env.AGENT_SUPERVISOR_PROMPTS === '0' || promptSweeping) return 0;
+    const set = settings();
+    if (!set.enabled) return 0;
+    let rows = [];
+    try { rows = db().prepare("SELECT * FROM supervisor_work WHERE state IN ('running','waiting') AND session_id IS NOT NULL ORDER BY id").all(); } catch (_) { return 0; }
+    const items = new Map(); // session id -> its first active item
+    rows.forEach((w) => { if (!items.has(w.session_id)) items.set(w.session_id, w); });
+    for (const sid of [...promptWatch.keys()]) if (!items.has(sid)) promptWatch.delete(sid); // the item ended
+    for (const sid of [...transcriptFiles.keys()]) if (!items.has(sid)) transcriptFiles.delete(sid);
+    if (!items.size) return 0;
+    promptSweeping = true;
+    let answered = 0;
+    try {
+        const live = liveNow();
+        const quiet = [];
+        for (const sid of [...items.keys()].sort()) {
+            const l = live.get(sid);
+            if (!l || l.status === 'idle' || l.status === 'shell' || (set.managerSessionId && sid === set.managerSessionId)) { promptWatch.delete(sid); continue; }
+            const m = transcriptMtime(sid);
+            if (!m || now - m < PROMPT_QUIET_MS) { promptWatch.delete(sid); continue; } // it works (or has no transcript to judge by)
+            quiet.push(sid);
+        }
+        // at most PROMPT_SWEEP_MAX reads, starting after the last one read so that none starves
+        let from = quiet.findIndex((sid) => sid > promptLast);
+        if (from < 0) from = 0;
+        const turn = quiet.slice(from).concat(quiet.slice(0, from)).slice(0, PROMPT_SWEEP_MAX);
+        for (const sid of turn) {
+            promptLast = sid;
+            try { if (await promptStep(sid, items.get(sid), live.get(sid), now)) answered += 1; } catch (e) { console.warn(`[supervisor] permission prompt ${String(sid).slice(0, 8)}: ${e.message}`); }
+        }
+        while (promptWatch.size > PROMPT_WATCH_MAX) promptWatch.delete(promptWatch.keys().next().value);
+    } finally { promptSweeping = false; }
+    return answered;
+}
+/** One candidate: read its screen, watch the prompt, act when it has stood long enough. True when a key was pressed. */
+async function promptStep(sid, w, l, now) {
+    let p = null;
+    try { p = await (promptDeps.prompt || ((id) => require('./claudeSessionLauncher').permissionPrompt(id)))(sid); } catch (_) { p = null; } // not typable / not running: next sweep
+    if (!p || !p.signature) { promptWatch.delete(sid); return false; }
+    const e = promptWatch.get(sid);
+    if (!e || e.sig !== p.signature) { promptWatch.delete(sid); promptWatch.set(sid, { sig: p.signature, since: now, decided: 0 }); return false; }
+    if (now - e.since < PROMPT_WAIT_MS) return false;
+    if (e.decided && now - e.decided < PROMPT_RETRY_MS) return false;
+    const again = !!e.decided;
+    const d = await (promptDeps.decide || ((x, o) => require('./permissionPromptPolicy').decide(x, o)))(p, { cwd: l && l.cwd });
+    if (!d || !['approve', 'deny', 'hers'].includes(d.decision)) return false;
+    const choice = d.decision === 'approve' ? 'yes' : 'no';
+    let r = null;
+    try { r = await (promptDeps.answer || ((id, c, s) => require('./claudeSessionLauncher').answerPermission(id, c, s)))(sid, choice, p.signature); } catch (_) { r = null; }
+    if (!r || !r.answered) return false; // the screen changed or the key did not go: the next sweep reads it again
+    e.decided = now;
+    const command = String(d.command || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    const reason = String(d.reason || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    const mins = Math.max(1, Math.round((now - e.since) / 60000));
+    const approved = d.decision === 'approve';
+    const verb = approved ? 'approved' : 'declined';
+    const retryNote = again ? ' (a second try: the first key had not taken)' : '';
+    setWork(w.id, { message: `Permission prompt ${verb}: ${command.slice(0, 120)} (${reason})${retryNote}`.slice(0, 480) });
+    commentIssue(w, `**Fleet / Supervisor:** the session sat on a permission prompt for ${mins} minutes: ${approved ? `approved (pressed ${r.key || 1})` : `declined (pressed ${r.key || 2})`} \`${command}\` - ${reason}.${retryNote}`);
+    const tell = promptDeps.tell || ((id, text) => tellSession(id, text, { always: true }));
+    if (approved) {
+        try {
+            if (!coord().getAgent(lockAgentId(sid))) coord().upsertAgent({ id: lockAgentId(sid), kind: 'claude', name: (l && (l.givenName || l.name)) || String(sid).slice(0, 8), sessionId: sid });
+            coord().post('supervisor', lockAgentId(sid), `Fleet approved the permission prompt "${command}" (${reason}) after it stood for ${mins} minutes.`, { kind: 'note' });
+        } catch (_) { /* inbox unavailable */ }
+    } else {
+        const hers = d.decision === 'hers';
+        const text = `${STEER_PREFIX} Fleet declined the permission prompt "${command}" (${reason}). Do what the reason says instead. Do not retry the same command.${hers ? ' Yukimi was asked about it: carry on with other work until her answer arrives.' : ''}`;
+        try { await tell(sid, text); } catch (_) { /* typed best effort: the inbox note stays */ }
+        if (hers) {
+            const question = `The session asked to run "${command.slice(0, 200)}" and Fleet declined it: ${reason} May it run it?`.slice(0, 500);
+            setWork(w.id, { state: 'input', message: `Input Required: ${question}`.slice(0, 240), input_questions: JSON.stringify([{ question, answer: '', why: 'Claude Code asked for permission and the policy leaves this decision to Yukimi' }]) });
+        }
+    }
+    emit({ work: getWork(w.id) });
+    return true;
+}
+
 async function recheckWaits() {
     const live = liveNow();
     const ctx = {};
@@ -4451,6 +4565,8 @@ function onSockConnection(sock) {
         let req = null;
         try { req = JSON.parse(buf.slice(0, i)); } catch (_) { req = null; }
         buf = '';
+        // a probe from the socket repair below (ensureSocket): who answers on this path? (the pid tells our own server from another process's)
+        if (req && req.op === 'ping') { try { sock.end(`${JSON.stringify({ ok: true, pid: process.pid })}\n`); } catch (_) { /* gone */ } return; }
         let out;
         try {
             if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user', 'device-consent'].concat(FLEET_OPS, TASK_OPS).includes(req.op)) throw new Error('op must be check, enqueue, pause, resume, ask_user, device-consent, a task_* or a fleet_* op');
@@ -4484,13 +4600,93 @@ function onSockConnection(sock) {
     });
     sock.on('error', () => {});
 }
+// The socket path is shared with every process that runs this stack against the same state folder: a test or script that starts
+// the Supervisor without its own AGENT_SUPERVISOR_SOCKET used to unlink the live server's path and leave a dead file behind (#1351:
+// ECONNREFUSED until the next restart; a reload handed the same orphaned server over). So: a path that something answers on is
+// never taken over, and a server whose path is gone, replaced or dead is closed and listens again (ensureSocket: after a reload
+// and every minute on the gate timer, one stat when all is well).
+let sockIno = 0;        // the inode of the socket file this version's server created ("" = unknown: a handed-over server of an older version)
+let sockBusy = null;    // an ensureSocket run in flight
+let sockWarned = '';    // the path + inode a warning was written for (one line per situation, not one per minute)
+const SOCK_PROBE_MS = 500;
+/** What answers on the path: 'dead' (nothing: no file, refused, silent connect), 'own' (this process's server) or 'live' (another process). */
+function probeSocket(file) {
+    return new Promise((resolve) => {
+        let done = false;
+        let connected = false;
+        let buf = '';
+        const sk = net.createConnection(file);
+        const end = (r) => { if (done) return; done = true; try { sk.destroy(); } catch (_) { /* gone */ } resolve(r); };
+        sk.setEncoding('utf8');
+        sk.setTimeout(SOCK_PROBE_MS, () => end(connected ? 'live' : 'dead'));
+        sk.on('connect', () => { connected = true; try { sk.write('{"op":"ping"}\n'); } catch (_) { end('live'); } });
+        sk.on('data', (c) => {
+            buf += c;
+            const i = buf.indexOf('\n');
+            if (i < 0) { if (buf.length > 4096) end('live'); return; }
+            let o = null;
+            try { o = JSON.parse(buf.slice(0, i)); } catch (_) { o = null; }
+            end(o && o.ok === true && o.pid === process.pid ? 'own' : 'live'); // anything that answers is a live process
+        });
+        sk.on('end', () => end(connected ? 'live' : 'dead'));
+        sk.on('error', (e) => end(e && (e.code === 'EACCES' || e.code === 'EPERM') ? 'live' : 'dead'));
+    });
+}
+/** Binds a new server on the path (the file there is dead or missing). */
+function listenSocket(file) {
+    try { fs.unlinkSync(file); } catch (_) { /* none */ }
+    const srv = net.createServer(onSockConnection);
+    srv.on('error', (e) => console.warn(`[supervisor] socket: ${e.message}`));
+    sockServer = srv;
+    sockIno = 0;
+    srv.listen(file, () => { try { fs.chmodSync(file, 0o600); } catch (_) { /* kept */ } });
+    try { if (srv.listening) sockIno = fs.statSync(file).ino; } catch (_) { /* the callback of an error says why */ }
+    sockWarned = '';
+    return srv;
+}
 function serveSocket() {
     const file = socketPath();
     try { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); } catch (_) { /* there */ }
-    try { fs.unlinkSync(file); } catch (_) { /* none */ }
-    sockServer = net.createServer(onSockConnection);
-    sockServer.on('error', (e) => console.warn(`[supervisor] socket: ${e.message}`));
-    sockServer.listen(file, () => { try { fs.chmodSync(file, 0o600); } catch (_) { /* kept */ } });
+    let there = true;
+    try { fs.lstatSync(file); } catch (_) { there = false; }
+    if (!there) { listenSocket(file); return; } // nothing on the path: listening starts at once
+    ensureSocket().catch((e) => console.warn(`[supervisor] socket: ${e.message}`)); // a file: ask what answers before touching it (start() does not wait)
+}
+/**
+ * Cheap and safe to call any time: a started Supervisor whose socket is not served (no server, closed, its file missing or replaced
+ * - another inode than the one it made) listens again, unless another live process serves the path (then it warns once and leaves
+ * it). 'off' | 'ok' | 'listening' | 'other'.
+ */
+async function ensureSocket() {
+    const st = stale('ensureSocket'); if (st) return st();
+    if (!started) return 'off';
+    if (sockBusy) return sockBusy;
+    const run = (async () => {
+        const file = socketPath();
+        let ino = 0;
+        try { ino = (await fs.promises.stat(file)).ino; } catch (_) { ino = 0; }
+        if (disposed || !started) return 'off';
+        const mine = !!(sockServer && sockServer.listening);
+        if (mine && ino && ino === sockIno) return 'ok';
+        const r = ino ? await probeSocket(file) : 'dead';
+        if (disposed || !started) return 'off';
+        if (r === 'own' && mine) { sockIno = ino; return 'ok'; } // our own server answers there (a handover that did not know the inode)
+        if (r !== 'dead') {
+            const key = `${file}:${ino}`;
+            if (sockWarned !== key) { sockWarned = key; console.warn(`[supervisor] socket ${file} is served by another process; not taking it over`); }
+            return 'other';
+        }
+        // dead or gone: the orphan server (if any) is closed BEFORE the new one binds, because closing a server unlinks its path
+        if (sockServer) { const old = sockServer; sockServer = null; try { old.close(); } catch (_) { /* closed */ } }
+        try { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); } catch (_) { /* there */ }
+        listenSocket(file);
+        console.warn(`[supervisor] socket ${file} was not served (${ino ? 'a dead file' : 'no file'}): listening again`);
+        return 'listening';
+    })();
+    sockBusy = run;
+    const clear = () => { if (sockBusy === run) sockBusy = null; };
+    run.then(clear, clear);
+    return run;
 }
 
 let usageHooked = false;
@@ -4523,7 +4719,12 @@ function armBoot(ms) {
     if (bootTimer.unref) bootTimer.unref();
 }
 function armGateTimer() {
-    if (!gateTimer) { gateTimer = setInterval(() => { sweepClearGates().catch((e) => console.warn(`[supervisor] gate sweep: ${e.message}`)); }, 60 * 1000); if (gateTimer.unref) gateTimer.unref(); }
+    if (!gateTimer) { gateTimer = setInterval(() => {
+        // one minute tick, three independent jobs: one failing never blocks the others
+        sweepClearGates().catch((e) => console.warn(`[supervisor] gate sweep: ${e.message}`));
+        sweepPermissionPrompts().catch((e) => console.warn(`[supervisor] permission prompt sweep: ${e.message}`));
+        ensureSocket().catch((e) => console.warn(`[supervisor] socket check: ${e.message}`));
+    }, 60 * 1000); if (gateTimer.unref) gateTimer.unref(); }
 }
 function armPullTimer() {
     if (!pullTimer) { pullTimer = setInterval(() => { pullIssues(null, { force: true }).catch(() => {}); try { sweepStalled(); } catch (e) { console.warn(`[supervisor] stall sweep: ${e.message}`); } }, 10 * 60 * 1000); if (pullTimer.unref) pullTimer.unref(); }
@@ -4557,7 +4758,16 @@ function stop() {
     if (watcher) { try { watcher.close(); } catch (_) { /* closed */ } watcher = null; }
     clearTimeout(debounce); debounce = null;
     if (bootTimer) { clearTimeout(bootTimer); bootTimer = null; bootDue = 0; }
-    if (sockServer) { try { sockServer.close(); } catch (_) { /* closed */ } sockServer = null; }
+    if (sockServer) {
+        // closing a server unlinks its path: when the file there is another process's (ours is an orphan) it is put aside while ours closes
+        const file = socketPath();
+        let aside = '';
+        try { if (sockServer.listening && sockIno) { const cur = fs.statSync(file).ino; if (cur && cur !== sockIno) { aside = `${file}.keep-${process.pid}`; fs.renameSync(file, aside); } } } catch (_) { aside = ''; }
+        try { sockServer.close(); } catch (_) { /* closed */ }
+        if (aside) { try { fs.renameSync(aside, file); } catch (_) { /* gone */ } }
+        sockServer = null;
+    }
+    sockIno = 0;
     if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
     if (gateTimer) { clearInterval(gateTimer); gateTimer = null; }
     disarmWatch();
@@ -4961,10 +5171,10 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, sweepClearGates, sweepStalled, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, stopWork, killDeps, setKillDeps, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, closeWorkAsDone, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, sweepClearGates, sweepPermissionPrompts, _setPromptDeps, ensureSocket, sweepStalled, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, stopWork, killDeps, setKillDeps, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, closeWorkAsDone, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _late: LATE, _taskDeps: TASK_DEPS, // reload without a restart (#1292): what a handed-over version and sessionTasks call into
-    _test: { activeCount, sweepLostStarts, get startsInFlight() { return startsInFlight; }, callClaudeReviewer, cleanReviewer, askModel, issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, get stallKicks() { return stallKicks; }, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, get loginMoves() { return loginMoves; }, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, get statusBySession() { return statusBySession; }, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, get issueTitles() { return issueTitles; }, get reviewingNow() { return reviewingNow; }, onSockConnection, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
+    _test: { activeCount, sweepLostStarts, get startsInFlight() { return startsInFlight; }, callClaudeReviewer, cleanReviewer, askModel, issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, get stallKicks() { return stallKicks; }, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, get loginMoves() { return loginMoves; }, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, get statusBySession() { return statusBySession; }, get promptWatch() { return promptWatch; }, probeSocket, get sockIno() { return sockIno; }, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, get issueTitles() { return issueTitles; }, get reviewingNow() { return reviewingNow; }, onSockConnection, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };
 
 // ---------------------------------------------------------------- reload without a restart (#1292, docs/server/hot-reload.md)
@@ -4986,7 +5196,7 @@ module.exports = {
 // through stale() / _late, so no timer of the old version is ever armed after dispose.
 const TEST_ACCEPT_THROW = 'AGENT_SUPERVISOR_TEST_ACCEPT_THROW'; // test-only switch (scripts/test-hot-reload-supervisor.js): accept() throws once its re-arming is done, to exercise a rollback
 
-Object.assign(LATE, { emit, scheduleStallCheck, cancelStallCheck, holdForRecheck, settleSoon, armRecheck, queueReview, settleThenReview, pumpWork, armWatch });
+Object.assign(LATE, { emit, scheduleStallCheck, cancelStallCheck, holdForRecheck, settleSoon, armRecheck, queueReview, settleThenReview, pumpWork, armWatch, sweepPermissionPrompts, ensureSocket });
 
 /** A single-flight promise of the old version, as this version's own (cleared here when it ends, whatever the old version does). */
 function adoptFlight(p, isMine, clear) {
@@ -5019,9 +5229,9 @@ function hotDispose() {
     const state = {
         started, gr: gResources, version, bootAt: BOOT_AT,
         tasksWired, usageHooked, priceCache, engineCoolUntil, lastPull, refreshWarned, reviveOn,
-        fetchFn, collisionDeps, killOverride,
+        fetchFn, collisionDeps, promptDeps, killOverride, sockIno,
         deps: { rule: Object.assign({}, RULE_CHECK_DEPS), failover: Object.assign({}, failoverDeps), close: Object.assign({}, closeDeps) },
-        shared: { listeners, bgCalls, stallKicks, issueTitles, loginTried, retryTries, ownDirs, finishedAgents, reviewingNow, bgCache, loginMoves, loginNoRoomNoted, gateNudges, closing, refreshFlights, cleaning, statusBySession, startsInFlight },
+        shared: { listeners, bgCalls, stallKicks, issueTitles, loginTried, retryTries, ownDirs, finishedAgents, reviewingNow, bgCache, loginMoves, loginNoRoomNoted, gateNudges, promptWatch, closing, refreshFlights, cleaning, statusBySession, startsInFlight },
         pumping, sweeping, rulesRun,
         queue: queue.slice(),
         plan: {
@@ -5056,6 +5266,7 @@ function hotAccept(st, ctx) {
             started, sessionsWatch: !watcher, debounce: false, boot: -1, pull: !pullTimer, gate: !gateTimer, watchArmed: true, commitPending: false,
             stall: [...stallTimers.keys()], hold: [...holdTimers.keys()], settleSoon: [...settleSoonTimers.keys()], settling: [...settling.keys()], recheck: [...recheckTimers.values()]
         });
+        ensureSocket().catch((e) => console.warn(`[supervisor] reload socket: ${e.message}`));
         return;
     }
     gResources = st.gr || gResources;
@@ -5063,10 +5274,12 @@ function hotAccept(st, ctx) {
     BOOT_AT = st.bootAt || BOOT_AT;
     tasksWired = !!st.tasksWired; usageHooked = !!st.usageHooked; priceCache = st.priceCache || priceCache;
     engineCoolUntil = st.engineCoolUntil || 0; lastPull = st.lastPull || 0; refreshWarned = !!st.refreshWarned; reviveOn = st.reviveOn;
-    fetchFn = st.fetchFn || fetchFn; collisionDeps = st.collisionDeps || {}; killOverride = st.killOverride || null;
+    fetchFn = st.fetchFn || fetchFn; collisionDeps = st.collisionDeps || {}; promptDeps = st.promptDeps || {}; killOverride = st.killOverride || null; sockIno = st.sockIno || 0;
     [[RULE_CHECK_DEPS, st.deps.rule], [failoverDeps, st.deps.failover], [closeDeps, st.deps.close]].forEach(([own, from]) => { Object.keys(own).forEach((k) => delete own[k]); Object.assign(own, from || {}); });
-    ({ listeners, bgCalls, stallKicks, issueTitles, loginTried, retryTries, ownDirs, finishedAgents, reviewingNow, bgCache, loginMoves, loginNoRoomNoted, gateNudges, closing, refreshFlights, cleaning, statusBySession, startsInFlight } = st.shared);
+    ({ listeners, bgCalls, stallKicks, issueTitles, loginTried, retryTries, ownDirs, finishedAgents, reviewingNow, bgCache, loginMoves, loginNoRoomNoted, gateNudges, promptWatch, closing, refreshFlights, cleaning, statusBySession, startsInFlight } = st.shared);
     if (!startsInFlight) startsInFlight = new Set(); // a version older than this container handed over none
+    if (!promptWatch) promptWatch = new Map();
+    if (!gateNudges) gateNudges = new Map();
     pumping = adoptFlight(st.pumping, (w) => pumping === w, () => { pumping = null; });
     sweeping = adoptFlight(st.sweeping, (w) => sweeping === w, () => { sweeping = null; });
     rulesRun = st.rulesRun && !st.rulesRun.ended ? st.rulesRun : null;
@@ -5082,6 +5295,8 @@ function hotAccept(st, ctx) {
     if (process.env[TEST_ACCEPT_THROW] === '1' && !(ctx && ctx.rollback)) throw new Error('test: accept refused (AGENT_SUPERVISOR_TEST_ACCEPT_THROW)');
     // last: nothing after this can throw, so a rollback never finds a started review in the version it undoes
     if (queue.length) { try { pump(); } catch (e) { console.warn(`[supervisor] reload: ${e.message}`); } }
+    // a handed-over server that is missing, closed or orphaned (its path gone or replaced) listens again now, not at the next restart
+    ensureSocket().catch((e) => console.warn(`[supervisor] reload socket: ${e.message}`));
 }
 
 require('./hotReload').mark(module, { dispose: hotDispose, accept: hotAccept, dependents: ['./ws/handlers/314-claudeDeskHandler.js'] });
