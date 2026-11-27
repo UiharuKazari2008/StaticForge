@@ -1,0 +1,18 @@
+== (b) Output panel over Settings > Network & internet, real evdev KEY_BACK ==
+11-27 03:23:09.106 28318 28318 I MelatonBars: popup tap 1893,1778: box 11
+11-27 03:23:09.111 28318 28318 I OutputPanel: open: router started
+11-27 03:23:09.112 28318 28318 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 03:23:09.117 28318 28318 I OutputPanel: rows: Speakers*
+11-27 03:23:09.146 28318 28318 I MelatonBars: bubble output.1 drawn here
+before
+topResumedActivity=ActivityRecord{27299787 u0 com.android.settings/.SubSettings t32}
+Window #2 Window{af9a421 u0 MelatonPopup}:
+after
+topResumedActivity=ActivityRecord{217262974 u0 com.android.settings/.homepage.SettingsHomepageActivity t32}
+Window #2 Window{af9a421 u0 MelatonPopup}:
+11-27 03:23:16.525 28318 28318 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+11-27 03:23:16.632 28318 28318 I MelatonBars: translucent check (soft keys): strip spread 1.3 (picture above 14), against below 6.3 (runs on under 10)
+11-27 03:23:16.635 28318 28318 I MelatonBars: translucent soft key bar for com.android.settings: true
+InputDispatcher RecentQueue BACK key events:
+    KeyEvent(deviceId=0, eventTime=8028080034000ns, source=KEYBOARD | DPAD, displayId=0, action=DOWN, flags=0x00000008, keyCode=BACK(4), scanCode=158, metaState=0x00000000, repeatCount=0), policyFlags=0x67000001, age=391
+    KeyEvent(deviceId=0, eventTime=8028244517000ns, source=KEYBOARD | DPAD, displayId=0, action=UP, flags=0x00000008, keyCode=BACK(4), scanCode=158, metaState=0x00000000, repeatCount=0), policyFlags=0x67000000, age=3754m

@@ -1,0 +1,17 @@
+== (5) two outputs (virtual A2DP sink connected): wide panel over Settings > Network & internet ==
+11-27 03:54:14.917  4058  4058 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 03:54:15.035  4058  4058 I MelatonBars: bubble quickaccess drawn here
+11-27 03:54:15.268  4058  4290 I QuickAccess: shell read (listen): 14 tiles
+11-27 03:54:19.804  4058  4058 I MelatonBars: popup tap 1671,700: box 6
+11-27 03:54:19.806  4058  4058 I OutputPanel: open: router started
+11-27 03:54:19.806  4058  4058 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 03:54:19.808  4058  4058 I OutputPanel: rows: Lane Test Speaker*, Speakers
+11-27 03:54:19.828  4058  4058 I MelatonBars: bubble output.2 drawn here
+
+topResumedActivity=ActivityRecord{142342491 u0 com.android.settings/.SubSettings t67}
+Window #2 Window{eeb23f3 u0 MelatonPopup}:
+      SystemMediaRoute2Provider - package: com.android.server.media, selected route ids: [DA:4C:10:DE:17:01]
+        com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= | Phone
+        com.android.server.media/.SystemMediaRoute2Provider:DA:4C:10:DE:17:01 | Lane Test Speaker
+            mSelectedRoutes=[com.android.server.media/.SystemMediaRoute2Provider:DA:4C:10:DE:17:01]
+            mTransferableRoutes=[com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address=]

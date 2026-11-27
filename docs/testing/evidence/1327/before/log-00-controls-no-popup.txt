@@ -1,0 +1,12 @@
+== control, no popup: LEFT edge swipe ==
+before
+topResumedActivity=ActivityRecord{176904573 u0 com.android.settings/.SubSettings t53}
+after
+topResumedActivity=ActivityRecord{47336335 u0 com.android.settings/.homepage.SettingsHomepageActivity t53}
+11-27 03:31:17.325 28318 28318 I MelatonBars: edge swipe: Back
+== control, no popup: RIGHT edge swipe ==
+before
+topResumedActivity=ActivityRecord{37660830 u0 com.android.settings/.SubSettings t54}
+after
+topResumedActivity=ActivityRecord{163503422 u0 com.android.settings/.homepage.SettingsHomepageActivity t54}
+11-27 03:31:40.303 28318 28318 I MelatonBars: edge swipe: Back

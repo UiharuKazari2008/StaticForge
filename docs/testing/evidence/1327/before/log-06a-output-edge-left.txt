@@ -1,0 +1,11 @@
+== (d) Output panel over Settings > Network & internet, Back swipe from LEFT edge (input swipe 3 1100 500 1100 200) ==
+before
+topResumedActivity=ActivityRecord{206377508 u0 com.android.settings/.SubSettings t41}
+Window #2 Window{d01eb20 u0 MelatonPopup}:
+after
+topResumedActivity=ActivityRecord{206377508 u0 com.android.settings/.SubSettings t41}
+Window #2 Window{d01eb20 u0 MelatonPopup}:
+11-27 03:27:40.579 28318 28318 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+11-27 03:27:41.491 28318 28318 I MelatonBars: translucent check (soft keys): strip spread 0.0 (picture above 14), against below 16.0 (runs on under 10)
+11-27 03:27:41.494 28318 28318 I MelatonBars: translucent bar for com.android.settings: true
+11-27 03:27:41.494 28318 28318 I MelatonBars: translucent soft key bar for com.android.settings: false

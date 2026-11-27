@@ -1,0 +1,8 @@
+== (c) Output panel over Settings > Network & internet, tap soft key bar Back (441,2120) ==
+before
+topResumedActivity=ActivityRecord{155273672 u0 com.android.settings/.SubSettings t33}
+Window #2 Window{8d80cb9 u0 MelatonPopup}:
+after
+topResumedActivity=ActivityRecord{155273672 u0 com.android.settings/.SubSettings t33}
+11-27 03:23:51.874 28318 28318 I MelatonBars: popup tap 441,2120: outside: closed
+11-27 03:23:51.875 28318 28318 I OutputPanel: router stopped

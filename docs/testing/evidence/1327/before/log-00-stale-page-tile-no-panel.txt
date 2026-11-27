@@ -1,0 +1,6 @@
+--------- beginning of main
+11-27 03:13:45.738 27255 27255 I MelatonBars: popup tap 1893,1815: box 11
+11-27 03:13:45.740 27255 27255 I OutputPanel: open: router started
+11-27 03:13:45.743 27255 27255 I OutputPanel: media routing not allowed: asking the app's shell once
+11-27 03:13:45.749 27255 27255 I OutputPanel: router stopped
+11-27 03:13:46.470 27255 27255 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape

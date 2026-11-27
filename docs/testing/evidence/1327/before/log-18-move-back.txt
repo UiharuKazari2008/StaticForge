@@ -1,0 +1,19 @@
+== (5) move back: tap 'Lane Test Speaker' row (1600,220) ==
+11-27 03:54:41.728  4058  4058 I MelatonBars: popup tap 1600,220: box 0
+11-27 03:54:41.728  4058  4058 I OutputPanel: move media to com.android.server.media/.SystemMediaRoute2Provider:DA:4C:10:DE:17:01 (Lane Test Speaker)
+11-27 03:54:41.731  4058  4058 I OutputPanel: rows: Lane Test Speaker*, Speakers
+11-27 03:54:41.732  4058  4058 I MediaOutputRouting: transferTo com.android.server.media/.SystemMediaRoute2Provider:DA:4C:10:DE:17:01 (jp.net.seventhreeseven.dreamscape)
+11-27 03:54:41.828  4058  4058 I OutputPanel: move to com.android.server.media/.SystemMediaRoute2Provider:DA:4C:10:DE:17:01 done (moved)
+
+topResumedActivity=ActivityRecord{142342491 u0 com.android.settings/.SubSettings t67}
+Window #2 Window{eeb23f3 u0 MelatonPopup}:
+      SystemMediaRoute2Provider - package: com.android.server.media, selected route ids: [DA:4C:10:DE:17:01]
+            mSelectedRoutes=[com.android.server.media/.SystemMediaRoute2Provider:DA:4C:10:DE:17:01]
+- STREAM_MUSIC:
+   Muted: false
+   Muted Internally: false
+   Min: 0
+   Max: 15
+   streamVolume:7
+   Current: 2 (speaker): 0, 80 (bt_a2dp): 7, 40000000 (default): 5
+[V] volume is 7 in range [0..15]

@@ -1,0 +1,9 @@
+== other bar popup: tap battery status icon (1843,43), then real evdev KEY_BACK ==
+11-27 03:33:07.625 28318 28318 I MelatonBars: bar tap: battery [start:0-110 notify:1184-1300 mail:1300-1371 received:1371-1442 update:1442-1560 bluetooth:1560-1677 data:1677-1748 signal:1748-1819 volume:1819-1890 battery:1890-1980 title:110-459 corner:1957-2057]
+11-27 03:33:07.667 28318 28318 I MelatonBars: bubble battery drawn here
+before
+topResumedActivity=ActivityRecord{261692390 u0 com.android.settings/.SubSettings t57}
+Window #2 Window{115fc43 u0 MelatonPopup}:
+after
+topResumedActivity=ActivityRecord{88425380 u0 com.android.settings/.homepage.SettingsHomepageActivity t57}
+Window #2 Window{115fc43 u0 MelatonPopup}:

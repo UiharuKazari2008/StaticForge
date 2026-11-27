@@ -1,0 +1,12 @@
+== Settings > Network & internet, WIDE panel, tap Audio output row (1670,690) ==
+11-27 03:35:53.762 28318 28318 I MelatonBars: popup tap 1671,690: box 6
+11-27 03:35:53.766 28318 28318 I OutputPanel: open: router started
+11-27 03:35:53.766 28318 28318 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 03:35:53.769 28318 28318 I OutputPanel: rows: Speakers*
+11-27 03:35:53.863 28318 28318 I MelatonBars: bubble output.1 drawn here
+
+topResumedActivity=ActivityRecord{85659297 u0 com.android.settings/.SubSettings t59}
+Window #2 Window{de9d03e u0 MelatonPopup}:
+== then real evdev KEY_BACK with the wide Output panel up ==
+topResumedActivity=ActivityRecord{83120034 u0 com.android.settings/.homepage.SettingsHomepageActivity t59}
+Window #2 Window{de9d03e u0 MelatonPopup}:

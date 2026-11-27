@@ -1,0 +1,19 @@
+settings get secure navigation_mode = 0
+--- dumpsys window windows, display 0 Taskbar window:
+  Window #11 Window{32e6ed9 u0 Taskbar}:
+    mDisplayId=0 mSession=Session{195ca4 1168:u0a10198} mClient=android.os.BinderProxy@65b9520
+    mAttrs={(0,0)(fillx264) gr=BOTTOM CENTER_VERTICAL sim={adjust=nothing} layoutInDisplayCutoutMode=always ty=NAVIGATION_BAR fmt=TRANSLUCENT receive insets ignoring z-order
+        ROTATION_0={(0,0)(fillx264) gr=BOTTOM CENTER_VERTICAL sim={adjust=nothing} layoutInDisplayCutoutMode=always ty=NAVIGATION_BAR fmt=TRANSLUCENT receive insets ignoring z-order
+        ROTATION_90={(0,0)(fillx264) gr=BOTTOM CENTER_VERTICAL sim={adjust=nothing} layoutInDisplayCutoutMode=always ty=NAVIGATION_BAR fmt=TRANSLUCENT receive insets ignoring z-order
+        ROTATION_180={(0,0)(fillx264) gr=BOTTOM CENTER_VERTICAL sim={adjust=nothing} layoutInDisplayCutoutMode=always ty=NAVIGATION_BAR fmt=TRANSLUCENT receive insets ignoring z-order
+        ROTATION_270={(0,0)(fillx264) gr=BOTTOM CENTER_VERTICAL sim={adjust=nothing} layoutInDisplayCutoutMode=always ty=NAVIGATION_BAR fmt=TRANSLUCENT receive insets ignoring z-order
+    mViewVisibility=0x0 mHaveFrame=true mObscured=false
+    touchable region=SkRegion()
+    Frames: parent=[0,0][1968,2184] display=[0,0][1968,2184] frame=[0,1920][1968,2184] last=[0,1920][1968,2184] insetsChanged=false
+    isOnScreen=true
+    isVisible=true
+--- dumpsys statusbar disable flags:
+    mDisabled1=0x3f30000
+    mDisabled2=0x1
+    mDisabled1=0x0
+    mDisabled2=0x0

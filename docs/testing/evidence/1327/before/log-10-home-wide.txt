@@ -1,0 +1,9 @@
+== home, WIDE panel, tap Audio output row (1670,704) ==
+11-27 03:35:14.838 28318 28318 I MelatonBars: popup tap 1671,704: box 6
+11-27 03:35:14.841 28318 28318 I OutputPanel: open: router started
+11-27 03:35:14.856 28318 28318 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 03:35:14.858 28318 28318 I OutputPanel: rows: Speakers*
+11-27 03:35:14.953 28318 28318 I MelatonBars: bubble output.1 drawn here
+
+topResumedActivity=ActivityRecord{243149088 u0 jp.net.seventhreeseven.dreamscape/.MainActivity t28}
+Window #2 Window{a78c9e8 u0 MelatonPopup}:

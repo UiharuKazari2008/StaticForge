@@ -1,0 +1,8 @@
+== (b) control: Quick Access strip over Settings > Network & internet, real evdev KEY_BACK (root sendevent qwerty2 scan 158) ==
+before
+topResumedActivity=ActivityRecord{27299787 u0 com.android.settings/.SubSettings t32}
+Window #2 Window{a007806 u0 MelatonPopup}:
+MARK 11-27 03:22:49.000
+after
+topResumedActivity=ActivityRecord{27299787 u0 com.android.settings/.SubSettings t32}
+InputDispatcher RecentQueue key events (a key the accessibility filter takes is not enqueued):

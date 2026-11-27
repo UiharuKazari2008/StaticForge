@@ -1,0 +1,6 @@
+== (5) strip, 1 column, two outputs, over Settings ==
+11-27 03:57:10.057  4058  4058 I MelatonBars: popup tap 1893,1778: box 11
+11-27 03:57:10.060  4058  4058 I OutputPanel: open: router started
+11-27 03:57:10.060  4058  4058 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 03:57:10.062  4058  4058 I OutputPanel: rows: Lane Test Speaker*, Speakers
+11-27 03:57:10.105  4058  4058 I MelatonBars: bubble output.2 drawn here

@@ -1,0 +1,103 @@
+== try 1: emulator console 'event send EV_SW:SW_HEADPHONE_INSERT:1'
+
+console rc=0
+      SystemMediaRoute2Provider - package: com.android.server.media, selected route ids: [ROUTE_ID_BUILTIN_SPEAKER;address=]
+        com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= | Phone
+            mSelectedRoutes=[com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address=]
+            mTransferableRoutes=[]
+
+console rc=0
+cmd audio help: []
+which uinput: /system/bin/uinput
+== try 2: virtual input device through Android's own /system/bin/uinput (shell user) with SW_HEADPHONE_INSERT; config_useDevInputEventForAudioJack=true
+{"id":1,"command":"register","name":"lane-test-headphone-jack","vid":6353,"pid":1,"bus":"usb","configuration":[{"type":100,"data":[5]},{"type":109,"data":[2]}]}
+{"id":1,"command":"delay","duration":3000}
+{"id":1,"command":"inject","events":[5,2,1,0,0,0]}
+MARK 11-27 03:51:08.000
+uinput log: []
+    15: lane-test-headphone-jack
+      Classes: SWITCH | EXTERNAL
+      Path: /dev/input/event14
+      Enabled: true
+--
+  Device 15: lane-test-headphone-jack
+    EventHub Devices: [ 15 ] 
+    Generation: 110
+--- logcat:
+11-27 03:51:08.115   550   550 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:nohup sh -c "(cat /data/local/tmp/lane-hp.json; sleep 900) | uinput -" > /data/local/tmp/lane-hp.log 2>&1 &'
+11-27 03:51:08.344  4877  4877 D AndroidRuntime: Calling main entry com.android.commands.uinput.Uinput
+11-27 03:51:08.347  4877  4877 D nativeloader: Load /system/lib64/libuinputcommand_jni.so using ns default for caller /system/framework/uinput.jar in same partition (is_bridged=0): ok
+11-27 03:51:08.352  4877  4889 I UinputCommandDevice: uinput device 1 created: version = 5, fd = 62
+11-27 03:51:08.328     0     0 I input   : lane-test-headphone-jack as /devices/virtual/input/input15
+11-27 03:51:08.353   677   789 D EventHub: No input device configuration file found for device 'lane-test-headphone-jack'.
+11-27 03:51:08.354   677   789 I EventHub: New device: id=15, fd=734, path='/dev/input/event14', name='lane-test-headphone-jack', classes=SWITCH | EXTERNAL, configuration='', keyLayout='', keyCharacterMap='', builtinKeyboard=false, 
+11-27 03:51:08.355   677   789 I InputReader: Device added: id=15, eventHubId=15, name='lane-test-headphone-jack', descriptor='e1fe28b90f915c7d1febbd52c1ef84b3c4cbed9f',sources=0x80000000
+11-27 03:51:11.358   677   789 I WiredAccessoryManager: MSG_NEW_DEVICE_STATE
+11-27 03:51:11.359   677   677 I AS.AudioDeviceInventory: not sending NOISY: state=1
+11-27 03:51:11.372   531   548 E APM::HwModule: createDevice: could not find HW module for device type 'AUDIO_DEVICE_OUT_WIRED_HEADPHONE' (00000008)
+11-27 03:51:11.374   677   858 E AS.AudioDeviceInventory: APM failed to make available device 0x8addr= error=1
+11-27 03:51:17.400   550   550 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:dumpsys input | grep -A3 "lane-test-headphone-jack" | head -8'
+--- media_router:
+      SystemMediaRoute2Provider - package: com.android.server.media, selected route ids: [ROUTE_ID_BUILTIN_SPEAKER;address=]
+        com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= | Phone
+        Active routing sessions:
+          RoutingSessionInfo
+            mOriginalId=SYSTEM_SESSION
+            mName=null
+            mOwnerPackageName=null
+            mClientPackageName=
+            mProviderId=com.android.server.media/.SystemMediaRoute2Provider
+            mSelectedRoutes=[com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address=]
+            mSelectableRoutes=[]
+            mDeselectableRoutes=[]
+            mTransferableRoutes=[]
+            volume(current=0, max=0, handling=FIXED(0))
+            mControlHints=null
+            mIsSystemSession=true
+            mTransferReason=0
+            mtransferInitiatorUserHandle=null
+            mtransferInitiatorPackageName=null
+            mReleaseType=RELEASE_UNSUPPORTED
+      MediaRoute2ProviderWatcher
+uinput switch result: Android's InputReader took the device (classes=SWITCH|EXTERNAL), WiredAccessoryManager ran MSG_NEW_DEVICE_STATE, audio policy refused: 'could not find HW module for device type AUDIO_DEVICE_OUT_WIRED_HEADPHONE', 'APM failed to make available device'. media_router unchanged.
+--- output device types the emulator's audio policy declares (dumpsys media.audio_policy; modules primary, r_submix, bluetooth):
+AUDIO_DEVICE_OUT_BLUETOOTH_A2DP
+AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES
+AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER
+AUDIO_DEVICE_OUT_HEARING_AID
+AUDIO_DEVICE_OUT_REMOTE_SUBMIX
+AUDIO_DEVICE_OUT_SPEAKER
+AUDIO_DEVICE_OUT_TELEPHONY_TX
+--- /vendor/etc audio configs:
+audio_effects.xml
+audio_policy_configuration.xml
+audio_policy_volumes.xml
+bluetooth_audio_policy_configuration_7_0.xml
+media_codecs_google_audio.xml
+primary_audio_policy_configuration.xml
+r_submix_audio_policy_configuration.xml
+--- virtual device removed: 0 matches left in the current device list+history
+0
+
+== dumpsys media_router before any attempt (03:50:35), system provider part
+      SystemMediaRoute2Provider - package: com.android.server.media, selected route ids: [ROUTE_ID_BUILTIN_SPEAKER;address=]
+        com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= | Phone
+        Active routing sessions:
+          RoutingSessionInfo
+            mOriginalId=SYSTEM_SESSION
+            mName=null
+            mOwnerPackageName=null
+            mClientPackageName=
+            mProviderId=com.android.server.media/.SystemMediaRoute2Provider
+            mSelectedRoutes=[com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address=]
+            mSelectableRoutes=[]
+            mDeselectableRoutes=[]
+            mTransferableRoutes=[]
+            volume(current=0, max=0, handling=FIXED(0))
+            mControlHints=null
+            mIsSystemSession=true
+            mTransferReason=0
+            mtransferInitiatorUserHandle=null
+            mtransferInitiatorPackageName=null
+            mReleaseType=RELEASE_UNSUPPORTED
+      MediaRoute2ProviderWatcher

@@ -1,0 +1,8 @@
+== (a) control: Quick Access strip over Settings > Network & internet, adb 'input keyevent 4' ==
+before: .SubSettings, MelatonPopup (quickaccess) up
+11-27 03:18:43.800 28318 28318 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+11-27 03:18:43.938 28318 28318 I MelatonBars: translucent check (soft keys): strip spread 1.3 (picture above 14), against below 6.3 (runs on under 10)
+11-27 03:18:43.939 28318 28318 I MelatonBars: translucent soft key bar for com.android.settings: true
+after:
+topResumedActivity=ActivityRecord{184798624 u0 com.android.settings/.homepage.SettingsHomepageActivity t29}
+Window #2 Window{eb1060d u0 MelatonPopup}:

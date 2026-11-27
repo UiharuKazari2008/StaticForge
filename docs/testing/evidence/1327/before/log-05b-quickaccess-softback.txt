@@ -1,0 +1,7 @@
+== (c) Quick Access strip over Settings > Network & internet, tap soft key bar Back (441,2120) ==
+before
+topResumedActivity=ActivityRecord{56280240 u0 com.android.settings/.SubSettings t38}
+Window #2 Window{e638c9a u0 MelatonPopup}:
+after
+topResumedActivity=ActivityRecord{56280240 u0 com.android.settings/.SubSettings t38}
+11-27 03:26:34.095 28318 28318 I MelatonBars: popup tap 442,2120: outside: closed

@@ -1,0 +1,11 @@
+== first open with MEDIA_ROUTING_CONTROL reset to default (the instance's state before this run), wide panel over Settings ==
+11-27 03:36:32.900 28318 28318 I MelatonBars: popup tap 1671,690: box 6
+11-27 03:36:32.907 28318 28318 I OutputPanel: open: router started
+11-27 03:36:32.912 28318 28318 I OutputPanel: media routing not allowed: asking the app's shell once
+11-27 03:36:32.965 28318 28318 I MelatonBars: bubble output.0 drawn here
+11-27 03:36:33.530 28318 28318 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 03:36:33.542 28318 28318 I OutputPanel: rows: Speakers*
+11-27 03:36:33.674 28318 28318 I MelatonBars: bubble output.1 drawn here
+exception lines logged (W MediaOutputRouting): 102
+11-27 03:36:32.911 28318 28318 W MediaOutputRouting: getInstance(jp.net.seventhreeseven.dreamscape): SecurityException: Must hold MEDIA_CONTENT_CONTROL or MEDIA_ROUTING_CONTROL permissions.
+MEDIA_ROUTING_CONTROL: allow; time=+4s206ms ago; rejectTime=+4s834ms ago

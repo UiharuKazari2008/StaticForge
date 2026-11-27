@@ -1,0 +1,11 @@
+== (5) tap the 'Speakers' row (1600,365) ==
+11-27 03:54:30.080  4058  4058 I MelatonBars: popup tap 1600,365: box 1
+11-27 03:54:30.081  4058  4058 I OutputPanel: move media to com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= (Speakers)
+11-27 03:54:30.084  4058  4058 I OutputPanel: rows: Lane Test Speaker, Speakers*
+11-27 03:54:30.094  4058  4058 I MediaOutputRouting: transferTo com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= (jp.net.seventhreeseven.dreamscape)
+11-27 03:54:30.156  4058  4058 I OutputPanel: move to com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= done (moved)
+
+topResumedActivity=ActivityRecord{142342491 u0 com.android.settings/.SubSettings t67}
+Window #2 Window{eeb23f3 u0 MelatonPopup}:
+      SystemMediaRoute2Provider - package: com.android.server.media, selected route ids: [ROUTE_ID_BUILTIN_SPEAKER;address=]
+            mSelectedRoutes=[com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address=]

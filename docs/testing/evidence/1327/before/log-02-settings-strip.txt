@@ -1,0 +1,6 @@
+--------- beginning of main
+11-27 03:18:06.874 28318 28318 I MelatonBars: popup tap 1893,1778: box 11
+11-27 03:18:06.876 28318 28318 I OutputPanel: open: router started
+11-27 03:18:06.877 28318 28318 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 03:18:06.879 28318 28318 I OutputPanel: rows: Speakers*
+11-27 03:18:06.891 28318 28318 I MelatonBars: bubble output.1 drawn here

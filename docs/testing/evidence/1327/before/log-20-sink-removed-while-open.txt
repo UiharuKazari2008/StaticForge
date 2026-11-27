@@ -1,0 +1,9 @@
+== (5) sink process ended with the strip panel open ==
+11-27 03:57:22.091  4058  4058 I OutputPanel: rows: Speakers*
+11-27 03:57:22.124  4058  4058 I MelatonBars: bubble output.1 drawn here
+
+topResumedActivity=ActivityRecord{253171731 u0 com.android.settings/.SubSettings t69}
+Window #2 Window{1192476 u0 MelatonPopup}:
+      SystemMediaRoute2Provider - package: com.android.server.media, selected route ids: [ROUTE_ID_BUILTIN_SPEAKER;address=]
+        com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address= | Phone
+            mSelectedRoutes=[com.android.server.media/.SystemMediaRoute2Provider:ROUTE_ID_BUILTIN_SPEAKER;address=]

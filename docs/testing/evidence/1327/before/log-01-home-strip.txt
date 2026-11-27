@@ -1,0 +1,9 @@
+== home, strip, open from QA tile (taps) ==
+--------- beginning of main
+11-27 03:17:11.044 28318 28318 I MelatonBars: popup tap 1893,1815: box 11
+11-27 03:17:11.046 28318 28318 I OutputPanel: open: router started
+11-27 03:17:11.047 28318 28318 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 03:17:11.049 28318 28318 I OutputPanel: rows: Speakers*
+11-27 03:17:11.058 28318 28318 I MelatonBars: bubble output.1 drawn here
+11-27 03:17:30.911 28318 28318 I MelatonBars: popup tap 900,1100: outside: closed
+11-27 03:17:30.912 28318 28318 I OutputPanel: router stopped

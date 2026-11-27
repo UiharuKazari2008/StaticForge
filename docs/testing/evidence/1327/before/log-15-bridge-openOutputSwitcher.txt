@@ -1,0 +1,10 @@
+== (4) media-session entrance: page bridge AndroidMediaSession.openOutputSwitcher("") through eval (no media session exists: dumpsys media_session 'have 0 sessions'); NOT the media tile ==
+MARK 11-27 03:50:25.000
+eval answer: {"ok":true,"value":true}
+11-27 03:50:25.825  4058  4058 I OutputPanel: open: router started
+11-27 03:50:25.826  4058  4058 I MediaOutputRouting: proxy router for jp.net.seventhreeseven.dreamscape
+11-27 03:50:25.830  4058  4058 I OutputPanel: rows: Speakers*
+11-27 03:50:25.878  4058  4058 I MelatonBars: bubble output.1 drawn here
+topResumedActivity=ActivityRecord{183246642 u0 com.android.settings/.SubSettings t64}
+Window #2 Window{6498e8b u0 MelatonPopup}:
+  Sessions Stack - have 0 sessions:

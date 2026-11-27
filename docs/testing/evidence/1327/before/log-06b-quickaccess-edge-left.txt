@@ -1,0 +1,7 @@
+== (d) Quick Access strip over Settings > Network & internet, LEFT edge swipe (input swipe 3 1100 500 1100 200) ==
+before
+topResumedActivity=ActivityRecord{29024956 u0 com.android.settings/.SubSettings t55}
+Window #2 Window{30bae7a u0 MelatonPopup}:
+after
+topResumedActivity=ActivityRecord{29024956 u0 com.android.settings/.SubSettings t55}
+Window #2 Window{30bae7a u0 MelatonPopup}:
