@@ -175,6 +175,12 @@ function orderNotices(rows, now = nowFn()) {
     return keyed.map((k) => k.r);
 }
 
+/** An answerable notice: its data names the ws packet that carries the answer (data.answerType, e.g. device_consent_answer). */
+function isAnswerable(data) {
+    const d = typeof data === 'string' ? safeJson(data, {}) : data;
+    return !!(d && typeof d === 'object' && typeof d.answerType === 'string' && d.answerType);
+}
+
 function safeJson(s, fallback) {
     try {
         const v = JSON.parse(s);
@@ -201,7 +207,9 @@ function publish(notice = {}) {
     const cls = String(notice.cls || notice.kind || '').slice(0, 60);
     // a class the phone shows without a message (Sounds & Notifications: Display message on screen off):
     // kept for the title bar's state, never popped on resume nor posted on Android
-    const quiet = !!cls && quietClasses(user).has(cls);
+    // ... except an answerable notice (data.answerType: an Allow / Deny question, #1305): a question nobody saw is a blocked agent,
+    // so the class's quiet setting never swallows it (it still obeys alert for the sound)
+    const quiet = !!cls && quietClasses(user).has(cls) && !isAnswerable(notice.data);
     const stackKey = String(notice.stack || '').trim().replace(/[^a-z0-9_-]/gi, '').slice(0, 30);
     if (stackKey) return publishStacked(user, notice, { id, title, cls, quiet, now, expiresAt, stackKey });
     const row = {
@@ -234,7 +242,11 @@ function publish(notice = {}) {
     //     cleared (state and createdAt kept, text / data / digest refreshed, expiresAt the later of the two so it stays
     //     quiet until the alert really ends), no phone push, no inbox_updated 'new' - the page must not pop it and a
     //     reload's catch-up (non-cleared rows only) must not bring it back. Changed or escalated: loud, new again
-    //     (a different event title or day for a weather alert; a message with another guid).
+    //     (a different event title or day for a weather alert; a message with another guid). A producer's alert: false keeps
+    //     it silent even then (shown, new, no sound: #1305, a second in-use status on a device after the first was cleared),
+    //     unless it is returning: true or escalated.
+    //   - answerable (data.answerType): the class's quiet setting (Display message on screen off) never swallows it; it is
+    //     stored new and pushed like any other, and still obeys alert for the sound (S9).
     //   - escalation: moving to a higher-ranked class (CLASS_RANK: weather-alert -> weather-severe) is material even when
     //     the digest is otherwise the same: the worse news sounds once more. A downgrade is no news.
     //   - a legacy row (digest NULL, from before this column): its digest is worked out from what it stored; when the
@@ -261,7 +273,11 @@ function publish(notice = {}) {
                     const stored = noticeRow(user, id);
                     return stored ? Object.assign(rowOut(stored), { alert: false }) : null;
                 }
-                alert = done ? true : escalated || notice.returning === true || (notice.alert === true && changed);
+                // a done row that comes back changed is new (shown) again; it sounds unless the producer said alert: false
+                // (#1305: the second hold on a device, the first one cleared), and then only for a snooze return or a class
+                // moving up - those are the user's own ask / worse news, whatever the producer says
+                alert = done ? (notice.alert !== false || escalated || notice.returning === true)
+                    : escalated || notice.returning === true || (notice.alert === true && changed);
             }
         }
     } catch (_e) { /* a new table: new */ }
@@ -823,7 +839,7 @@ const CATCH_UP_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The notices a phone's background link may have missed: still new (not seen, used or cleared anywhere),
- * not expired, not a quiet class, from the last 24 h; in orderNotices' order (the top one first, #1098).
+ * not expired, not a quiet class (an answerable notice is never one: S9), from the last 24 h; in orderNotices' order (the top one first, #1098).
  */
 function pendingForPhones(user) {
     const u = qu(user);
@@ -833,7 +849,7 @@ function pendingForPhones(user) {
         return orderNotices(database()
             .prepare("SELECT * FROM notices WHERE user = ? AND state = 'new' AND createdAt >= ? AND (expiresAt IS NULL OR expiresAt > ?) ORDER BY createdAt DESC LIMIT 50")
             .all(u, now - CATCH_UP_MS, now)
-            .filter((r) => !(r.cls && quiet.has(r.cls)))
+            .filter((r) => !(r.cls && quiet.has(r.cls) && !isAnswerable(r.data)))
             .map(rowOut), now);
     } catch (e) {
         console.warn(`[notify-inbox] pending failed: ${e.message}`);
@@ -849,6 +865,11 @@ function pendingForPhones(user) {
  * a link that was down, and a notification per row in it buries the phone. Nothing is lost: every one of
  * them is in the inbox still - the "..." holder lists them all and the title bar's count is theirs - so the
  * single notice is the quiet pointer to them, and the phone's answer still confirms it.
+ *
+ * One exception (#1305, S10): an ANSWERABLE notice (data.answerType - a phone-consent Allow / Deny question) is a blocked
+ * agent waiting on her, and a pointer to the inbox does not let her answer it. Every answerable notice the phone has not
+ * confirmed goes first, each quietly (alert false, catchUp true: a catch-up never sounds), then the one top notice as before
+ * (skipped when it was one of them). A real phone's catch-up is those plus one; the test lane still gets every notice.
  */
 function staleCatchUpMs() {
     try { return require('./callFilter').staleMs(); } catch (_e) { return 30 * 60 * 1000; }
@@ -868,21 +889,31 @@ function catchUpPhone(deviceId) {
         // gets all of them, oldest first so the top one lands on top of its shade
         const missed = pendingForPhones(user).filter((n) => !done.has(`${user}\u0000${n.id}`));
         if (!missed.length) continue;
-        const batch = testLane ? missed.slice().reverse() : missed;
-        for (const n of batch) {
+        const skipStale = (n) => {
             // a text / call notice from before a long absence is not replayed at all (a flood on return, #1107):
             // the summary counts it
             if ((n.cls === 'sms' || n.cls === 'call') && nowFn() - Number(n.createdAt || 0) > staleCatchUpMs()) {
                 try { require('./callFilter').noteSkipped(n); } catch (_e) { /* best effort */ }
-                continue;
+                return true;
             }
+            return false;
+        };
+        let batch;
+        if (testLane) batch = missed.slice().reverse();
+        else {
+            // every unconfirmed answerable one, then the top notice (the first that is not a stale text; not twice)
+            batch = missed.filter((n) => isAnswerable(n.data));
+            const top = missed.find((n) => !skipStale(n));
+            if (top && !batch.includes(top)) batch.push(top);
+        }
+        for (const n of batch) {
+            if (testLane && skipStale(n)) continue;
             const sentTo = [];
             try { sent += as.sendInboxNotice(gr, null, Object.assign({ user }, n, { alert: testLane, catchUp: true }), { deviceId, sentTo }); } catch (_e) { /* the link went again */ }
             // a fresh round of tries for it (the app confirms it, or says it showed it already)
             sentTo.forEach((device) => noteSent(device, user, n.id, testLane, true));
-            if (!testLane) break; // a real phone's catch-up is the one top notice (a stale text above it is skipped, not sent)
         }
-        if (!testLane && missed.length > 1) console.log(`[notify-inbox] ${deviceId}: catch-up carries the top of ${missed.length} waiting notice(s); the rest stay in the inbox`);
+        if (!testLane && missed.length > batch.length) console.log(`[notify-inbox] ${deviceId}: catch-up carries ${batch.length} of ${missed.length} waiting notice(s) (the answerable ones and the top); the rest stay in the inbox`);
     }
     if (sent) console.log(`[notify-inbox] ${deviceId}: caught up ${sent} notice(s)`);
     return sent;

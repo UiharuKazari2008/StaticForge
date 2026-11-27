@@ -128,6 +128,16 @@ function stackFirstExpiry(n) {
     return first && first !== (Number(n.expiresAt) || 0) ? { expFirst: first } : {};
 }
 
+// answerType + up to three keys { id, label } (label at most 20 characters) of an answerable notice; {} for any other
+function answerFields(n) {
+    const d = n && n.data;
+    if (!d || typeof d.answerType !== 'string' || !d.answerType) return {};
+    const buttons = (Array.isArray(d.buttons) ? d.buttons : []).slice(0, 3)
+        .filter((b) => b && b.id != null && b.id !== '')
+        .map((b) => ({ id: String(b.id).slice(0, 40), label: String(b.label == null ? b.id : b.label).slice(0, 20) }));
+    return { answerType: d.answerType.slice(0, 60), buttons };
+}
+
 function inboxCounts(user = 'admin') {
     // waiting: not seen yet, or seen (put away with Hide) within the last day - an old notice already looked at is
     // nothing to show, and the "..." never stands for nothing (Yukimi, Nov 18: Nov 15's fuel reminders kept it up)
@@ -162,7 +172,10 @@ function inboxCounts(user = 'admin') {
                 exp: Number(n.expiresAt) || 0,
                 // a stack (stack:mail, #1098): how many it holds, the holder's badge; expFirst: when its earliest item ends (its
                 // count and lines are stale from then on, until the server's rebuilt list arrives)
-                ...(n.data && n.data.stack ? { count: Number(n.data.count) || 1, ...stackFirstExpiry(n) } : {}) }))
+                ...(n.data && n.data.stack ? { count: Number(n.data.count) || 1, ...stackFirstExpiry(n) } : {}),
+                // an answerable notice (data.answerType, #1305 S20: the phone-consent Allow / Deny / End question): its answer packet
+                // and its keys, so the app asks it from its own list with the page asleep. Nothing for the others (a small packet)
+                ...answerFields(n) }))
     };
 }
 

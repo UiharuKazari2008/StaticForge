@@ -68,7 +68,7 @@ async function test(name, f) {
         assert.strictEqual(loud(), 1);
         const n = mine()[0];
         assert.strictEqual(n.title, 'Claude 3 wants the A53 phone');
-        assert.strictEqual(n.text, 'Why: testing the bar. For up to 20 min. Allow it?');
+        assert.strictEqual(n.text, 'For up to 20 min. Why: testing the bar.'); // #1305 P7: duration first, no 'Allow it?'
         assert.strictEqual(n.cls, 'notification'); // #1305: 'Other notifications', never 'fleet' (Alarm4)
         assert.strictEqual(n.app, 'claudedesk');
         assert.strictEqual(n.data.kind, 'device-ask');
@@ -150,7 +150,7 @@ async function test(name, f) {
         const n = mine()[0];
         assert.strictEqual(n.id, 'device-hold:fold');
         assert.strictEqual(n.title, 'Fold is in use by Claude 4');
-        assert.ok(/^build check\. Until \d\d:\d\d\. End takes the phone back now\.$/.test(n.text), n.text);
+        assert.ok(/^build check\. Until \d\d:\d\d\.$/.test(n.text), n.text); // #1305 P7: no trailing 'End takes the phone back now.'
         assert.deepStrictEqual({ kind: n.data.kind, device: n.data.device, leaseId: n.data.leaseId }, { kind: 'device-hold', device: 'fold', leaseId: 'L2' });
         assert.strictEqual(n.expiresAt, h.endsAt + 5 * 60000);
         // the device changes hands: still one row, new text, still silent
@@ -158,6 +158,73 @@ async function test(name, f) {
         assert.strictEqual(mine().length, 1);
         assert.strictEqual(mine()[0].title, 'Fold is in use by Claude 5');
         assert.strictEqual(loud(), 0);
+    });
+
+    await test('#1305 S5: two holds on a device in a row (the first cleared) are one sound at most - none', () => {
+        cn.sync({ asks: [], holds: [hold()] }, {}, {});
+        cn.sync({ asks: [], holds: [] }, {}, {}); // ended: cleared
+        assert.strictEqual(mine().length, 0);
+        mark();
+        cn.sync({ asks: [], holds: [hold({ leaseId: 'L7', agentName: 'Claude 5' })] }, {}, {});
+        assert.deepStrictEqual(mine().map((n) => [n.id, n.state]), [['device-hold:fold', 'new']], 'shown again');
+        assert.strictEqual(loud(), 0, 'the page is told: no sound');
+        assert.ok(toPhones.length === 1 && toPhones[0].alert === false, 'the phone is told: no sound');
+    });
+
+    await test('#1305 S9: the ask is not swallowed by a quiet Other notifications class', () => {
+        inbox.setQuiet('admin', ['notification']);
+        try {
+            cn.sync({ asks: [ask()], holds: [hold()] }, {}, {});
+            const a = mine().find((n) => n.id === 'device-ask:L1');
+            assert.strictEqual(a.state, 'new', 'the question is waiting');
+            assert.ok(toPhones.some((n) => n.id === 'device-ask:L1'), 'and pushed to the phone');
+            assert.strictEqual(mine().find((n) => n.id === 'device-hold:fold').state, 'new', 'the hold carries answerType too');
+        } finally { inbox.setQuiet('admin', []); }
+    });
+
+    await test('#1305 test lane: a lane-test ask / hold lands under user test only, never in the household list', () => {
+        const mineT = () => inbox.list('test').filter((n) => /^device-(ask|hold):/.test(n.id));
+        const r = cn.sync({ asks: [ask({ leaseId: 'T1', lane: 'test' })], holds: [hold({ leaseId: 'T2', device: 'emu1', lane: 'test' })] }, {}, {});
+        assert.deepStrictEqual(r.published.sort(), ['device-ask:T1', 'device-hold:emu1']);
+        assert.deepStrictEqual(mineT().map((n) => n.id).sort(), ['device-ask:T1', 'device-hold:emu1']);
+        assert.strictEqual(mine().length, 0, 'the household sees nothing of it');
+        assert.deepStrictEqual(mineT().find((n) => n.id === 'device-ask:T1').data.answerType, 'device_consent_answer');
+        assert.ok(toPhones.every((n) => n.user === 'test'), 'only the test lane is pushed to');
+        // the same ids on both lanes at once: one row each, in its own queue
+        cn.sync({ asks: [ask({ leaseId: 'T1', lane: 'test' }), ask({ leaseId: 'T1' })], holds: [] }, {}, {});
+        assert.deepStrictEqual(mine().map((n) => n.id), ['device-ask:T1']);
+        assert.strictEqual(mineT().filter((n) => n.id === 'device-ask:T1').length, 1);
+    });
+
+    await test('#1305 test lane: clearing is per lane (an admin row and a test row never clear each other)', () => {
+        const mineT = () => inbox.list('test').filter((n) => /^device-(ask|hold):/.test(n.id));
+        const both = { asks: [ask({ leaseId: 'A1' }), ask({ leaseId: 'T1', lane: 'test', agentId: 'ag7', device: 'emu1' })], holds: [hold(), hold({ leaseId: 'T2', device: 'emu1', lane: 'test' })] };
+        cn.sync(both, {}, {});
+        assert.deepStrictEqual(mine().map((n) => n.id).sort(), ['device-ask:A1', 'device-hold:fold']);
+        assert.deepStrictEqual(mineT().map((n) => n.id).sort(), ['device-ask:T1', 'device-hold:emu1']);
+        // the test lane's ask and hold end: only its rows come down
+        let r = cn.sync({ asks: [both.asks[0]], holds: [both.holds[0]] }, {}, {});
+        assert.deepStrictEqual(r.cleared.sort(), ['device-ask:T1', 'device-hold:emu1']);
+        assert.strictEqual(mineT().length, 0);
+        assert.deepStrictEqual(mine().map((n) => n.id).sort(), ['device-ask:A1', 'device-hold:fold'], 'the household rows stay');
+        // and the other way round (new leases: a cleared lease published again would stay cleared, as the inbox keeps it)
+        const both2 = { asks: [ask({ leaseId: 'A2' }), ask({ leaseId: 'T3', lane: 'test', agentId: 'ag7', device: 'emu1' })], holds: [hold({ leaseId: 'L12' }), hold({ leaseId: 'T4', device: 'emu1', lane: 'test' })] };
+        cn.sync(both2, {}, {});
+        r = cn.sync({ asks: [both2.asks[1]], holds: [both2.holds[1]] }, {}, {});
+        assert.deepStrictEqual(r.cleared.sort(), ['device-ask:A2', 'device-hold:fold']);
+        assert.strictEqual(mine().length, 0);
+        assert.deepStrictEqual(mineT().map((n) => n.id).sort(), ['device-ask:T3', 'device-hold:emu1'], 'the test rows stay');
+        // an answered test ask comes down through clearAsk (the handler)
+        assert.strictEqual(cn.clearAsk('T3'), true);
+        assert.deepStrictEqual(mineT().map((n) => n.id), ['device-hold:emu1']);
+        cn.sync({ asks: [], holds: [] }, {}, {});
+        assert.strictEqual(mineT().length, 0);
+    });
+
+    await test('#1305 test lane: the one-sound gate is shared across lanes', () => {
+        const t0 = Date.now();
+        cn.sync({ asks: [ask({ leaseId: 'A1' }), ask({ leaseId: 'T1', lane: 'test', agentId: 'ag7', device: 'emu1' })], holds: [] }, {}, { now: t0 });
+        assert.strictEqual(askedLoud(), 1, 'a burst across the two lanes is one sound');
     });
 
     await test('a hold long over is not published', () => {

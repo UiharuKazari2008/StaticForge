@@ -501,6 +501,9 @@ function snooze(user, id, { minutes, at } = {}) {
     // any notice may be snoozed (Yukimi, Nov 18: 6.5.1's reminder option on every notification, page and app):
     // it goes now and comes back as itself, sounding, at the time asked; a calendar reminder as its Reminder
     if (!key) return { ok: false, error: 'no notice' };
+    // a phone-consent question or an in-use status is not a reminder (#1305 S18): snoozing an Allow / Deny ask would hide it and
+    // bring it back after the agent's wait ended; it is answered, never put off. Nothing is stored or cleared.
+    if (key.startsWith('device-ask:') || key.startsWith('device-hold:')) return { ok: false, error: 'cannot snooze a phone request' };
     const u = user === 'dev_admin' ? 'dev_admin' : USER;
     if (u !== USER) return { ok: false, error: 'no reminders for this user' };
     const when = Number.isFinite(Number(at)) && Number(at) > nowFn() ? Number(at) : nowFn() + Math.max(1, Math.min(20160, Number(minutes) || 5)) * MIN;

@@ -59,6 +59,24 @@ ps.bind(gr);
     assert.ok(entry, 'the stack is one holder entry');
     assert.strictEqual(entry.count, 3, 'the holder entry carries the count');
     assert.strictEqual(last.notices.list.filter((n) => /^dmail:s/.test(n.id)).length, 0, 'no entry per mail');
+
+    // #1305 S20: an answerable notice (data.answerType) carries answerType + at most three keys (label <= 20 chars) in the holder
+    // list; every other notice carries neither field (a small packet)
+    inbox.publish({ id: 'device-ask:S20', cls: 'notification', title: 'Claude 3 wants the A53 phone', text: 'For up to 20 min. Why: x.', actions: [{ id: 'allow', label: 'Allow' }],
+        data: { kind: 'device-ask', answerType: 'device_consent_answer', buttons: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }, { id: 'long', label: 'A label that is far too long to show' }, { id: 'fourth', label: 'Fourth' }] } });
+    inbox.publish({ id: 'plain:S20', cls: 'notification', title: 'Plain', text: 'nothing to answer', data: { buttons: [{ id: 'x', label: 'X' }] } });
+    await ps._test.run();
+    const list20 = sentEv[sentEv.length - 1].detail.fields.notices.list;
+    const ask20 = list20.find((n) => n.id === 'device-ask:S20');
+    assert.strictEqual(ask20.answerType, 'device_consent_answer', 'the answer packet is named');
+    assert.strictEqual(ask20.buttons.length, 3, 'three keys at most');
+    assert.deepStrictEqual(ask20.buttons[0], { id: 'allow', label: 'Allow' });
+    assert.deepStrictEqual(ask20.buttons.map((b) => b.id), ['allow', 'deny', 'long']);
+    assert.ok(ask20.buttons.every((b) => b.label.length <= 20), 'labels clipped to 20');
+    assert.strictEqual(ask20.buttons[2].label, 'A label that is far ');
+    const plain20 = list20.find((n) => n.id === 'plain:S20');
+    assert.ok(plain20 && !('answerType' in plain20) && !('buttons' in plain20), 'no answer fields on a notice nobody answers');
+    assert.ok(!('answerType' in entry) && !('buttons' in entry), 'nor on a stack');
     console.log('test-phone-status: ok');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

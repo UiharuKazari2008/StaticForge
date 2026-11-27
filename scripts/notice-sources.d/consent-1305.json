@@ -1,0 +1,20 @@
+{
+ "sources": {
+  "device-ask": {
+   "area": "modules/deviceConsentNotices.js publishAsk (the server inbox notice device-ask:<leaseId>, shown by the pages and posted by the app as a native notification)",
+   "trigger": "server-push",
+   "action": "Allow / Deny keys on the notice (ws device_consent_answer); a tap opens the Devices page",
+   "sound": "notification",
+   "switch": "Fleet > Gating > Phone Consent; the sound is Other notifications (class notification: Settings > Sounds & Notifications > Notifications > Other notifications)",
+   "note": "N1/N4/N5 ok: an agent asks for a phone and is blocked until she answers, so it is the one call to action. N7: sounds once per ask (Other notifications), never repeats: the same agent asking for the same phone again within 15 min, a burst of asks and a re-publish are silent; a catch-up is silent; an answerable notice is never swallowed by the class's Display message setting (#1305)."
+  },
+  "device-hold": {
+   "area": "modules/deviceConsentNotices.js publishHold (the server inbox notice device-hold:<device>, in-use status of a shared phone)",
+   "trigger": "server-push",
+   "action": "End key on the notice (ws device_consent_answer) takes the phone back now; a tap opens the Devices page",
+   "sound": false,
+   "switch": "Fleet > Gating > Phone Consent; the notice carries no sound (alert false, also when it comes back changed)",
+   "note": "N1/N4 ok: the phone is in use by an agent and End is the action; one row per device, updated in place, silent; it ends with the lease (#1305)."
+  }
+ }
+}

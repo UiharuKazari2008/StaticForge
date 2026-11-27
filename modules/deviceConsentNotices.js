@@ -14,6 +14,10 @@
  * not even that when the same agent asked for the same phone within ASK_RESOUND_MS, or any ask sounded within
  * ASK_GAP_MS (a burst of asks is one sound); the ask is still shown and answerable.
  *
+ * Test lane (#1305): an ask / hold the snapshot marks lane 'test' (a lease on a test device) goes to the inbox's user 'test'
+ * queue, which only test devices receive; every other one stays the household's (user 'admin'). The one-sound gate is shared,
+ * and the clearing pass keeps one keep-set per queue, so an admin row and a test row never clear each other.
+ *
  * sync(snapshot, settings, opts) is the whole interface: it publishes what the snapshot holds and clears every
  * device-ask: / device-hold: notice the snapshot no longer holds. Event driven (the caller syncs on a change); no timer here.
  * A repeat sync never sounds twice (the ask's digest is its lease); opts.quiet (a Set of leaseIds whose answer time passed)
@@ -30,6 +34,10 @@ const inbox = SANDBOXED
     : realInbox;
 
 const USER = 'admin';
+const TEST_USER = 'test'; // the test lane of the inbox (modules/testDevices.js): only test devices receive it
+const LANES = [USER, TEST_USER];
+/** The inbox queue a snapshot entry belongs to: lane 'test' (a lease on a test device) -> the test lane, everything else the household's */
+const userOfLane = (x) => (x && x.lane === 'test' ? TEST_USER : USER);
 const APP = 'claudedesk';
 const CLS = 'notification'; // "Other notifications" (#1305): never 'fleet', whose old default was Alarm4.mp3
 const HOUR = 60 * 60 * 1000;
@@ -71,8 +79,8 @@ const hhmm = (ms) => {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-function clearNotice(id) {
-    try { return inbox.clear(USER, id, 'server') === true; } catch (_) { return false; }
+function clearNotice(id, user) {
+    try { return inbox.clear(user || USER, id, 'server') === true; } catch (_) { return false; }
 }
 
 function publishAsk(a, quiet, now) {
@@ -83,12 +91,14 @@ function publishAsk(a, quiet, now) {
     const label = clip(a.label || a.device || 'device', 60);
     const minutes = Math.max(1, Math.round(Number(a.minutes) || 0));
     try {
+        // notice: device-ask
         return !!inbox.publish({
-            user: USER, app: APP, id: askId(leaseId), cls: CLS,
+            user: userOfLane(a), app: APP, id: askId(leaseId), cls: CLS,
             alert: loud,
             digest: `ask:${leaseId}`,
             title: clip(`${who} wants the ${label}`, 120),
-            text: clip(`Why: ${clip(a.why, 160) || 'not given'}. For up to ${minutes} min. Allow it?`, 300),
+            // the duration first, short; the Allow / Deny keys ask the question (#1305 P7)
+            text: clip(`For up to ${minutes} min. Why: ${clip(a.why, 160) || 'not given'}.`, 300),
             actions: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }],
             data: {
                 app: APP, kind: 'device-ask', leaseId, device: a.device,
@@ -110,12 +120,13 @@ function publishHold(h, now) {
     const label = clip(h.label || device, 60);
     const until = Number.isFinite(endsAt) && endsAt > 0 ? ` Until ${hhmm(endsAt)}.` : '';
     try {
+        // notice: device-hold
         return !!inbox.publish({
-            user: USER, app: APP, id: holdId(device), cls: CLS,
+            user: userOfLane(h), app: APP, id: holdId(device), cls: CLS,
             alert: false,
             digest: `hold:${h.leaseId || ''}:${endsAt || 0}`,
             title: clip(`${label} is in use by ${who}`, 120),
-            text: clip(`${clip(h.why, 160) || 'In use'}.${until} End takes the phone back now.`, 300),
+            text: clip(`${clip(h.why, 160) || 'In use'}.${until}`, 300),
             // a call to action (Yukimi, Nov 26 2026: "your notification has no call to action"): End takes the phone back
             actions: [{ id: 'end', label: 'End' }],
             data: {
@@ -141,32 +152,39 @@ function sync(snapshot, settings, opts) {
         const o = opts || {};
         const now = Number.isFinite(Number(o.now)) ? Number(o.now) : Date.now();
         const quiet = o.quiet instanceof Set ? o.quiet : new Set(Array.isArray(o.quiet) ? o.quiet : []);
-        const keep = new Set();
+        // per queue: an admin row and a test-lane row never clear each other
+        const keep = { [USER]: new Set(), [TEST_USER]: new Set() };
         for (const a of Array.isArray(snap.asks) ? snap.asks : []) {
             if (!a || !a.leaseId) continue;
-            keep.add(askId(a.leaseId));
+            keep[userOfLane(a)].add(askId(a.leaseId));
             if (publishAsk(a, quiet.has(a.leaseId), now)) out.published.push(askId(a.leaseId));
         }
         for (const h of Array.isArray(snap.holds) ? snap.holds : []) {
             if (!h || !h.device) continue;
-            keep.add(holdId(h.device));
+            keep[userOfLane(h)].add(holdId(h.device));
             if (publishHold(h, now)) out.published.push(holdId(h.device));
         }
-        let held = [];
-        try { held = inbox.list(USER) || []; } catch (_) { held = []; }
-        for (const n of held) {
-            const id = n && n.id ? String(n.id) : '';
-            if (!id.startsWith(ASK_PREFIX) && !id.startsWith(HOLD_PREFIX)) continue;
-            if (n.state !== 'new' && n.state !== 'seen') continue;
-            if (keep.has(id)) continue;
-            if (clearNotice(id)) out.cleared.push(id);
+        for (const user of LANES) {
+            let held = [];
+            try { held = inbox.list(user) || []; } catch (_) { held = []; }
+            for (const n of held) {
+                const id = n && n.id ? String(n.id) : '';
+                if (!id.startsWith(ASK_PREFIX) && !id.startsWith(HOLD_PREFIX)) continue;
+                if (n.state !== 'new' && n.state !== 'seen') continue;
+                if (keep[user].has(id)) continue;
+                if (clearNotice(id, user)) out.cleared.push(id);
+            }
         }
     } catch (_) { /* a notice is never worth a throw */ }
     return out;
 }
 
-/** An ask was answered (or lapsed): its notice comes down now. */
-function clearAsk(leaseId) { return clearNotice(askId(leaseId)); }
+/** An ask was answered (or lapsed): its notice comes down now, on whichever lane it was on. */
+function clearAsk(leaseId) {
+    let cleared = false;
+    for (const user of LANES) if (clearNotice(askId(leaseId), user)) cleared = true;
+    return cleared;
+}
 
 /** Test hook: forget which asks sounded. */
 function _reset() { lastLoud.clear(); seen.clear(); lastLoudAny = 0; }

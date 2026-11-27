@@ -97,6 +97,89 @@ inbox.bind(gr);
     assert.strictEqual(inbox.count('admin'), 1, 'total: the notices a full list holds');
     assert.strictEqual(inbox.list('admin', { since: now + 1 }).length, 0, 'nothing newer: empty');
 
+    // ---- #1305: phone-consent notices (S5 done rows with alert: false, S9 answerable beats the quiet class, S10 catch-up) ----
+    {
+        inbox._test.reset();
+        const asSync = require('../modules/activeSync');
+        const origSend = asSync.sendInboxNotice;
+        const pushed = [];
+        asSync.sendInboxNotice = (g, ws, n, o) => { pushed.push(n); if (o && o.sentTo) o.sentTo.push((o && o.deviceId) || 'fold'); return 1; };
+        try {
+            // S5: the second hold on a device (the first cleared) is shown again but never sounds when the producer said alert: false
+            const hold = (lease, over) => inbox.publish(Object.assign({ app: 'claudedesk', id: 'device-hold:fold', cls: 'notification', title: 'Fold is in use by A', text: `build. Until 10:00. ${lease}`, digest: `hold:${lease}`, alert: false }, over));
+            now += 1000;
+            assert.strictEqual(hold('L1').alert, false, 'S5: a new in-use row is silent');
+            inbox.ack('admin', 'device-hold:fold', 'cleared');
+            pushed.length = 0;
+            const h2 = hold('L2');
+            assert.strictEqual(h2.alert, false, 'S5: the same device held again (digest changed) stays silent');
+            assert.strictEqual(h2.state, 'new', 'S5: but it is new, shown again');
+            assert.strictEqual(pushed.length, 1, 'S5: the phone still gets it');
+            assert.strictEqual(pushed[0].alert, false, 'S5: and not as a push that sounds');
+            inbox.ack('admin', 'device-hold:fold', 'acted');
+            assert.strictEqual(hold('L3', { alert: undefined }).alert, true, 'S5: a producer that did not say alert: false still sounds when a done row comes back changed');
+            inbox.ack('admin', 'device-hold:fold', 'cleared');
+            assert.strictEqual(hold('L4', { returning: true }).alert, true, 'S5: returning (a snooze ending) sounds whatever alert says');
+            // escalation (a worse class) sounds too
+            inbox.publish({ app: 'x', id: 'esc:1', cls: 'weather-alert', title: 'Storm', text: 's', alert: false });
+            inbox.ack('admin', 'esc:1', 'cleared');
+            assert.strictEqual(inbox.publish({ app: 'x', id: 'esc:1', cls: 'weather-severe', title: 'Storm', text: 's', alert: false }).alert, true, 'S5: escalation still sounds');
+
+            // S9: an answerable notice is never swallowed by the class's quiet setting; a plain one still is
+            inbox._test.reset();
+            inbox.setQuiet('admin', ['notification']);
+            pushed.length = 0;
+            const plain = inbox.publish({ app: 'x', id: 'plain:q', cls: 'notification', title: 'Plain', text: 'p' });
+            assert.strictEqual(plain.state, 'seen', 'S9: a plain notice of a quiet class is stored seen');
+            assert.strictEqual(pushed.length, 0, 'S9: and never pushed');
+            const ans = (id, over) => inbox.publish(Object.assign({ app: 'claudedesk', id, cls: 'notification', title: 'Claude wants the phone', text: 't', alert: true, digest: id, data: { answerType: 'device_consent_answer', buttons: [{ id: 'allow', label: 'Allow' }] } }, over));
+            const a1 = ans('device-ask:Q1');
+            assert.strictEqual(a1.state, 'new', 'S9: an answerable notice is new in a quiet class');
+            assert.strictEqual(a1.alert, true, 'S9: and still sounds when the producer says alert');
+            assert.strictEqual(pushed.length, 1, 'S9: it is pushed to the phones');
+            const a2 = ans('device-ask:Q2', { alert: false });
+            assert.strictEqual(a2.state, 'new');
+            assert.strictEqual(a2.alert, false, 'S9: alert: false keeps it silent');
+            assert.strictEqual(pushed.length, 2);
+            // the catch-up list keeps it even though the class is quiet; a plain new row of that class (stored before) is dropped
+            inbox.setQuiet('admin', []);
+            const old = inbox.publish({ app: 'x', id: 'plain:old', cls: 'notification', title: 'Old', text: 'o' });
+            assert.strictEqual(old.state, 'new');
+            inbox.setQuiet('admin', ['notification']);
+            const pend2 = inbox.pendingForPhones('admin').map((n) => n.id);
+            assert.ok(pend2.includes('device-ask:Q1') && pend2.includes('device-ask:Q2'), 'S9: answerable ones stay in the phones\' catch-up list');
+            assert.ok(!pend2.includes('plain:old'), 'S9: a plain quiet-class row is not');
+            inbox.setQuiet('admin', []);
+
+            // S10: a real phone's catch-up sends every unconfirmed answerable notice first (quiet), then the top one (not twice)
+            inbox._test.reset();
+            now += 1000; ans('device-ask:C1');
+            now += 1000; ans('device-ask:C2');
+            now += 1000; inbox.publish({ app: 'mail', id: 'mail:top', cls: 'mail', title: 'New E-mail Message', text: 'hi' });
+            now += 1000; inbox.publish({ app: 'x', id: 'plain:mid', cls: 'notification', title: 'Mid', text: 'm' });
+            now += 1000; inbox.publish({ app: 'mail', id: 'mail:newest', cls: 'mail', title: 'New E-mail Message', text: 'newest' });
+            pushed.length = 0;
+            inbox.catchUpPhone('fold');
+            assert.deepStrictEqual(pushed.map((n) => n.id).slice(0, 2).sort(), ['device-ask:C1', 'device-ask:C2'], 'S10: both asks go first');
+            assert.strictEqual(pushed.length, 3, 'S10: then the one top notice, nothing else');
+            assert.strictEqual(pushed[2].id, 'mail:newest', 'S10: the top notice is the newest');
+            assert.ok(pushed.every((n) => n.alert === false && n.catchUp === true), 'S10: all quiet, all marked catch-up');
+            // one the phone confirmed is not sent again
+            inbox.confirmed('fold', 'device-ask:C1', 'posted');
+            pushed.length = 0;
+            inbox.catchUpPhone('fold');
+            assert.ok(!pushed.some((n) => n.id === 'device-ask:C1'), 'S10: a confirmed ask is not sent again');
+            assert.ok(pushed.some((n) => n.id === 'device-ask:C2'), 'S10: an unconfirmed one is');
+            // the top notice is itself an ask: it is sent once
+            inbox._test.reset();
+            now += 1000; inbox.publish({ app: 'mail', id: 'mail:one', cls: 'mail', title: 'New E-mail Message', text: 'hi' });
+            now += 1000; ans('device-ask:T1');
+            pushed.length = 0;
+            inbox.catchUpPhone('fold');
+            assert.deepStrictEqual(pushed.map((n) => n.id), ['device-ask:T1'], 'S10: the top notice that is an ask goes once, and no other notice with it');
+        } finally { asSync.sendInboxNotice = origSend; }
+    }
+
     inbox._test.reset();
     console.log('notification inbox: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });

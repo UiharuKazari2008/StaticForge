@@ -196,6 +196,18 @@ const ids = () => rem._test.items().map((i) => i.id);
     assert.ok(clearedOnPhones.includes(addId), 'the phones cancel theirs');
     assert.strictEqual(rem._test.timerDelay(), 5 * 60000, 'armed for the snooze');
     assert.ok(!rem.snooze('dev_admin', addId, { minutes: 5 }).ok, 'not for dev_admin');
+    // #1305 S18: a phone-consent question or in-use status is answered, never snoozed: an error, nothing stored, nothing cleared
+    for (const pid of ['device-ask:LS18', 'device-hold:a53']) {
+        inbox.publish({ user: 'admin', app: 'claudedesk', id: pid, cls: 'notification', title: 'Phone consent', text: 'x', alert: false, data: { answerType: 'device_consent_answer' } });
+        const refused = rem.snooze('admin', pid, { minutes: 5 });
+        assert.strictEqual(refused.ok, false, `${pid}: refused`);
+        assert.ok(/phone request/.test(refused.error), 'the caller is told why');
+        assert.strictEqual(byId(pid).state, 'new', `${pid}: still waiting, not cleared`);
+        assert.deepStrictEqual(rem.status().snoozed.filter((x) => x.id === pid), [], `${pid}: nothing stored to bring it back`);
+        assert.ok(!clearedOnPhones.includes(pid), 'the phones do not take it down');
+        inbox.ack('admin', pid, 'cleared');
+    }
+    assert.strictEqual(rem._test.timerDelay(), 5 * 60000, 'the timer is still the reminder snooze\'s');
     at(local(2026, 11, 16, 12, 30));
     const before = toPhones.length;
     await rem.tick();
