@@ -78,11 +78,14 @@ function userEnv() {
 }
 // through the spawn helper process (modules/spawnHelper.js): forking the server itself blocked its loop
 function defaultRunner(cmd, args, opts) {
+    // a pane on Fat Misaka (paneFor answers sock ['--ssh-misaka', '-L', socket]): tmux over ssh (modules/misakaSessions.js)
+    if (cmd === 'tmux' && args[0] === '--ssh-misaka') return require('./misakaSessions').tmux(args.slice(3), opts);
     return spawnHelper.run(cmd, args, { env: userEnv(), timeout: (opts && opts.timeout) || 15000, maxBuffer: 512 * 1024 });
 }
 let runner = defaultRunner;
 function _setRunner(fn) { runner = typeof fn === 'function' ? fn : defaultRunner; }
-const tmux = (args, opts) => runner('tmux', ['-L', socket(), ...args], opts);
+const tmuxLocal = (args, opts) => runner('tmux', ['-L', socket(), ...args], opts);
+const tmux = tmuxLocal;
 
 function cliPath() {
     if (process.env.DREAMSCAPE_CLAUDE_CLI) return process.env.DREAMSCAPE_CLAUDE_CLI;
@@ -214,6 +217,7 @@ async function engineEnv(gr, engine, model, effort, id) {
 }
 
 async function watch(name, opts = {}) {
+    const tmux = opts.tmuxFn || tmuxLocal; // a session on Fat Misaka is watched through ssh
     const until = Date.now() + (opts.timeoutMs || WAIT_MS);
     const rc = opts.remoteControl === true;
     let nudged = false;
@@ -289,6 +293,7 @@ function buildArgs(o, extra = {}) {
 
 async function launch(gr, o) {
     if (readOnly()) throw new Error('Sessions are read-only on this instance');
+    if (o.host === 'misaka') return require('./misakaSessions').launch(gr, o); // Fleet sessions on Fat Misaka
     const cwd = String(o.cwd || '');
     let isDir = false;
     try { isDir = path.isAbsolute(cwd) && (await fs.promises.stat(cwd)).isDirectory(); } catch (_) { isDir = false; }
@@ -328,8 +333,11 @@ async function launch(gr, o) {
 /** A new session in a folder, with an optional first prompt. */
 async function start(gr, opts = {}) {
     const id = crypto.randomUUID();
+    // where it runs (Fleet setting sessionHost, default Dreamscape): a failure of the choice itself never stops a Dreamscape start
+    let chosen = { host: 'dreamscape' };
+    try { chosen = await require('./misakaSessions').resolveHost(gr, opts); } catch (e) { if (opts.host === 'misaka') throw e; console.warn(`[claudeLauncher] host choice: ${e.message}`); }
     const title = opts.title || (opts.prompt ? String(opts.prompt).split('\n')[0] : '') || path.basename(String(opts.cwd || '')) || 'Claude session';
-    return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, engine: opts.engine, remoteControl: opts.remoteControl === true, dispatchedBy: opts.dispatchedBy, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
+    return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, engine: opts.engine, remoteControl: opts.remoteControl === true, dispatchedBy: opts.dispatchedBy, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs, host: chosen.host, workId: opts.workId, gitIdentity: opts.gitIdentity });
 }
 
 /** A session's transcript file; a conversation handed on to another session id (`continued-in`) is followed (claudeSessions). */
@@ -428,6 +436,13 @@ async function claudeRunning(live) {
 
 /** The tmux pane a running session's claude process sits in: { args (socket), pane }. */
 async function paneFor(id) {
+    const remote = require('./misakaSessions').recordOf(id);
+    if (remote) {
+        // a Fleet session on Fat Misaka: its pane is over ssh; the watcher's mirror says whether it is up and busy
+        const live = claudeSessions.liveSessions().find((s) => s.id === id);
+        if (!live) throw notRunning();
+        return { sock: ['--ssh-misaka', '-L', socket()], pane: `=${remote.tmux}:`, live };
+    }
     const live = claudeSessions.liveSessions().find((s) => s.id === id);
     if (!live) throw notRunning();
     // A session Remote Control's own server spawned (from claude.ai / the app) sits under that server's
@@ -640,6 +655,11 @@ async function screen(id) {
  * modules/adminTerminal.js): { file, args, title }. Closing that terminal only detaches; the session runs on.
  */
 async function attachCommand(id) {
+    const remote = require('./misakaSessions').recordOf(id);
+    if (remote) {
+        const m = require('./misakaSessions');
+        return { file: 'ssh', args: [...m.sshOptions({ tty: true }), m.destination(), `tmux -L ${socket()} attach-session -t '=${remote.tmux}'`], title: `${remote.tmux} (Fat Misaka)`, sessionId: id };
+    }
     const { sock, pane, live } = await paneFor(id);
     const r = await runner('tmux', [...sock, 'display-message', '-p', '-t', pane, '#{session_name}']);
     const name = String(r.stdout || '').trim();
@@ -725,7 +745,7 @@ async function answerPermission(id, choice, signature) {
     return { answered: true, key: opt.n, option: opt.text, gone };
 }
 
-module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, attachCommand, readPermissionPrompt, permissionPrompt, answerPermission, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE, EFFORTS, _test: { buildArgs, READY_RE, readDialog } };
+module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, attachCommand, readPermissionPrompt, permissionPrompt, answerPermission, mcpConfigFile, findFile, _setRunner, watch, buildArgs, _tmuxName: tmuxName, _coordNote: coordNote, _commandLine: commandLine, DEFAULT_MODE, EFFORTS, _test: { buildArgs, READY_RE, readDialog } };
 
 // hot reload (#1292): the carry-server promise and a test runner survive; the default runner is rebuilt from the new code
 require('./hotReload').mark(module, {

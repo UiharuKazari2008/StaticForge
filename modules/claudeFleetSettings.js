@@ -348,4 +348,14 @@ function usageFor(index) {
     } catch (_) { return null; }
 }
 
-module.exports = { get, save, availability, pace, usageFor, isLoginError, markLoginFailed, credentialsDead, loginFailedOf, clearLoginFailed, LOGIN_MSG, CRED_MSG, DEFAULTS, PRIORITIES, _limitCap: limitCap };
+/** Where new Fleet sessions run: 'dreamscape' (default until proven) or 'misaka' (config fleet.sessionHost; Fat Misaka in a replica worktree). */
+function sessionHost(gr) {
+    try { const v = gr && gr.getConfig && gr.getConfig().fleet && gr.getConfig().fleet.sessionHost; return v === 'misaka' ? 'misaka' : 'dreamscape'; } catch (_) { return 'dreamscape'; }
+}
+async function setSessionHost(gr, host) {
+    if (host !== 'misaka' && host !== 'dreamscape') throw new Error('sessionHost is dreamscape or misaka');
+    await gr.modifyConfig('config').assign(['fleet', 'sessionHost'], host);
+    return host;
+}
+
+module.exports = { sessionHost, setSessionHost, get, save, availability, pace, usageFor, isLoginError, markLoginFailed, credentialsDead, loginFailedOf, clearLoginFailed, LOGIN_MSG, CRED_MSG, DEFAULTS, PRIORITIES, _limitCap: limitCap };

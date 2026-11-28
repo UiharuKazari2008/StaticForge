@@ -3657,6 +3657,7 @@
         { t: 'State', w: 70, key: 'state', text: (d) => d.state },
         { t: 'Account', w: 110, key: 'account', text: (d) => d.account },
         { t: 'Folder', w: 100, key: 'folder', text: (d) => d.folder },
+        { t: 'Host', w: 86, key: 'host', text: (d) => d.host },
         { t: 'Remote Control', w: 96, key: 'rc', text: (d) => d.rc },
         { t: 'Last Activity', w: 130, key: 'last', text: (d) => when(d.last), value: (d) => Date.parse(d.last) || 0 },
         { t: 'Messages', w: 66, key: 'messages', num: true, text: (d) => String(d.messages), value: (d) => d.messages }
@@ -3672,7 +3673,7 @@
                 cls: l ? (l.status === 'busy' ? 'cd-busy' : 'cd-live') : '',
                 data: {
                     title: titleOf(r), state: stateText(r), account: r.account ? r.account.name : (l ? '' : ''),
-                    folder: r.folder || '', rc: l ? (l.remoteControl ? 'On' : 'Off') : '', last: r.lastActivity, messages: r.messages || 0
+                    folder: r.folder || '', host: l ? (l.host === 'fat-misaka' ? 'Fat Misaka' : 'Dreamscape') : '', rc: l ? (l.remoteControl ? 'On' : 'Off') : '', last: r.lastActivity, messages: r.messages || 0
                 }
             };
         });

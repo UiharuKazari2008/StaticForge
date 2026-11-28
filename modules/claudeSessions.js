@@ -333,6 +333,8 @@ function liveSessions() {
             configDir: configDirOf(r.pid, r.startedAt)
         });
     });
+    // Fleet sessions on Fat Misaka (modules/misakaSessions.js): the watcher's pushed state, in the same shape
+    try { out.push(...require('./misakaSessions').mirrorLive()); } catch (_) { /* none */ }
     return out;
 }
 
@@ -510,6 +512,7 @@ function linkFromRecord(name) {
 async function disconnect(id) {
     if (readOnly()) throw new Error('Sessions are read-only on this instance');
     if (!SESSION_ID_RE.test(String(id || ''))) throw new Error('No such Claude session');
+    if (require('./misakaSessions').recordOf(id)) { const r = await require('./misakaSessions').end(id, { reason: 'closed from Fleet' }); return { id, state: 'disconnected', host: 'fat-misaka', wip: r.wip || undefined }; }
     const l = liveSessions().find((s) => s.id === id && s.origin === 'rc');
     const names = [...new Set([l && l.tmuxSession, tmuxName(id)].filter((n) => n && /^rc-[A-Za-z0-9_-]+$/.test(n)))];
     for (const n of names) {

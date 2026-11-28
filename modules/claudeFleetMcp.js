@@ -65,6 +65,7 @@ const TOOLS = [
         issues: { type: 'array', items: { type: 'string' }, description: 'Yozora issues this one run covers, as "owner/repo#N" or issue URLs (the first is the primary; the others are named in the brief and get their own comments; the run closes only those whose own ask is done). Leave out and an issue is made for the request' },
         mode: { type: 'string', enum: ['bypassPermissions', 'acceptEdits', 'auto', 'default', 'plan'], description: 'Permission mode (default bypassPermissions, as Remote Control\'s)' },
         allowFull: { type: 'boolean', description: 'Allow an account at 95% or more of a limit' },
+        host: { type: 'string', enum: ['misaka', 'dreamscape', 'auto'], description: 'Where the session runs: misaka (Fat Misaka, in its own replica worktree: it commits and pushes instead of editing the live tree; the host is woken and kept on for its life), dreamscape, or auto / unset (Fleet setting sessionHost, Dreamscape unless changed; Misaka falls back to Dreamscape when it cannot be used). Misaka takes StaticForge work with the default cwd only' },
         startNow: { type: 'boolean', description: 'Start it now when there is room. Default false: the item lands in Waiting (held) until Yukimi starts it, or you do with fleet_work_start when she asked or agreed' },
         engine: str('claude (default: the account\'s plan), tokenrouter (DeepSeek V4.1 Flash unless model names another), or custom:<provider id> (custom:sloproxy, custom:deepinfra, custom:deepseek): another model runs the same Claude Code session through the Director\'s bridge')
     }, ['prompt']),
@@ -97,6 +98,7 @@ const TOOLS = [
         model: str('Model alias or id (Sonnet unless a named reason)'),
         effort: { type: 'string', enum: EFFORTS, description: 'Reasoning effort' },
         remoteControl: { type: 'boolean', description: 'Whether the session starts in Remote Control (default off)' },
+        host: { type: 'string', enum: ['misaka', 'dreamscape', 'auto'], description: 'Where the session runs (see claude_dispatch); auto clears it' },
         issues: { type: 'array', items: { type: 'string' }, description: 'The Yozora issues this run covers ("owner/repo#N" or URLs; the first is the primary). Replaces the item\'s issues; an empty list drops all but the primary' }
     }, ['id']),
     tool('fleet_work_start', 'Start Waiting (or failed / cancelled) items: they join the queue and start when a slot and an account with room are free (now: true, the default, ignores the slot limit). Start only what Yukimi asked for or clearly agreed to.', {
@@ -277,7 +279,7 @@ function workRow(w) {
     return Object.assign({
         id: w.id, title: w.title, state: stateText(w), source: w.source, account: w.account || 'auto',
         model: [w.engine && w.engine !== 'claude' ? w.engine : '', w.model, w.effort].filter(Boolean).join(' / '),
-        issue: issueRef(w), issueUrl: w.issue ? w.issue.url : null, issues: w.issues && w.issues.length > 1 ? w.issues.map((i) => `${i.repo}#${i.number}`) : undefined, remoteControl: !!w.remoteControl, parent: w.parentId || undefined, created: iso(w.createdAt),
+        issue: issueRef(w), issueUrl: w.issue ? w.issue.url : null, issues: w.issues && w.issues.length > 1 ? w.issues.map((i) => `${i.repo}#${i.number}`) : undefined, remoteControl: !!w.remoteControl, host: w.host || undefined, parent: w.parentId || undefined, created: iso(w.createdAt),
         note: String(w.message || '').slice(0, 200), check: checkBrief(w.check)
     }, awaitingFields(w));
 }
@@ -310,7 +312,7 @@ function workDispatch(sup, name, input) {
     }
     if (name === 'fleet_work_update') {
         const f = {};
-        ['title', 'prompt', 'appendNote', 'topology', 'stages', 'account', 'model', 'effort', 'remoteControl', 'issues'].forEach((k) => { if (input[k] !== undefined) f[k] = input[k]; });
+        ['title', 'prompt', 'appendNote', 'topology', 'stages', 'account', 'model', 'effort', 'remoteControl', 'host', 'issues'].forEach((k) => { if (input[k] !== undefined) f[k] = input[k]; });
         const w = sup.updateWork(input.id, f, { by: 'Yozora' });
         return { item: workRow(w), changed: Object.keys(f) };
     }
@@ -403,7 +405,7 @@ async function dispatch(gr, name, input) {
         let w = sup.enqueue({
             title: input.title, prompt, cwd, account: input.account && String(input.account).toLowerCase() !== 'auto' ? acc.index : null,
             model: input.engine && input.engine !== 'claude' ? (input.model || undefined) : model, engine: input.engine, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, startNow: input.startNow === true, source: 'director',
-            remoteControl: input.remoteControl === true, issues: input.issues
+            remoteControl: input.remoteControl === true, issues: input.issues, host: input.host
         }, { gr });
         await sup.pumpWork(gr);
         w = sup.getWork(w.id);

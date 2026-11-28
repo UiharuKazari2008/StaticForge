@@ -763,7 +763,7 @@ function db() {
         if (!hcols.has('other_session')) d.exec("ALTER TABLE supervisor_holds ADD COLUMN other_session TEXT NOT NULL DEFAULT ''");
         const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
         if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
-        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER'], ['input_questions', 'TEXT'], ['sent_back_at', 'INTEGER'], ['sent_back_checks', 'INTEGER NOT NULL DEFAULT 0'], ['parked_at', 'INTEGER'], ['starting_at', 'INTEGER']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
+        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER'], ['input_questions', 'TEXT'], ['sent_back_at', 'INTEGER'], ['sent_back_checks', 'INTEGER NOT NULL DEFAULT 0'], ['parked_at', 'INTEGER'], ['starting_at', 'INTEGER'], ['host', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
         // Sent Back has an age (#1256): items already Sent Back when the column arrives are dated by their session's last review
         if (!wcols.has('sent_back_at')) d.exec("UPDATE supervisor_work SET sent_back_at = COALESCE((SELECT MAX(r.at) FROM supervisor_reviews r WHERE r.session_id = supervisor_work.session_id), started_at, created_at) WHERE state = 'waiting'");
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
@@ -1454,7 +1454,7 @@ function rowWork(r, liveFn) {
         topology: r.topology || 'planner', stages: (() => { try { return JSON.parse(r.stages || '{}'); } catch (_) { return {}; } })(), parentId: r.parent_id || null,
         issue: r.issue_repo && r.issue_number ? { repo: r.issue_repo, number: r.issue_number, url: yz().issueUrl(r.issue_repo, r.issue_number) } : null,
         issues: allIssueRefs(r).map((i, n) => Object.assign({ repo: i.repo, number: i.number, url: yz().issueUrl(i.repo, i.number) }, i.title ? { title: i.title } : {}, { primary: n === 0 })),
-        remoteControl: !!r.remote_control, joinedInto: r.joined_into || null,
+        remoteControl: !!r.remote_control, joinedInto: r.joined_into || null, host: r.host || '',
         issueNote: r.issue_note || '',
         questions: (() => { try { const q = r.input_questions ? JSON.parse(r.input_questions) : []; return Array.isArray(q) ? q : []; } catch (_) { return []; } })(),
         check: (() => { try { return r.check_json ? JSON.parse(r.check_json) : null; } catch (_) { return null; } })(),
@@ -1731,7 +1731,7 @@ function enqueue(item, opts = {}) {
     const held = !item.startNow && !item.parentId && item.hold !== false;
     const r = db().prepare(`INSERT INTO supervisor_work (title, prompt, cwd, account, model, effort, source, source_ref, state, start_now, created_at, message, engine)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, held ? 'held' : 'queued', item.startNow ? 1 : 0, Date.now(), held ? 'Waiting to be started' : 'Waiting for a slot', engine);
-    db().prepare('UPDATE supervisor_work SET topology = ?, stages = ?, parent_id = ?, remote_control = ? WHERE id = ?').run(topology, stages, item.parentId || null, item.remoteControl === true ? 1 : 0, r.lastInsertRowid);
+    db().prepare('UPDATE supervisor_work SET topology = ?, stages = ?, parent_id = ?, remote_control = ?, host = ? WHERE id = ?').run(topology, stages, item.parentId || null, item.remoteControl === true ? 1 : 0, item.host === 'misaka' || item.host === 'dreamscape' ? item.host : null, r.lastInsertRowid);
     if (item.issueFields && item.issueFields.repo && item.issueFields.number) {
         db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ? WHERE id = ?').run(item.issueFields.repo, item.issueFields.number, item.issueFields.id || null, r.lastInsertRowid);
     }
@@ -2222,7 +2222,7 @@ function pumpWork(gr) {
                 const engine = (w.engine && w.engine !== 'claude') ? w.engine : (stage.engine !== 'claude' ? stage.engine : undefined);
                 const r = await require('./claudeSessionLauncher').start(g, {
                     cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}${track}${planFirst ? `\n\n${autoPlannerNote(stages, w.id)}` : (topology === 'planner' ? `\n\n${plannerNote(stages)}` : '')}\n\n${SUPERVISED_NOTE}\n\n${NO_MISTAKES}`, title: w.title, account: pick.index,
-                    mode: st.defaultMode, engine, remoteControl: !!w.remote_control,
+                    mode: st.defaultMode, engine, remoteControl: !!w.remote_control, host: w.host || undefined, workId: w.id,
                     model: w.model || stage.model || (engine ? undefined : (st.defaultModel || 'sonnet')), effort: w.effort || stage.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source}, ${topology})`
                 });
                 if (r.state === 'failed' && loginFailover(w, pick, r.message)) regroup = true;
@@ -2231,7 +2231,7 @@ function pumpWork(gr) {
                     loginTried.delete(w.id);
                     require('./claudeFleetSettings').clearLoginFailed(pick.index);
                     markSupervised(r.id);
-                    setWork(w.id, { state: 'running', session_id: r.id, link: r.link || '', started_at: Date.now(), message: planFirst ? `Planning: reviewing the request on ${pick.name}` : `Running on ${pick.name}` });
+                    setWork(w.id, { state: 'running', session_id: r.id, link: r.link || '', started_at: Date.now(), message: planFirst ? `Planning: reviewing the request on ${pick.name}${r.host === 'misaka' ? ' (Fat Misaka)' : ''}` : `Running on ${pick.name}${r.host === 'misaka' ? ' (Fat Misaka, replica ' + r.replica + ')' : ''}` });
                     started += 1;
                 }
             } catch (e) {
@@ -2613,6 +2613,7 @@ async function lastTurnLoginFailed(sessionId) {
 
 async function endProcess(live) {
     if (failoverDeps.kill) return failoverDeps.kill(live);
+    if (live.host === 'fat-misaka') { await require('./misakaSessions').end(live.id, { reason: 'moved to another account', keepReplica: true }); return; } // no local pid
     const sessions = require('./claudeSessions');
     try { process.kill(live.pid, 'SIGTERM'); } catch (e) { if (e.code !== 'ESRCH') throw e; }
     const until = Date.now() + 15000;
@@ -2890,6 +2891,7 @@ function updateWork(id, fields, opts = {}) {
     }
     if (f.engine !== undefined) set.engine = f.engine && f.engine !== 'claude' ? String(f.engine).slice(0, 60) : 'claude';
     if (f.remoteControl !== undefined) set.remote_control = f.remoteControl === true ? 1 : 0;
+    if (f.host !== undefined) set.host = f.host === 'misaka' || f.host === 'dreamscape' ? f.host : null; // null: Fleet's sessionHost setting decides
     // issues: one or several (the first is the primary); an empty list drops the other issues and keeps the primary
     let newRefs = null;
     if (f.issues !== undefined) {
@@ -3825,6 +3827,13 @@ async function closeFinishedSession(sid, why) {
     if (!sid || closing.has(sid) || supervisorOff()) return false;
     closing.add(sid);
     try {
+        // a session on Fat Misaka ends with its last item: its replica, lease and login copy go with it (docs/fleet/sessions-on-misaka.md)
+        if (require('./misakaSessions').recordOf(sid)) {
+            const open = db().prepare("SELECT COUNT(*) n FROM supervisor_work WHERE session_id = ? AND state NOT IN ('done','failed','cancelled')").get(sid).n;
+            if (open || inFlightFresh(sid)) return false;
+            await require('./misakaSessions').endForWork(sid, why || 'work item ended');
+            return true;
+        }
         const { candidates, itemsBySession } = await rcSessions(sid.slice(0, 8));
         const d = fm().finishedSessions({ candidates: candidates.filter((c) => c.id === sid), itemsBySession, inFlight: inFlightFresh });
         if (!d.close.length) return false;
@@ -4589,7 +4598,7 @@ function onSockConnection(sock) {
                     : await resumeSession(String(req.sessionId || ''), { note: `by ${String(req.by || 'an agent').slice(0, 80)}` });
                 out = { ok: true, result: r };
             } else if (req.op === 'enqueue') {
-                const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, engine: req.engine, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
+                const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, engine: req.engine, host: req.host, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
                 out = { ok: true, work: w };
             } else {
                 if (!settings().enabled) throw new Error('The Supervisor is off (Fleet > Coordination > Supervisor)');
