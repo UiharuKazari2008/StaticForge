@@ -1,0 +1,31 @@
+/* Rack Manager: virtual machine screens (public/scripts/comp/mmcRackManagerVmc.js): the Screens grid, the thumbnails and the
+   Virtual Machine Connection window. The window reuses the MMC shell look (menu band, tool band, status bar from mmc-console.css).
+   No animation: nothing here moves on its own (phone-power-client.mdc). */
+
+/* ---- thumbnails ---- */
+.rm-vmscr { display: block; max-width: 100%; background: #000; object-fit: contain; }
+.rm-vmscr.is-blank { visibility: hidden; }
+.rm-vmscr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 8px; align-content: start; box-sizing: border-box; padding: 8px; background: #fff; overflow: auto; }
+.rm-vmtile { box-sizing: border-box; padding: 3px; border: 1px solid transparent; background: transparent; cursor: default; user-select: none; }
+.rm-vmtile:hover { border-color: #b8d6fb; background: linear-gradient(#fafbfd, #ebf3fd); }
+.rm-vmtile.is-selected { border-color: #7da2ce; background: linear-gradient(#dcebfc, #c1dbfc); }
+.rm-vmtile-pic { position: relative; aspect-ratio: 4 / 3; border: 1px solid #555; background: #000; overflow: hidden; }
+.rm-vmtile-pic .rm-vmscr { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; }
+.rm-vmtile-pic .rm-vmscr.is-blank { visibility: hidden; }
+.rm-vmtile-off { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9a9a9a; }
+.rm-vmtile-cap { display: flex; justify-content: space-between; gap: 6px; margin-top: 3px; }
+.rm-vmtile-cap b { min-width: 0; overflow: hidden; font-weight: normal; text-overflow: ellipsis; white-space: nowrap; }
+.rm-vmtile-cap i { flex: none; font-style: normal; color: #6d6d6d; }
+
+/* ---- Virtual Machine Connection ---- */
+.rm-vmc-win .rm-vmc { min-width: 0; }
+.rm-vmc-win .rm-vmc-toolbar { overflow: hidden; }
+.rm-vmc-win.mmc-window .mmc-tb.rm-vmc-tb:not(#_) { display: inline-flex; align-items: center; width: auto; min-width: 23px; padding: 0 6px; white-space: nowrap; font: 12px "Segoe UI", Tahoma, sans-serif; color: #000; }
+.rm-vmc-win .rm-vmc-tbi { position: static; flex: none; width: 16px; height: 16px; margin: 0 4px 0 0; }
+.rm-vmc-win .mmc-tb:disabled .rm-vmc-tbi { filter: grayscale(1); opacity: 0.4; }
+.rm-vmc-win .mmc-tb:disabled { color: #8a8a8a; }
+.rm-vmc-screen { position: relative; flex: 1 1 auto; min-height: 120px; overflow: hidden; background: #000; outline: none; }
+.rm-vmc-screen.is-actual { overflow: auto; }
+.rm-vmc-msg { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; padding: 8px; color: #c8c8c8; text-align: center; pointer-events: none; }
+.rm-vmc-msg[hidden] { display: none; }
+.rm-vmc-win .mmc-status.rm-vmc-status { grid-template-columns: minmax(0, 1fr) 170px 110px; }

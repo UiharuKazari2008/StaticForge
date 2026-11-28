@@ -696,6 +696,18 @@
     background: #f1eded;
 }
 
+.mmc-window .mmc-status.has-panes > span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mmc-window .mmc-status-ico {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
 .mmc-window.no-status .mmc-status {
     display: none;
 }

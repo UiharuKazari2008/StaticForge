@@ -17,7 +17,7 @@
     const RANGES = ['3h', '6h', '24h', '7d'];
     const LD = { range: '3h', tip: null, lastW: 0 };
     const C = { cpu: '#1e5fc5', mem: '#7e57c2', r: '#2f9e44', w: '#d98a00', rx: '#00838f', tx: '#c2185b', amb: '#6d6d6d', hot: '#c8372d', memT: '#d98a00', fan: '#00838f', pwr: '#1e5fc5' };
-    const COUNT = [['vms', 'VMs', '#1e5fc5'], ['avds', 'Android devices', '#2f9e44'], ['sandboxes', 'Sandboxes', '#d98a00'], ['containers', 'Containers', '#7e57c2'], ['replicas', 'Replicas', '#00838f'], ['builds', 'Builds / jobs', '#c8372d']];
+    const COUNT = [['vms', 'VMs', '#1e5fc5'], ['avds', 'Android devices', '#2f9e44'], ['unmanaged', 'Outside Rack Manager', '#d32f2f'], ['sandboxes', 'Sandboxes', '#d98a00'], ['containers', 'Containers', '#7e57c2'], ['replicas', 'Replicas', '#00838f'], ['builds', 'Builds / jobs', '#c8372d']];
 
     // ---- loading ------------------------------------------------------------------------------------------------
 

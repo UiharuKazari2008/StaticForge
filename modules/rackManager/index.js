@@ -335,11 +335,21 @@ function scrub(v, depth) {
     return out;
 }
 
+/** A file written through rack_guest is not copied into the audit log: long strings are cut. */
+function capStrings(v, depth) {
+    if (typeof v === 'string') return v.length > 300 ? `${v.slice(0, 300)}...(${v.length} chars)` : v;
+    if ((depth || 0) > 4 || !v || typeof v !== 'object') return v;
+    if (Array.isArray(v)) return v.slice(0, 50).map((x) => capStrings(x, (depth || 0) + 1));
+    const o = {};
+    Object.keys(v).forEach((k) => { o[k] = capStrings(v[k], (depth || 0) + 1); });
+    return o;
+}
+
 async function audit(entry) {
     try {
         const file = path.join(dataDir(), 'audit.jsonl');
         await fsp.mkdir(path.dirname(file), { recursive: true });
-        await fsp.appendFile(file, JSON.stringify(Object.assign({ t: new Date().toISOString() }, entry, { params: scrub(entry.params || {}, 0) })) + '\n');
+        await fsp.appendFile(file, JSON.stringify(Object.assign({ t: new Date().toISOString() }, entry, { params: capStrings(scrub(entry.params || {}, 0)) })) + '\n');
     } catch (e) { console.warn(`[rackManager] audit: ${e.message}`); }
 }
 
@@ -349,11 +359,11 @@ function needsConfirm(role, action, params) {
     if (role === 'ilo' && action === 'power') return true;
     if (role === 'power' && action === 'off') return true;
     if (role === 'ilo' && action === 'users' && p.action === 'delete') return true;
-    if (role === 'vms' && (action === 'destroy' || action === 'delete')) return true;
+    if (role === 'vms' && (action === 'destroy' || action === 'delete' || action === 'export-delete' || (action === 'disk-detach' && p.delete === true))) return true;
     if (role === 'storage' && (action === 'lv-delete' || (action === 'ramdisk-delete' && p.sync === false))) return true;
     if (role === 'android' && action === 'delete') return true;
     if (role === 'containers' && ['remove', 'prune', 'image-remove', 'volume-remove'].includes(action)) return true;
-    if (role === 'builds' && (action === 'pipeline-delete' || action === 'artifact-remove')) return true;
+    if (role === 'builds' && (action === 'pipeline-delete' || action === 'artifact-remove' || action === 'project-unregister' || action === 'project-trust')) return true;
     if (role === 'replicas' && action === 'delete') return true;
     return false;
 }
@@ -392,7 +402,8 @@ async function get(server, role, query, gate) {
     if (!roleOk(role)) throw new RackError('BAD_REQUEST', `Unknown role ${String(role).slice(0, 40)}`);
     const qs = query && typeof query === 'object' && Object.keys(query).length
         ? '?' + new URLSearchParams(Object.keys(query).filter((k) => /^[A-Za-z_]{1,20}$/.test(k)).map((k) => [k, String(query[k])])).toString() : '';
-    return { role, data: await rackd(server, 'GET', `/v1/${role}${qs}`, undefined, undefined, gate) };
+    const data = await rackd(server, 'GET', `/v1/${role}${qs}`, undefined, undefined, gate);
+    return { role, data: role === 'android' ? fillLaneHolders(data) : data };
 }
 
 async function action(server, role, act, params, ctx) {
@@ -401,7 +412,11 @@ async function action(server, role, act, params, ctx) {
     if (!NAME_RE.test(String(act))) throw new RackError('BAD_REQUEST', 'Bad action');
     const p = params && typeof params === 'object' ? params : {};
     checkConfirm(ctx, role, act, p);
-    const timeout = role === 'terminal' && act === 'exec' ? ((Number(p.timeoutS) || 60) + 15) * 1000 : 60000;
+    // the Screens view toggles rackd's 5 s thumbnails (only while a console listens; rackd also stops them when its event stream has no client): not an audited write
+    if (role === 'android' && act === 'thumbs') return { result: await rackd(server, 'POST', '/v1/android/thumbs', { on: p.on !== false, key: 'ds' }, 20000, { wake: false, who: ctx && ctx.who }) };
+    // the VM screens feed (rackd takes a frame of every running VM every 5 s while a client renews this 45 s lease): not an audited write
+    if (role === 'vms' && act === 'screens') return { result: await rackd(server, 'POST', '/v1/vms/screens', { watch: p.watch !== false }, 20000, { wake: false, who: ctx && ctx.who }) };
+    const timeout = (role === 'terminal' || role === 'vms') && (act === 'exec' || act === 'agent') ? ((Number(p.timeoutS) || 60) + 15) * 1000 : 60000;
     return audited(ctx, server, role, act, p, async () => {
         const gate = { wake: !!(ctx && ctx.wake), who: ctx && ctx.who };
         const out = act === 'install' ? await rackd(server, 'POST', `/v1/roles/${role}/install`, p, timeout, gate) : await rackd(server, 'POST', `/v1/${role}/${act}`, p, timeout, gate);
@@ -526,6 +541,8 @@ async function status(server) {
     return Promise.all(rows.map(async (s) => {
         const out = { name: s.name, label: s.label, model: s.model, ilo: s.ilo, power: s.power, rackd: { state: s.rackd.state, error: s.rackd.error }, roles: null, jobs: [] };
         out.builds = [];
+        out.unmanaged = (s.rackd.info && s.rackd.info.unmanaged) || [];
+        out.idle = rtOf(s.name).idle ? { idle: rtOf(s.name).idle.idle, busy: rtOf(s.name).idle.busy.length, unmanaged: (rtOf(s.name).idle.unmanaged || []).length } : null;
         if (s.rackd.state === 'up') {
             const roles = (s.rackd.info && s.rackd.info.roles) || {};
             out.roles = Object.keys(roles).reduce((acc, k) => { acc[k] = { installed: roles[k].installed, ready: roles[k].ready, summary: roles[k].summary }; return acc; }, {});
@@ -957,17 +974,30 @@ function idleDeadline(name) {
     return from + st.idleShutdownMin * 60000;
 }
 
+/** An audit line each time unmanaged work is the only thing keeping an otherwise idle host awake (once per distinct set of processes). */
+function noteUnmanaged(name) {
+    const r = rtOf(name);
+    const un = r.idle && Array.isArray(r.idle.unmanaged) ? r.idle.unmanaged : [];
+    const only = !!r.idle && !r.idle.idle && r.idle.busy.length > 0 && r.idle.busy.every((b) => b.kind === 'unmanaged') && powerOf(serverOf(name)).auto && r.power.state === 'up' && !openLeases(name).some((l) => l.key);
+    const key = only ? un.map((u) => u.pid).join(',') : '';
+    if (key === (r.unmanagedKey || '')) return;
+    r.unmanagedKey = key;
+    if (only) audit({ who: 'rackManager', via: 'auto', server: name, role: 'power', action: 'idle-skipped', params: { reason: 'unmanaged work is running outside Rack Manager', unmanaged: un.slice(0, 10).map((u) => ({ pid: u.pid, user: u.user, cmd: String(u.cmd || '').slice(0, 100), why: u.why })) }, ok: true });
+}
+
 function recompute(name) {
     const r = rtOf(name);
     if (r.idleTimer) { clearTimeout(r.idleTimer); r.idleTimer = null; }
     r.idleAt = idleDeadline(name);
+    noteUnmanaged(name);
     if (r.idleAt === null) return;
     r.idleTimer = setTimeout(() => { r.idleTimer = null; idleFire(name); }, Math.min(MAX_TIMER_MS, Math.max(0, r.idleAt - Date.now())));
     if (r.idleTimer.unref) r.idleTimer.unref();
 }
 
 async function idleFire(name) {
-    await idleFetch(name, true);
+    const fresh = await idleFetch(name, true);
+    if (!fresh) { audit({ who: 'rackManager', via: 'auto', server: name, role: 'power', action: 'idle-skipped', params: { reason: 'the idle state could not be confirmed (rackd did not answer)' }, ok: true }); recompute(name); return; }
     const due = idleDeadline(name);
     if (due !== null && due <= Date.now() + 1000) {
         const mins = powerOf(serverOf(name)).idleShutdownMin;
@@ -979,15 +1009,16 @@ async function idleFetch(name, quiet) {
     const r = rtOf(name);
     try {
         const j = await rackd(name, 'GET', '/v1/idle', undefined, 5000, false);
-        r.idle = { idle: !!j.idle, idleSince: j.idleSince, busy: Array.isArray(j.busy) ? j.busy : [] };
-    } catch (_) { if (!quiet) r.idle = null; }
+        r.idle = { idle: !!j.idle, idleSince: j.idleSince, busy: Array.isArray(j.busy) ? j.busy : [], unmanaged: Array.isArray(j.unmanaged) ? j.unmanaged : [] };
+    } catch (_) { r.idle = null; return false; }   // unknown is not idle: no shutdown on a state that could not be confirmed
     if (!quiet) recompute(name);
+    return true;
 }
 
 function onRackdEvent(name, ev) {
     if (!ev || ev.kind !== 'idle') return;
     const d = ev.data;
-    if (d && d.idle !== undefined) { rtOf(name).idle = { idle: !!d.idle, idleSince: d.idleSince, busy: Array.isArray(d.busy) ? d.busy : [] }; recompute(name); } else idleFetch(name);
+    if (d && d.idle !== undefined) { rtOf(name).idle = { idle: !!d.idle, idleSince: d.idleSince, busy: Array.isArray(d.busy) ? d.busy : [], unmanaged: Array.isArray(d.unmanaged) ? d.unmanaged : [] }; recompute(name); } else idleFetch(name);
 }
 
 /** The shape the console reads: {state, since, post?, leases:[{id,purpose,who,since,ends}], idle:{idle,idleSince,busy:[]}, deadline, settings}. */
@@ -996,7 +1027,7 @@ function powerStatus(name) {
     const r = rtOf(name);
     return Object.assign(powerResult(name), {
         leases: openLeases(name).map(leaseBrief),
-        idle: r.idle ? { idle: r.idle.idle, idleSince: r.idle.idleSince === undefined ? null : r.idle.idleSince, busy: r.idle.busy } : { idle: false, idleSince: null, busy: [] },
+        idle: r.idle ? { idle: r.idle.idle, idleSince: r.idle.idleSince === undefined ? null : r.idle.idleSince, busy: r.idle.busy, unmanaged: r.idle.unmanaged || [] } : { idle: false, idleSince: null, busy: [], unmanaged: [] },
         deadline: r.idleAt,
         settings: powerOf(cfg)
     });
@@ -1036,6 +1067,107 @@ async function setPowerSettings(name, settings, ctx) {
         recompute(name);
         return { settings: powerOf(cfg), power: powerBrief(name) };
     });
+}
+
+
+// ---------------------------------------------------------------- Android screens, lane holders, the Fleet control tools
+
+/** Who holds the lane instances on Fat Misaka: agent-coord's device leases (read only; the device id is the instance name). */
+function laneHolders() {
+    const out = {};
+    try {
+        const store = T.coord || require('../agentCoord/store');
+        const rows = store.open().prepare("SELECT device, agent_id, why, ends_at FROM device_queue WHERE state = 'held' AND device LIKE 'aemu-%'").all();
+        rows.forEach((x) => {
+            let nm = x.agent_id;
+            try { const a = store.getAgent(x.agent_id); if (a) nm = a.name || a.id; } catch (_) { /* name unknown */ }
+            out[x.device] = { agentId: x.agent_id, name: nm, why: x.why || '', endsAt: x.ends_at || null };
+        });
+    } catch (_) { /* the coordination DB is not readable: no holders known */ }
+    return out;
+}
+
+function fillLaneHolders(data) {
+    if (!data || !Array.isArray(data.avds) || !data.avds.some((a) => a.lane)) return data;
+    const h = laneHolders();
+    data.avds.forEach((a) => { if (a.lane) { const x = h[a.name]; a.lane.holder = x ? x.name : null; a.lane.holderId = x ? x.agentId : null; a.lane.leaseEndsAt = x ? x.endsAt : null; a.lane.leaseNote = undefined; } });
+    return data;
+}
+
+const isLaneName = (n) => /^aemu-(fold|a53)-m[12]$/.test(String(n));
+
+/** A lane instance someone else holds is not driven without confirm + force; otherwise rackd is told the holder was checked. */
+function laneCheck(kind, name, req) {
+    if (kind !== 'android' || !isLaneName(name)) return {};
+    const h = laneHolders()[name];
+    const by = String(req.by || '');
+    if (h && h.agentId !== by && !(req.confirm === true && req.force === true)) throw new RackError('LANE_HELD', `${name} is held by ${h.name}${h.why ? ` (${h.why})` : ''}; ask them, or pass confirm: true and force: true`, { holder: h.name });
+    return { leaseChecked: true };
+}
+
+const pngSize = (b) => (b.length > 24 && b.readUInt32BE(12) === 0x49484452 ? { width: b.readUInt32BE(16), height: b.readUInt32BE(20) } : {});
+
+async function fetchFile(server, file) {
+    const tg = await rackdTarget(server);
+    const res = await request({ host: tg.host, port: tg.port, method: 'GET', path: `/v1/files/${file}`, timeoutMs: 30000, headers: { Authorization: `Bearer ${tg.token}` } });
+    if (res.status !== 200) throw new RackError('RACKD_ERROR', `rackd answered ${res.status} for ${file}`);
+    return res.body;
+}
+
+const unwrap = (o) => (o && o.result !== undefined ? o.result : o);
+
+/** rack.sock op `control`: what = screen | input | guest | inventory (see docs/rack-manager/README.md, Fleet tools). */
+async function control(req, ctx) {
+    const server = req.server;
+    serverOf(server);
+    const gate = { wake: !!ctx.wake, who: ctx.who };
+    if (req.what === 'inventory') {
+        const inv = await rackd(server, 'GET', '/v1/inventory', undefined, 60000, gate);
+        const h = laneHolders();
+        (inv.items || []).forEach((it) => { if (it.lane) { const x = h[it.id]; it.lane.holder = x ? x.name : null; it.lane.leaseEndsAt = x ? x.endsAt : null; } });
+        const r = rtOf(server);
+        return Object.assign(inv, { idle: r.idle ? { idle: r.idle.idle, busy: r.idle.busy } : null });
+    }
+    const kind = req.kind === 'vm' || req.kind === 'android' ? req.kind : null;
+    if (!kind) throw new RackError('BAD_REQUEST', 'kind must be vm or android');
+    const name = String(req.name || '');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(name)) throw new RackError('BAD_REQUEST', 'Bad name');
+    const role = kind === 'vm' ? 'vms' : 'android';
+    if (req.what === 'screen') {
+        let out;
+        if (kind === 'android') out = await rackd(server, 'POST', '/v1/android/screenshot', { name }, 60000, gate);
+        else {
+            try { out = await rackd(server, 'POST', '/v1/vms/screen', { name }, 60000, gate); } catch (e) {
+                if (e.status !== 404) throw e;
+                out = await rackd(server, 'POST', '/v1/vms/screenshot', { name }, 60000, gate);
+            }
+        }
+        const png = out.png ? Buffer.from(out.png, 'base64') : await fetchFile(server, out.file);
+        return Object.assign({ kind, name, mime: 'image/png', bytes: png.length, image: png.toString('base64'), file: out.file }, pngSize(png));
+    }
+    if (req.what === 'input') {
+        if (!Array.isArray(req.events) || !req.events.length) throw new RackError('BAD_REQUEST', 'events must be a non-empty array');
+        const extra = laneCheck(kind, name, req);
+        return unwrap(await action(server, role, 'input', Object.assign({ name, events: req.events }, extra), ctx));
+    }
+    if (req.what === 'guest') {
+        const op = String(req.opName);
+        const p = req.params && typeof req.params === 'object' ? req.params : {};
+        if (kind === 'android') {
+            const extra = op === 'read' ? {} : laneCheck(kind, name, req);
+            const map = { exec: ['shell', { cmd: req.cmd }], read: ['pull', { path: req.path }], write: ['push', { path: req.path, content: req.content, encoding: req.encoding }], install: ['install', { apk: req.apk, url: req.url }] };
+            if (!map[op]) throw new RackError('BAD_REQUEST', op === 'agent' ? 'Android devices have no in-guest agent: use exec, read, write or install' : 'op must be exec, read, write or install');
+            const body = Object.assign({ name }, map[op][1], extra);
+            Object.keys(body).forEach((k) => { if (body[k] === undefined) delete body[k]; });
+            return unwrap(await action(server, 'android', map[op][0], body, ctx));
+        }
+        const map = { exec: 'exec', read: 'file-read', write: 'file-write', agent: 'agent' };
+        if (!map[op]) throw new RackError('BAD_REQUEST', 'op must be exec, read, write or agent');
+        const body = Object.assign({ name }, p);
+        ['cmd', 'path', 'content', 'encoding', 'method', 'body', 'timeoutS', 'user'].forEach((k) => { if (req[k] !== undefined) body[k] = req[k]; });
+        return unwrap(await action(server, 'vms', map[op], body, ctx));
+    }
+    throw new RackError('BAD_REQUEST', 'what must be screen, input, guest or inventory');
 }
 
 // ---------------------------------------------------------------- the guard (HTTP + upgrade)
@@ -1111,7 +1243,7 @@ function mount(app, authMiddleware) {
     });
 }
 
-const UPGRADE_RE = /^\/rack\/([a-z][a-z0-9_-]{0,40})\/(ilo\/ws|terminal\/ws)(\?.*)?$/;
+const UPGRADE_RE = /^\/rack\/([a-z][a-z0-9_-]{0,40})\/(ilo\/ws|terminal\/ws|android\/[A-Za-z0-9][A-Za-z0-9._-]{0,62}\/screen|vms\/[A-Za-z0-9][A-Za-z0-9._-]{0,62}\/console)(\?.*)?$/;
 
 function refuseUpgrade(socket, line) {
     try { socket.end(`HTTP/1.1 ${line}\r\nConnection: close\r\n\r\n`); } catch (_) { socket.destroy(); }
@@ -1183,7 +1315,19 @@ function handleUpgrade(req, socket, head, sessionMiddleware) {
                 return proxyUpgrade(req, socket, head, { socketPath: iloSockPath(), path: `/ws/${cfg.ilo}` });
             }
             const tg = await rackdTarget(cfg.name);
+            const vm = /^vms\/([^/]+)\/console$/.exec(m[2]);
+            if (vm) return proxyUpgrade(req, socket, head, { host: tg.host, port: tg.port, path: `/v1/vms/console?name=${encodeURIComponent(vm[1])}`, headers: { authorization: `Bearer ${tg.token}` } }); // a VM's console (VNC behind rackd, noVNC in the browser): same guard as the terminal
             const q = new URL(req.url, 'http://x').searchParams;
+            const sm = /^android\/([^/]+)\/screen$/.exec(m[2]);
+            if (sm) {   // a live Android screen (rackd lib/scrcpy.js): view only unless control=1; an administrator in the console may control a lane instance
+                const f = new URLSearchParams({ name: sm[1] });
+                ['maxSize', 'bitrate', 'fps'].forEach((k) => { const n = Math.floor(Number(q.get(k))); if (n > 0 && n < 100000000) f.set(k, String(n)); });
+                if (q.get('control') === '1') {
+                    f.set('control', '1');
+                    if (isLaneName(sm[1])) { f.set('leaseChecked', '1'); const h = laneHolders()[sm[1]]; audit({ who: 'admin', via: 'ws', server: cfg.name, role: 'android', action: 'screen-control', params: { name: sm[1], holder: h ? h.name : null }, ok: true }); }
+                }
+                return proxyUpgrade(req, socket, head, { host: tg.host, port: tg.port, path: `/v1/android/screen?${f}`, headers: { authorization: `Bearer ${tg.token}` } });
+            }
             const fwd = new URLSearchParams();
             ['cols', 'rows'].forEach((k) => { const n = Math.floor(Number(q.get(k))); if (n > 0 && n < 1000) fwd.set(k, String(n)); });
             const cmd = q.get('cmd');
@@ -1237,6 +1381,7 @@ async function handleSock(req, stream) {
                 Object.keys(p).forEach((k) => { if (p[k] === undefined) delete p[k]; });
                 return { ok: true, result: await action(req.server, 'terminal', 'exec', p, ctx) };
             }
+            case 'control': return { ok: true, result: await control(Object.assign({}, req), ctx) };
             case 'job': return { ok: true, result: await job(req.server, req.id, { cancel: req.cancel === true, tail: req.tail }, ctx) };
             case 'follow': {
                 if (!stream) throw new RackError('BAD_REQUEST', 'follow needs a stream');
@@ -1245,7 +1390,7 @@ async function handleSock(req, stream) {
                 stream.once('close', () => unsubscribe(req.server, key));
                 return { ok: true, follow: true };
             }
-            default: throw new RackError('BAD_REQUEST', 'op must be status, role, exec, job, power, lease, lease_release or follow');
+            default: throw new RackError('BAD_REQUEST', 'op must be status, role, exec, job, control, power, lease, lease_release or follow');
         }
     } catch (e) {
         // a host that is off / starting and open leases are answered as results (not tool errors), with the power state
@@ -1319,7 +1464,7 @@ module.exports = {
     start, stop, mount, attachUpgrade, handleUpgrade, handleSock, events, RackError,
     list, status, get, action, job, iloGet, iloAction, forward, subscribe, unsubscribe, unsubscribeAll, subscriberCount, streamOpen,
     needsConfirm, serverOf, loadServers,
-    powerAction, powerStatus, powerBrief, setPowerSettings, leaseTake, leaseRelease, leaseReleaseKey,
+    control, laneHolders, powerAction, powerStatus, powerBrief, setPowerSettings, leaseTake, leaseRelease, leaseReleaseKey,
     _onIloEvent: onIloEvent,
     _onSup: onSup,
     _onSockConnection: onSockConnection,

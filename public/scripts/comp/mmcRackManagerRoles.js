@@ -39,160 +39,7 @@
     const stateIcon = { running: `${VI}/check-16.png` };
     void stateIcon;
 
-    // ---- Virtual Machines --------------------------------------------------------------------------------------
-
-    const VM_STATE = { running: 'Running', 'shut off': 'Off', shutoff: 'Off', paused: 'Paused', crashed: 'Crashed', pmsuspended: 'Suspended', 'in shutdown': 'Shutting down' };
-    const vmOf = (c, n) => arr(dataOf(n, 'vms').vms).find((v) => v.name === c.sel);
-
-    rolePage('vms', (c, n, d) => {
-        const rows = arr(d.vms).map((v) => ({ key: v.name, icon: `${ITEMS}/system-16.png`, data: v }));
-        const l = list(c, 'rm-vms', [
-            { t: 'Name', w: 190, key: 'n', text: (v) => v.name },
-            { t: 'State', w: 80, min: 72, key: 's', text: (v) => VM_STATE[v.state] || v.state },
-            { t: 'CPUs', w: 46, num: true, key: 'c', value: (v) => v.vcpus, text: (v) => v.vcpus },
-            { t: 'Memory', w: 70, min: 62, num: true, key: 'm', value: (v) => v.memMB, text: (v) => GB(v.memMB) },
-            { t: 'IP Address', w: 120, min: 104, key: 'i', text: (v) => arr(v.nics).map((x) => x.ip).filter(Boolean)[0] || '' },
-            { t: 'Purpose', w: 150, key: 'p', text: (v) => (v.tags && (v.tags.purpose || '')) || '' }
-        ], rows, 'There are no virtual machines. Use New Virtual Machine to make one.');
-        const v = vmOf(c, n);
-        return c.page('Virtual Machines', `${rows.length} virtual machine${rows.length === 1 ? '' : 's'}`, [
-            { id: 'vm-list', title: 'Virtual Machines', body: R.jobStrip(n) + l },
-            { id: 'vm-prev', title: v ? `Preview: ${v.name}` : 'Preview', body: preview(n, 'vms', v && v.name, v ? v.name : '') }
-        ]);
-    });
-
-    R.commands['role:vms'] = () => [
-        { text: 'New Virtual Machine...', action: 'vm-new', icon: `${ITEMS}/system-16.png` },
-        { text: 'Clone Dreamscape Server...', action: 'vm-dsclone' }
-    ];
-    R.selCommands['role:vms'] = (n, key, c) => {
-        const v = vmOf(c, n);
-        if (!v) return null;
-        const st = v.state;
-        const on = st === 'running';
-        const items = [];
-        if (!on && st !== 'paused') items.push({ text: 'Start', action: 'vm-op:start' });
-        if (on) items.push({ text: 'Shut Down', action: 'vm-op:shutdown' }, { text: 'Restart', action: 'vm-op:reboot' }, { text: 'Pause', action: 'vm-op:suspend' });
-        if (st === 'paused') items.push({ text: 'Resume', action: 'vm-op:resume' });
-        if (on || st === 'paused') items.push({ text: 'Turn Off', action: 'vm-op:destroy' }, { text: 'Take Screenshot', action: 'vm-shot' });
-        items.push({ separator: true }, { text: 'Snapshots...', action: 'vm-snaps' }, { text: 'Settings...', action: 'vm-set' }, { text: 'Clone...', action: 'vm-clone' }, { text: 'Delete...', action: 'vm-del' });
-        return { title: v.name, items };
-    };
-    R.hooks.row.push((key, n, c) => { if (n.kind === 'role' && n.role === 'vms') R.repaint(c); });
-
-    A['vm-op'] = async (c, op, n) => {
-        const v = vmOf(c, n);
-        if (!v) return;
-        if (op === 'destroy') {
-            const a = await R.taskDialog(c, { instruction: `Turn off ${v.name}?`, text: 'The machine is switched off as if its power cord were pulled. Unsaved data in it is lost.', links: [{ id: 'go', text: 'Turn Off', danger: true }] });
-            if (a !== 'go') return;
-        }
-        await run(c, n, 'vms', op, { name: v.name });
-    };
-    A['vm-shot'] = async (c, p, n) => { const v = vmOf(c, n); if (v) await shot(c, n, 'vms', v.name, v.name); };
-    A['vm-del'] = async (c, p, n) => {
-        const v = vmOf(c, n);
-        if (!v) return;
-        const a = await R.taskDialog(c, { instruction: `Delete ${v.name}?`, text: 'The machine is removed. This cannot be undone.', links: [{ id: 'all', text: 'Delete the machine and its disks', sub: arr(v.disks).map((x) => R.bytes(x.sizeB)).join(', '), danger: true }, { id: 'keep', text: 'Delete the machine, keep its disks' }] });
-        if (a) await run(c, n, 'vms', 'delete', { name: v.name, storage: a === 'all' });
-    };
-    A['vm-set'] = (c, p, n) => {
-        const v = vmOf(c, n);
-        if (!v) return;
-        R.dialog(c, {
-            id: 'vmset', title: `Settings: ${v.name}`, w: 360, h: 230,
-            html: `${R.field('Processors:', R.inp('vcpus', v.vcpus))}${R.field('Memory (MB):', R.inp('mem', v.memMB))}${R.chk('auto', 'Start with the server', v.autostart)}<p class="rm-hint">Processor and memory changes apply the next time the machine starts.</p>`,
-            okText: 'Save',
-            ok: async (ctx) => {
-                const vcpus = Number(R.val(ctx, 'vcpus'));
-                const memMB = Number(R.val(ctx, 'mem'));
-                if (!(vcpus > 0) || !(memMB >= 64)) { R.err(ctx, 'Type a processor count and a memory size in MB.'); return false; }
-                await doit(c, n, 'vms', 'set', { name: v.name, vcpus, memMB, autostart: !!R.val(ctx, 'auto') });
-                return true;
-            }
-        });
-    };
-    A['vm-clone'] = (c, p, n) => {
-        const v = vmOf(c, n);
-        if (!v) return;
-        R.dialog(c, {
-            id: 'vmclone', title: 'Clone Virtual Machine', w: 380, h: 190,
-            html: `<p>Make a copy of <b>${esc(v.name)}</b> (its disks are copied; the job runs on the server).</p>${R.field('Name of the clone:', R.inp('name', `${v.name}-clone`))}`,
-            okText: 'Clone',
-            ok: async (ctx) => { const name = (R.val(ctx, 'name') || '').trim(); if (!name) { R.err(ctx, 'Type a name.'); return false; } await doit(c, n, 'vms', 'clone', { source: v.name, name }); return true; }
-        });
-    };
-    A['vm-dsclone'] = (c, p, n) => {
-        const d = dataOf(n, 'vms');
-        const tpl = arr(d.vms).find((v) => v.tags && v.tags.template === 'dreamscape');
-        R.dialog(c, {
-            id: 'vmds', title: 'Clone Dreamscape Server', w: 400, h: 250,
-            html: `<p>Clones the Dreamscape template machine${tpl ? ` (<b>${esc(tpl.name)}</b>)` : ''}, starts it and checks a branch out in it.</p>${R.field('Name:', R.inp('name', ''))}${R.field('Branch:', R.inp('branch', 'main'))}`,
-            okText: 'Clone',
-            ok: async (ctx) => {
-                const name = (R.val(ctx, 'name') || '').trim();
-                if (!name) { R.err(ctx, 'Type a name for the new server.'); return false; }
-                await doit(c, n, 'vms', 'dsclone', { name, branch: (R.val(ctx, 'branch') || 'main').trim() });
-                return true;
-            }
-        });
-    };
-    A['vm-snaps'] = async (c, p, n) => {
-        const v = vmOf(c, n);
-        if (!v) return;
-        let snaps = [];
-        let readErr = '';
-        const read = async () => { try { const r = await R.act(n.server, 'vms', 'snapshots', { name: v.name }); const x = r.result || r; snaps = arr(x.snapshots || x); readErr = ''; } catch (e) { readErr = (e && e.message) || 'The snapshots could not be read.'; } };
-        await read();
-        let pick = snaps[0] && (snaps[0].name || snaps[0]);
-        R.dialog(c, {
-            id: 'vmsnaps', title: `Snapshots: ${v.name}`, w: 460, h: 340, okText: 'Close', noCancel: true,
-            html: '<div class="rm-isolist" data-rm-snaps></div><div class="rm-row"><button type="button" class="btn-standard" data-snap="create">Create...</button><button type="button" class="btn-standard" data-snap="revert">Revert</button><button type="button" class="btn-standard" data-snap="delete">Delete</button></div>',
-            init: (ctx) => {
-                const q = (s) => ctx.content.querySelector(s);
-                const paint = () => { q('[data-rm-snaps]').innerHTML = snaps.length ? snaps.map((s) => { const nm = s.name || s; return `<div class="rm-isorow${nm === pick ? ' is-selected' : ''}" data-s="${esc(nm)}"><span>${esc(nm)}</span><i>${esc(s.created ? when(s.created) : s.state || '')}</i></div>`; }).join('') : `<div class="rm-hint">${esc(readErr || 'There are no snapshots.')}</div>`; };
-                paint();
-                ctx.content.addEventListener('click', async (ev) => {
-                    const row = ev.target.closest('[data-s]');
-                    if (row) { pick = row.dataset.s; paint(); return; }
-                    const b = ev.target.closest('[data-snap]');
-                    if (!b) return;
-                    R.err(ctx, '');
-                    try {
-                        if (b.dataset.snap === 'create') {
-                            const name = `snap-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}`;
-                            await R.act(n.server, 'vms', 'snapshot', { name: v.name, snap: name, op: 'create' });
-                        } else if (pick) {
-                            if (b.dataset.snap === 'delete') { const a = await R.taskDialog(c, { instruction: `Delete the snapshot ${pick}?`, links: [{ id: 'go', text: 'Delete', danger: true }] }); if (a !== 'go') return; }
-                            if (b.dataset.snap === 'revert') { const a = await R.taskDialog(c, { instruction: `Revert ${v.name} to ${pick}?`, text: 'Changes made since the snapshot are lost.', links: [{ id: 'go', text: 'Revert', danger: true }] }); if (a !== 'go') return; }
-                            await R.act(n.server, 'vms', 'snapshot', { name: v.name, snap: pick, op: b.dataset.snap });
-                        }
-                        await read(); paint();
-                    } catch (e) { R.err(ctx, (e && e.message) || 'The request failed.'); }
-                });
-            }
-        });
-    };
-    A['vm-new'] = (c, p, n) => {
-        const d = dataOf(n, 'vms');
-        const nets = arr(d.networks).map((x) => x.name || x);
-        R.wizard(c, {
-            id: 'vmnew', title: 'New Virtual Machine Wizard', icon: `${ITEMS}/system-32.png`, w: 480, h: 300,
-            pages: [
-                { key: 'name', instruction: 'Name the virtual machine', html: `${R.field('Name:', R.inp('name', ''))}${R.field('Purpose (optional):', R.inp('purpose', ''))}`, next: (ctx) => { const nm = (R.val(ctx, 'name') || '').trim(); if (!/^[A-Za-z0-9._-]+$/.test(nm)) { R.err(ctx, 'Use letters, digits, dots, dashes and underscores only.'); return false; } R.err(ctx, ''); return 'hw'; } },
-                { key: 'hw', instruction: 'Assign memory and disk', html: `${R.field('Processors:', R.inp('vcpus', 4))}${R.field('Memory (MB):', R.inp('mem', 8192))}${R.field('Disk size (GB):', R.inp('disk', 40))}${nets.length ? R.field('Network:', R.sel('net', nets, nets.includes('br0') ? 'br0' : nets[0])) : ''}`, next: (ctx) => { if (!(Number(R.val(ctx, 'vcpus')) > 0 && Number(R.val(ctx, 'mem')) >= 256 && Number(R.val(ctx, 'disk')) > 0)) { R.err(ctx, 'Type whole numbers for processors, memory and disk.'); return false; } R.err(ctx, ''); return 'iso'; } },
-                { key: 'iso', instruction: 'Installation options', nextText: 'Create', html: `${R.field('ISO image (path on the server):', R.inp('iso', ''), true)}<p class="rm-hint">Leave empty to make a machine without an installation disc. ISO images live in /var/lib/libvirt/images/iso.</p>`, finish: true }
-            ],
-            finish: async (ctx) => {
-                const params = { name: R.val(ctx, 'name').trim(), vcpus: Number(R.val(ctx, 'vcpus')), memMB: Number(R.val(ctx, 'mem')), diskGB: Number(R.val(ctx, 'disk')) };
-                const iso = (R.val(ctx, 'iso') || '').trim();
-                if (iso) params.iso = iso;
-                const net = R.val(ctx, 'net');
-                if (net) params.network = net;
-                try { await doit(c, n, 'vms', 'create', params); return true; } catch (e) { R.err(ctx, (e && e.message) || 'The machine could not be created.'); return false; }
-            }
-        });
-    };
+    // ---- Virtual Machines: mmcRackManagerVm.js (list, checkpoints, wizards), mmcRackManagerVmSet.js (Settings), mmcRackManagerVmc.js (VMConnect, screens)
 
     // ---- Virtual Android Devices ------------------------------------------------------------------------------------
 
@@ -200,7 +47,7 @@
     const avdOf = (c, n) => arr(dataOf(n, 'android').avds).find((a) => a.name === c.sel);
 
     rolePage('android', (c, n, d) => {
-        const rows = arr(d.avds).map((a) => ({ key: a.name, icon: '/static_images/vista-dlg/android-runtime-32.png', data: a }));
+        const rows = arr(d.avds).map((a) => ({ key: a.name, icon: '/static_images/vista-dlg/android-runtime-32.png', open: a.running ? 'av-connect' : undefined, data: a }));
         const l = list(c, 'rm-avds', [
             { t: 'Name', w: 170, key: 'n', text: (a) => a.name },
             { t: 'API', w: 40, num: true, key: 'a', text: (a) => a.api },
@@ -208,12 +55,15 @@
             { t: 'Device', w: 100, key: 'd', text: (a) => a.device },
             { t: 'State', w: 70, key: 's', text: (a) => BOOT[a.boot] || a.boot },
             { t: 'Backend', w: 90, key: 'be', text: (a) => a.backend || '' },
-            { t: 'Serial', w: 110, key: 'se', text: (a) => a.serial || '' }
+            { t: 'Serial', w: 110, key: 'se', text: (a) => a.serial || '' },
+            { t: 'Manageable', w: 150, key: 'mg', text: (a) => (!a.running ? '' : a.manageable === false ? `No: ${arr(a.missing).join('; ')}` : 'Yes') },
+            { t: 'Held by', w: 110, key: 'ho', text: (a) => (a.lane && a.lane.holder) || '' }
         ], rows, 'There are no virtual Android devices. Use Create AVD to make one.');
         const sdk = d.sdk || {};
         const a = avdOf(c, n);
         return c.page('Virtual Android Devices', `${rows.length} device${rows.length === 1 ? '' : 's'}`, [
             { id: 'av-list', title: 'Virtual Android Devices', body: R.jobStrip(n) + l },
+            { id: 'av-screens', title: 'Screens', body: R.screensGrid ? R.screensGrid(c, n, d) : '' },
             { id: 'av-sdk', title: 'Android SDK', body: c.props([['Location', esc(sdk.path || '')], ['Emulator', sdk.emulator ? esc(String(sdk.emulator)) : c.state(false, 'Not installed', true)], ['Platform tools', sdk.platformTools ? esc(String(sdk.platformTools)) : c.state(false, 'Not installed', true)], ['Hardware virtualisation (KVM)', d.kvm ? 'Available' : c.state(false, 'Not available', true)], ['System images', esc(arr(d.images).filter((x) => x.installed).length + ' installed')]]) },
             { id: 'av-prev', title: a ? `Screen: ${a.name}` : 'Screen', body: preview(n, 'android', a && a.name, a ? a.name : '') }
         ]);
@@ -223,7 +73,7 @@
         const a = avdOf(c, n);
         if (!a) return null;
         const run0 = a.running || a.boot !== 'off';
-        return { title: a.name, items: [run0 ? { text: 'Stop', action: 'av-stop' } : { text: 'Start...', action: 'av-start' }, { text: 'Install APK...', action: 'av-apk', disabled: a.boot !== 'ready' }, { text: 'Shell...', action: 'av-shell', disabled: a.boot !== 'ready' }, { text: 'Take Screenshot', action: 'av-shot', disabled: a.boot !== 'ready' }, { separator: true }, { text: 'Wipe Data...', action: 'av-wipe', disabled: run0 }, { text: 'Delete...', action: 'av-del', disabled: run0 }] };
+        return { title: a.name, items: [run0 ? { text: 'Stop', action: 'av-stop' } : { text: 'Start...', action: 'av-start' }, { text: 'Device Connection...', action: 'av-connect', disabled: !a.running }, { text: 'Install APK...', action: 'av-apk', disabled: a.boot !== 'ready' }, { text: 'Shell...', action: 'av-shell', disabled: a.boot !== 'ready' }, { text: 'Take Screenshot', action: 'av-shot', disabled: a.boot !== 'ready' }, { separator: true }, { text: 'Wipe Data...', action: 'av-wipe', disabled: run0 }, { text: 'Delete...', action: 'av-del', disabled: run0 }] };
     };
     A['av-shot'] = async (c, p, n) => { const a = avdOf(c, n); if (a) await shot(c, n, 'android', a.name, a.name); };
     A['av-stop'] = async (c, p, n) => { const a = avdOf(c, n); if (a) await run(c, n, 'android', 'stop', { name: a.name }); };
@@ -508,6 +358,7 @@
     // ---- Builds ----------------------------------------------------------------------------------------------------------
 
     const RUN_STATE = { running: 'Running', done: 'Succeeded', success: 'Succeeded', passed: 'Succeeded', failed: 'Failed', cancelled: 'Cancelled', queued: 'Queued' };
+    const projOf = (c, n) => arr(dataOf(n, 'builds').projects).find((j) => `j:${j.name}` === c.sel);
     const pipeOf = (c, n) => arr(dataOf(n, 'builds').pipelines).find((p) => `p:${p.id}` === c.sel);
     const runOf = (c, n) => arr(dataOf(n, 'builds').runs).find((r) => `r:${r.id}` === c.sel);
     const RUNLOG = new Map(); // 'server:runId' -> { text, error }
@@ -530,10 +381,18 @@
     rolePage('builds', (c, n, d) => {
         const pl = list(c, 'rm-pipes', [
             { t: 'Name', w: 160, key: 'n', text: (p) => p.name || p.id },
+            { t: 'Project', w: 100, key: 'j', text: (p) => p.project || 'Built in' },
             { t: 'Repository', w: 200, key: 'r', text: (p) => p.repo || '' },
             { t: 'Ref', w: 90, key: 'f', text: (p) => p.ref || '' },
             { t: 'Last Run', w: 130, key: 'l', text: (p) => (p.lastRun ? `${RUN_STATE[p.lastRun.state] || p.lastRun.state} ${when(p.lastRun.startedAt)}` : 'Never') }
-        ], arr(d.pipelines).map((p) => ({ key: `p:${p.id}`, icon: `${ITEMS}/backup-and-restore-center-16.png`, data: p })), 'There are no pipelines. Use New Pipeline to define one.');
+        ], arr(d.pipelines).map((p) => ({ key: `p:${p.id}`, icon: `${VI}/generic-exe-16.png`, data: p })), 'There are no pipelines. Use New Pipeline to define one.');
+        const pj = list(c, 'rm-projs', [
+            { t: 'Project', w: 120, key: 'n', text: (j) => j.name },
+            { t: 'Repository', w: 240, key: 'r', text: (j) => j.repo || '' },
+            { t: 'Ref', w: 90, key: 'f', text: (j) => j.ref || '' },
+            { t: 'Last Fetch', w: 130, key: 'a', value: (j) => j.fetchedAt, text: (j) => (j.fetchedAt ? when(j.fetchedAt) : 'Never') },
+            { t: 'Pipelines', w: 200, key: 'p', text: (j) => arr(j.pipelines).map((i) => String(i).split('/').pop()).join(', ') + (arr(j.errors).length ? ` (${arr(j.errors).length} with errors)` : '') }
+        ], arr(d.projects).map((j) => ({ key: `j:${j.name}`, icon: `${ITEMS}/backup-and-restore-center-16.png`, data: j })), 'No project is registered. Use Register Project to add a repository that carries .rack/pipelines.');
         const runs = arr(d.runs);
         const rl = list(c, 'rm-runs', [
             { t: 'Run', w: 130, key: 'i', text: (r) => r.id },
@@ -545,7 +404,7 @@
             { t: 'Duration', w: 80, key: 'd', text: runDur },
             { t: 'By', w: 70, key: 'b', text: (r) => r.by || '' },
             { t: 'Artifacts', w: 56, num: true, key: 'x', text: (r) => arr(r.artifacts).length || '' }
-        ], runs.map((r) => ({ key: `r:${r.id}`, icon: `${ITEMS}/sync-center-16.png`, data: r })), 'There are no runs yet. Select a pipeline and choose Run.', { sort: { key: 'a', dir: -1 } });
+        ], runs.map((r) => ({ key: `r:${r.id}`, icon: R.jobIcon(r.state), data: r })), 'There are no runs yet. Select a pipeline and choose Run.', { sort: { key: 'a', dir: -1 } });
         const r = runOf(c, n);
         let detail = '<p class="mmc-hint">Select a run to see its log and artifacts.</p>';
         if (r) {
@@ -559,14 +418,16 @@
         }
         return c.page('Builds', `${arr(d.pipelines).length} pipelines, ${runs.length} runs`, [
             { id: 'bd-pipes', title: 'Pipelines', body: R.jobStrip(n) + pl },
+            { id: 'bd-projs', title: 'Projects', body: pj },
             { id: 'bd-runs', title: 'Runs', body: rl },
             { id: 'bd-log', title: r ? `Run ${r.id}` : 'Log and Artifacts', body: detail }
         ]);
     });
-    R.commands['role:builds'] = () => [{ text: 'New Pipeline...', action: 'bd-new', icon: `${ITEMS}/backup-and-restore-center-16.png` }];
+    R.commands['role:builds'] = () => [{ text: 'New Pipeline...', action: 'bd-new', icon: `${VI}/generic-exe-16.png` }, { text: 'Register Project...', action: 'bd-preg', icon: `${VI}/generic-exe-16.png` }, { text: 'Refresh Projects', action: 'bd-prefresh', icon: `${VI}/generic-exe-16.png` }];
     R.selCommands['role:builds'] = (n, key, c) => {
         const k = String(key);
-        if (k.startsWith('p:')) { const p = pipeOf(c, n); return p ? { title: p.name || p.id, items: [{ text: 'Run...', action: 'bd-run' }, { text: 'Edit Pipeline...', action: 'bd-edit' }, { text: 'Delete Pipeline...', action: 'bd-del' }] } : null; }
+        if (k.startsWith('p:')) { const p = pipeOf(c, n); return p ? { title: p.name || p.id, items: [{ text: 'Run...', action: 'bd-run' }, { text: 'Edit Pipeline...', action: 'bd-edit', disabled: !!p.project || p.preset }, { text: 'Delete Pipeline...', action: 'bd-del', disabled: !!p.project || p.preset }] } : null; }
+        if (k.startsWith('j:')) { const j = projOf(c, n); return j ? { title: j.name, items: [{ text: 'Refresh', action: 'bd-prefresh' }, { text: 'Unregister...', action: 'bd-punreg' }] } : null; }
         if (k.startsWith('r:')) { const r = runOf(c, n); return r ? { title: r.id, items: [{ text: 'Cancel Run', action: 'bd-cancel', disabled: r.state !== 'running' }, { text: 'Delete Artifacts...', action: 'bd-artrm', disabled: !arr(r.artifacts).length }] } : null; }
         return null;
     };
@@ -579,11 +440,23 @@
     A['bd-artrm'] = async (c, p, n) => { const r = runOf(c, n); if (!r) return; const a = await R.taskDialog(c, { instruction: `Delete the artifacts of run ${r.id}?`, text: 'The built files are removed from the server. The run record and its log stay.', links: [{ id: 'go', text: 'Delete Artifacts', danger: true }] }); if (a === 'go') await run(c, n, 'builds', 'artifact-remove', { run: r.id }); };
     A['bd-del'] = async (c, p, n) => { const pl = pipeOf(c, n); if (!pl) return; const a = await R.taskDialog(c, { instruction: `Delete the pipeline ${pl.name || pl.id}?`, text: 'The definition is removed. Earlier runs and artifacts stay.', links: [{ id: 'go', text: 'Delete Pipeline', danger: true }] }); if (a === 'go') await run(c, n, 'builds', 'pipeline-delete', { id: pl.id }); };
     A['bd-new'] = (c, p, n) => pipelineWizard(c, n, null);
+    A['bd-preg'] = (c, p, n) => R.dialog(c, {
+        id: 'bdpreg', title: 'Register Project', w: 440, h: 250,
+        html: `${R.field('Repository (git URL):', R.inp('repo', ''), true)}${R.field('Branch (empty = default):', R.inp('ref', ''))}${R.field('Name (empty = from the URL):', R.inp('name', ''))}<p class="rm-hint">The repository lists its builds in .rack/pipelines. They are read again before every run.</p>`,
+        okText: 'Register',
+        ok: async (ctx) => {
+            const repo = (R.val(ctx, 'repo') || '').trim();
+            if (!/^https:\/\/\S+$/.test(repo)) { R.err(ctx, 'Type the https address of the repository.'); return false; }
+            try { await doit(c, n, 'builds', 'project-register', { repo, ref: (R.val(ctx, 'ref') || '').trim() || undefined, name: (R.val(ctx, 'name') || '').trim() || undefined }); return true; } catch (e) { R.err(ctx, (e && e.message) || 'The project could not be registered.'); return false; }
+        }
+    });
+    A['bd-prefresh'] = async (c, p, n) => { const j = projOf(c, n); await run(c, n, 'builds', 'project-refresh', j ? { name: j.name } : {}); };
+    A['bd-punreg'] = async (c, p, n) => { const j = projOf(c, n); if (!j) return; const a = await R.taskDialog(c, { instruction: `Unregister the project ${j.name}?`, text: 'Its pipelines disappear from the list. The repository, earlier runs and artifacts stay.', links: [{ id: 'go', text: 'Unregister Project', danger: true }] }); if (a === 'go') await run(c, n, 'builds', 'project-unregister', { name: j.name }); };
     A['bd-edit'] = (c, p, n) => { const pl = pipeOf(c, n); if (pl) pipelineWizard(c, n, pl); };
     function pipelineWizard(c, n, p0) {
         const v = (k, d) => (p0 && p0[k] != null ? p0[k] : d);
         R.wizard(c, {
-            id: 'bdpipe', title: p0 ? 'Edit Pipeline Wizard' : 'New Pipeline Wizard', icon: `${ITEMS}/backup-and-restore-center-32.png`, w: 520, h: 340,
+            id: 'bdpipe', title: p0 ? 'Edit Pipeline Wizard' : 'New Pipeline Wizard', icon: `${VI}/generic-exe-32.png`, w: 520, h: 340,
             pages: [
                 { key: 'src', instruction: 'Name the pipeline and its source', html: `${R.field('Id:', R.inp('id', v('id', ''), p0 ? 'readonly' : ''))}${R.field('Name:', R.inp('name', v('name', '')))}${R.field('Repository (git URL):', R.inp('repo', v('repo', '')), true)}${R.field('Default ref:', R.inp('ref', v('ref', 'main')))}`, next: (ctx) => { if (!/^[a-z0-9][a-z0-9-]*$/.test((R.val(ctx, 'id') || '').trim()) || !(R.val(ctx, 'repo') || '').trim()) { R.err(ctx, 'Type an id (lower case letters, digits, dashes) and a repository.'); return false; } R.err(ctx, ''); return 'env'; } },
                 { key: 'env', instruction: 'The build environment', html: `${R.field('Image (existing):', R.inp('image', v('image', 'debian:13')), true)}${R.field('Processors:', R.inp('cpus', v('cpus', '')))}${R.field('Memory (GB):', R.inp('memGB', v('memGB', '')))}${R.field('Cache on a RAM disk (GB, 0 = off):', R.inp('cacheRam', v('cacheRamdisk', 0)))}${R.field('Time limit (minutes):', R.inp('timeout', v('timeoutMin', '')))}`, next: () => 'script' },

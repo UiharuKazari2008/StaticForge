@@ -1,0 +1,38 @@
+/* Rack Manager: the virtual machines page and Settings window (public/scripts/comp/mmcRackManagerVm.js, mmcRackManagerVmSet.js):
+   the view switch, the manageability warning, the checkpoint tree, the summary with its thumbnail and the Settings dialog's two panes.
+   No animation: nothing here moves on its own (phone-power-client.mdc). */
+
+.rm-vmbar { display: flex; gap: 6px; margin: 0 0 6px; }
+.rm-vmwarn { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 6px; padding: 4px 6px; border: 1px solid #d9b44a; background: #fdf1cc; color: #000; }
+.rm-vmwarn img { flex: none; margin-top: 1px; }
+
+.rm-cptree { max-height: 190px; overflow: auto; border: 1px solid #c8c8c8; background: #fff; padding: 2px 0; }
+.rm-cprow { display: flex; align-items: center; gap: 5px; padding: 1px 6px 1px calc(6px + var(--d, 0) * 18px); white-space: nowrap; cursor: default; user-select: none; }
+.rm-cprow:hover { background: linear-gradient(#fafbfd, #ebf3fd); }
+.rm-cprow.is-selected { background: linear-gradient(#dcebfc, #c1dbfc); outline: 1px solid #7da2ce; outline-offset: -1px; }
+.rm-cprow b { font-weight: normal; }
+.rm-cprow.is-now b { font-style: italic; }
+.rm-cprow i { min-width: 0; overflow: hidden; font-style: normal; color: #6d6d6d; text-overflow: ellipsis; }
+
+.rm-vmdetail { display: flex; align-items: flex-start; gap: 12px; }
+.rm-vmthumb { flex: none; width: 200px; cursor: default; }
+.rm-vmthumb .rm-vmpv { width: 200px; aspect-ratio: 4 / 3; border: 1px solid #555; background: #000; object-fit: contain; }
+.rm-vmthumb .rm-vmpv.is-blank { visibility: hidden; }
+.rm-vmthumb .rm-vmoff { display: flex; align-items: center; justify-content: center; color: #9a9a9a; }
+.rm-vmsummary { flex: 1 1 auto; min-width: 0; }
+
+/* ---- Settings ---- */
+.rm-set { display: flex; height: 100%; min-height: 0; gap: 8px; }
+.rm-set-nav { flex: none; width: 190px; overflow: auto; border: 1px solid #828790; background: #fff; padding: 2px 0; }
+.rm-set-grp { padding: 3px 6px 1px; font-weight: bold; color: #1e395b; }
+.rm-set-item { display: flex; align-items: center; gap: 5px; padding: 2px 6px 2px 14px; white-space: nowrap; cursor: default; user-select: none; }
+.rm-set-item:hover { background: linear-gradient(#fafbfd, #ebf3fd); }
+.rm-set-item.is-on { background: linear-gradient(#dcebfc, #c1dbfc); outline: 1px solid #7da2ce; outline-offset: -1px; }
+.rm-set-body { flex: 1 1 auto; min-width: 0; overflow: auto; }
+.rm-set-page[hidden] { display: none; }
+.rm-set-title { margin: 0 0 8px; padding-bottom: 3px; border-bottom: 1px solid #c8c8c8; color: #1e395b; font-size: 14px; }
+.rm-set .rm-offhint { padding: 3px 6px; border: 1px solid #d9b44a; background: #fdf1cc; color: #000; }
+.rm-set .rm-wrap { overflow-wrap: anywhere; font-weight: normal; }
+.rm-boot { border: 1px solid #828790; background: #fff; }
+.rm-bootrow { padding: 2px 6px; cursor: default; user-select: none; }
+.rm-bootrow.is-selected { background: linear-gradient(#dcebfc, #c1dbfc); outline: 1px solid #7da2ce; outline-offset: -1px; }

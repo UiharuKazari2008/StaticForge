@@ -7,26 +7,31 @@ const { run } = require('./exec');
 const { DATA, writeJson } = require('./util');
 const events = require('./events');
 const jobs = require('./jobs');
+const inventory = require('./inventory');
 
 let roles = {};
 let last = null, idleSince = new Date().toISOString(), timer = null, debounce = null, shuttingDown = false;
 const LOAD_LIMIT = Math.max(4, os.cpus().length * 0.1); // Misaka idles near 2.4 on 80 threads
 
+let lastUnmanaged = [];
 async function compute() {
-  const busy = [];
+  let busy = [];
   for (const j of jobs.list()) if (j.state === 'running') busy.push({ kind: 'job', id: j.id, why: j.title });
   for (const r of Object.values(roles)) if (r.busy) { try { busy.push(...await r.busy()); } catch { /* role not usable */ } }
+  // anything that runs, however it was started: libvirt domains, qemu / emulator processes, containers, jobs and processes at about one core for 5 minutes
+  try { const x = await inventory.busyExtras(); busy.push(...x.busy); lastUnmanaged = x.unmanaged; } catch { /* the scan failed: the roles' own items still count */ }
   const who = await run(['who']);
   for (const l of who.stdout.split('\n').filter(Boolean)) { const f = l.trim().split(/\s+/); if (!/^pts\//.test(f[1])) continue; /* only interactive ssh shells (pts); sshd-only sessions are tunnels such as Dreamscape's own */ busy.push({ kind: 'ssh', id: `${f[0]}@${f[1]}`, why: 'logged in' }); }
   const load = os.loadavg()[0];
   if (load > LOAD_LIMIT) busy.push({ kind: 'load', id: 'loadavg', why: `load ${load.toFixed(2)} over ${LOAD_LIMIT}` });
   if (shuttingDown) busy.push({ kind: 'shutdown', id: 'host', why: 'shutting down' });
+  const seen = new Set(); busy = busy.filter(b => { const k = `${b.kind}:${b.id}`; if (seen.has(k)) return false; seen.add(k); return true; });
   return busy;
 }
 async function verdict() {
   const busy = await compute(); const idle = busy.length === 0;
   if (last === null || last.idle !== idle) idleSince = new Date().toISOString();
-  const v = { idle, idleSince: idle ? idleSince : null, busy };
+  const v = { idle, idleSince: idle ? idleSince : null, busy, unmanaged: lastUnmanaged };
   const key = JSON.stringify(v.busy);
   const changed = !last || last.idle !== idle || last.key !== key;
   last = { idle, key };
@@ -62,4 +67,5 @@ function shutdown({ reason, dryRun }) {
     } finally { if (dryRun) shuttingDown = false; }
   } });
 }
-module.exports = { init, get, check, shutdown };
+const unmanaged = () => lastUnmanaged;
+module.exports = { init, get, check, shutdown, unmanaged };

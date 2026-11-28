@@ -14,13 +14,16 @@ const ws = require('./lib/ws');
 const pty = require('./lib/pty');
 const idle = require('./lib/idle');
 const history = require('./lib/history');
+const inventory = require('./lib/inventory');
+const scrcpy = require('./lib/scrcpy');
 
 const VERSION = '1.0.0';
 const PORT = Number(process.env.RACKD_PORT || 8791);
 const TOKEN_FILE = process.env.RACKD_TOKEN_FILE || '/etc/rackd/token';
 const startedAt = new Date().toISOString();
 const ROLE_IDS = ['vms', 'android', 'sandboxes', 'terminal', 'storage', 'networking', 'services', 'logs', 'updates', 'containers', 'builds', 'replicas'];
-const roles = {}; for (const id of ROLE_IDS) roles[id] = require(`./roles/${id}`);
+const only = process.env.RACKD_ROLES ? process.env.RACKD_ROLES.split(',') : null; // a test instance can load a few roles only
+const roles = {}; for (const id of ROLE_IDS) if (!only || only.includes(id)) roles[id] = require(`./roles/${id}`);
 
 let tokenHash;
 try { tokenHash = crypto.createHash('sha256').update(fs.readFileSync(TOKEN_FILE, 'utf8').trim()).digest(); } catch { console.error(`no token at ${TOKEN_FILE}`); process.exit(1); }
@@ -56,7 +59,7 @@ async function info() {
     // what runs now, for the console's At a Glance cards (count() is each role's own event-driven state, no extra calls)
     try { if (typeof r.count === 'function') { const c = r.count(); out[r.id].running = typeof c === 'number' ? c : (c && typeof c[r.id] === 'number' ? c[r.id] : c); } } catch { /* no count */ }
   }));
-  return { host: os.hostname(), os: osr, kernel: os.release(), uptimeS: Math.round(os.uptime()), cpus: { count: sockets, model: os.cpus()[0]?.model, threads: os.cpus().length }, memory: { totalB: mem.totalB, availB: mem.availB }, load: os.loadavg(), rackd: { version: VERSION, startedAt }, roles: out };
+  return { host: os.hostname(), os: osr, kernel: os.release(), uptimeS: Math.round(os.uptime()), cpus: { count: sockets, model: os.cpus()[0]?.model, threads: os.cpus().length }, memory: { totalB: mem.totalB, availB: mem.availB }, unmanaged: await inventory.unmanagedNow().catch(() => []), load: os.loadavg(), rackd: { version: VERSION, startedAt }, roles: out };
 }
 
 function installJob(role) {
@@ -78,6 +81,7 @@ async function route(req, res) {
   if (m === 'GET' && a === 'events') return events.addClient(req, res);
   if (m === 'GET' && a === 'metrics' && b === 'history') return send(res, 200, history.query(url.searchParams.get('range') || '3h', url.searchParams.get('points')));
   if (m === 'GET' && a === 'idle' && !b) return send(res, 200, await idle.get());
+  if (m === 'GET' && a === 'inventory' && !b) return send(res, 200, await inventory.inventory());
   if (m === 'POST' && a === 'host' && b === 'shutdown' && !c) {
     const p = await body(req);
     return send(res, 202, { job: idle.shutdown({ reason: typeof p.reason === 'string' ? p.reason.slice(0, 200) : '', dryRun: p.dryRun === true }) });
@@ -115,9 +119,42 @@ const server = http.createServer((req, res) => {
   route(req, res).catch(e => { if (!res.headersSent) fail(res, e); else res.end(); });
 });
 
+// GET /v1/android/screen?name=&control=1&leaseChecked=1&maxSize=&bitrate=&fps=: a live Android screen (lib/scrcpy.js; open only while the viewer's window is)
+function screenUpgrade(req, socket, url) {
+  let tg;
+  try { tg = roles.android.screenTarget(url.searchParams.get('name') || '', Object.fromEntries(url.searchParams)); }
+  catch (e) { socket.write(`HTTP/1.1 ${e.status || 400} Bad Request\r\nContent-Length: 0\r\n\r\n`); return socket.destroy(); }
+  const sock = ws.accept(req, socket); if (!sock) return;
+  scrcpy.open({ ws: sock, serial: tg.serial, name: tg.name, control: tg.control, sdk: tg.sdk, adb: tg.adb, maxSize: url.searchParams.get('maxSize'), bitrate: url.searchParams.get('bitrate'), fps: url.searchParams.get('fps') })
+    .catch(e => console.error(`screen ${tg.name}: ${e.message}`));
+}
+
+// GET /v1/vms/console?name=: a byte bridge between a WebSocket (noVNC, subprotocol binary) and the VM's VNC port on 127.0.0.1
+function vmConsole(req, socket, url) {
+  roles.vms.vncPort(url.searchParams.get('name')).then(port => {
+    const tcp = require('net').connect(port, '127.0.0.1');
+    tcp.once('error', () => { try { socket.write('HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n'); } catch { /* gone */ } socket.destroy(); });
+    tcp.once('connect', () => {
+      const wants = String(req.headers['sec-websocket-protocol'] || '').split(',').map(x => x.trim());
+      const sock = ws.accept(req, socket, wants.includes('binary') ? 'binary' : undefined); if (!sock) return tcp.destroy();
+      tcp.setNoDelay(true);
+      tcp.on('data', d => { sock.sendBinary(d); if (sock.buffered() > 4 << 20) tcp.pause(); });
+      socket.on('drain', () => tcp.resume());
+      tcp.on('close', () => sock.close());
+      tcp.on('error', () => sock.close());
+      sock.on('binary', b => tcp.write(b));
+      sock.on('message', t => tcp.write(Buffer.from(t, 'latin1')));
+      sock.on('close', () => tcp.destroy());
+      socket.on('error', () => tcp.destroy());
+    });
+  }).catch(e => { socket.write(`HTTP/1.1 ${e.status || 500} ${e.code === 'NOT_RUNNING' ? 'Conflict' : 'Error'}\r\nContent-Length: 0\r\n\r\n`); socket.destroy(); });
+}
+
 // GET /v1/terminal/ws?cols&rows&cmd=&user=: an interactive pty
 server.on('upgrade', (req, socket) => {
   const url = new URL(req.url, 'http://x');
+  if (authed(req) && url.pathname === '/v1/android/screen') return screenUpgrade(req, socket, url);
+  if (authed(req) && url.pathname === '/v1/vms/console') return vmConsole(req, socket, url);
   if (!authed(req) || url.pathname !== '/v1/terminal/ws') { socket.write('HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n'); return socket.destroy(); }
   const user = url.searchParams.get('user') || 'rack';
   if (user !== 'rack' && user !== 'root') { socket.write('HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n'); return socket.destroy(); }
@@ -137,7 +174,7 @@ server.on('upgrade', (req, socket) => {
 
 async function main() {
   fs.mkdirSync(DATA, { recursive: true, mode: 0o755 });
-  jobs.init(); idle.init(roles);
+  jobs.init(); inventory.init(roles); idle.init(roles);
   for (const r of Object.values(roles)) { try { if (r.init) await r.init(); } catch (e) { console.error(`init ${r.id}: ${e.message}`); } }
   history.init(roles);
   server.listen(PORT, '127.0.0.1', () => console.log(`rackd ${VERSION} listening on 127.0.0.1:${PORT}`));

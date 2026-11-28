@@ -19,6 +19,7 @@
  *     action(a, c, arg) a command the shell does not know; return false when unhandled
  *     rowOpen(key, node, c)       a row double-clicked / Enter (rows without data-open)
  *     status(node, c)   the status bar's first pane
+ *     statusPanes(node, c) [{ icon?, text, title? }] several status panes with a 16 px picture each (replaces status)
  *     viewMenu(node, c) extra View items before Customize...
  *     about             { version, lines: [] } for Help > About
  *     help(node, c)     Help Topics (default: Help and Support)
@@ -636,6 +637,21 @@
         }
 
         renderStatus() {
+            const bar = this.modal.querySelector(':scope > * > .mmc-status, :scope > .mmc-status') || this.modal.querySelector('.mmc-status');
+            // statusPanes(node, c) -> [{ icon?, text, title? }]: several panes, each with an optional 16 px picture (additive;
+            // a def without it keeps the three fixed panes below)
+            if (bar && typeof this.def.statusPanes === 'function') {
+                const n0 = this.find(this.node);
+                let panes = null;
+                try { panes = n0 ? this.def.statusPanes(n0, this) : null; } catch (_) { panes = null; }
+                if (Array.isArray(panes) && panes.length) {
+                    bar.classList.add('has-panes');
+                    bar.style.gridTemplateColumns = `minmax(0, 1fr)${' auto'.repeat(panes.length - 1)}`;
+                    bar.innerHTML = panes.map((p, i) => `<span${p.title ? ` title="${esc(p.title)}"` : ''}>${p.icon ? `<img class="mmc-status-ico" src="${esc(p.icon)}" alt="">` : ''}${esc(i === 0 && this.notes ? this.notes : p.text)}</span>`).join('');
+                    return;
+                }
+                if (bar.classList.contains('has-panes')) { bar.classList.remove('has-panes'); bar.style.gridTemplateColumns = ''; bar.innerHTML = '<span></span><span></span><span></span>'; }
+            }
             const spans = this.modal.querySelectorAll('.mmc-status span');
             if (!spans.length) return;
             let text = this.notes;

@@ -179,6 +179,10 @@ const FEATURE_MANIFEST = {
         styles: ['scripts/vendor/xterm/xterm.css', 'css/themes/vista/console.css', 'css/admin-terminal.css'],
         scripts: ['scripts/vendor/xterm/xterm.js', 'scripts/vendor/xterm/addon-fit.js', 'scripts/comp/desktop-apps/adminTerminal/adminTerminalApp.js']
     },
+    // Rack Manager's virtual machine console: noVNC's core RFB client (MPL-2.0, public/scripts/vendor/novnc, built by scripts/vendor/build-novnc.js), defines window.RFB
+    rack_novnc: {
+        scripts: ['scripts/vendor/novnc/novnc-rfb.js']
+    },
     // Rack Manager's Terminal page: xterm.js with the console theme (the Administrator Terminal's vendor files)
     rack_xterm: {
         styles: ['scripts/vendor/xterm/xterm.css', 'css/themes/vista/console.css'],
@@ -564,7 +568,7 @@ const FEATURE_MANIFEST = {
     mmc_snapins: {
         hot: true,
         depends: ['vista_dialog_templates', 'workspace_dialogs', 'print_queue'],
-        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css', 'css/mmc-wiki.css', 'css/mmc-chardb.css', 'css/mmc-exchange.css', 'css/mmc-appkeys.css', 'css/mmc-servermgr.css', 'css/mmc-rackmgr.css', 'css/mmc-lizumi-tokens.css', 'css/mmc-lizumi.css'],
+        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css', 'css/mmc-wiki.css', 'css/mmc-chardb.css', 'css/mmc-exchange.css', 'css/mmc-appkeys.css', 'css/mmc-servermgr.css', 'css/mmc-rackmgr.css', 'css/mmc-rackmgr-vmc.css', 'css/mmc-rackmgr-vm.css', 'css/mmc-lizumi-tokens.css', 'css/mmc-lizumi.css'],
         scripts: [
             'scripts/comp/mmcConsole.js',
             'scripts/comp/mmcFrontGate.js',
@@ -588,6 +592,10 @@ const FEATURE_MANIFEST = {
             'scripts/comp/mmcRackManagerLoad.js',
             'scripts/comp/mmcRackManagerRoles.js',
             'scripts/comp/mmcRackManagerRoles2.js',
+            'scripts/comp/mmcRackManagerVmc.js',
+            'scripts/comp/mmcRackManagerVm.js',
+            'scripts/comp/mmcRackManagerVmSet.js',
+            'scripts/comp/mmcRackManagerDevice.js',
             'scripts/comp/mmcRackManagerReplicas.js',
             // Server Manager hosts the consoles above: after them
             'scripts/comp/mmcServerManager.js'

@@ -27,6 +27,16 @@
     const VI = '/static_images/vista-icons';
     const SRV16 = '/static_images/melaton/net-server-16.png';
     const SRV32 = '/static_images/melaton/net-server-32.png';
+    // Jobs is Task Scheduler's job (calendar and clock); a job row shows its state with Vista Sync Center's state art
+    const JOBS16 = `${ITEMS}/date-and-time-16.png`;
+    const SYNC = '/static_images/vista-sync';
+    const JOBPIC = { running: `${SYNC}/sync-progress-16.png`, done: `${SYNC}/status-done-16.png`, failed: `${SYNC}/status-error-16.png`, success: `${SYNC}/status-done-16.png`, passed: `${SYNC}/status-done-16.png`, cancelled: `${SYNC}/status-conflict-16.png`, queued: JOBS16 };
+    const jobIcon = (st) => JOBPIC[st] || JOBPIC.queued;
+    // the status lights: Vista's Network and Sharing Center lights (green on, gray off) and its small warning and error icons
+    const LIGHT = { on: '/static_images/vista-file-sharing/nsc-on-16.png', off: '/static_images/vista-file-sharing/nsc-off-16.png', warn: `${VI}/warning-16.png`, bad: `${VI}/error-16.png` };
+    const lightKind = (k) => (k === 'ok' || k === 'on' || k === 'is-ok' ? 'on' : k === 'warn' || k === 'wait' || k === 'is-warn' ? 'warn' : k === 'bad' || k === 'is-bad' ? 'bad' : 'off');
+    const lightSrc = (k) => LIGHT[lightKind(k)];
+    const light = (k, title) => `<img class="rm-lt" src="${lightSrc(k)}" alt=""${title ? ` title="${title.replace(/"/g, '&quot;')}"` : ''}>`;
     const SS = 0x50020000;
     const DEFPUSH = 0x50010001;
     const PUSH = 0x50010000;
@@ -44,8 +54,8 @@
         { id: 'android', name: 'Virtual Android Devices', i16: '/static_images/vista-dlg/android-runtime-32.png', i32: '/static_images/vista-dlg/android-runtime-32.png', desc: 'Android virtual devices for tests, headless.' },
         { id: 'sandboxes', name: 'Sandboxes', i16: `${ITEMS}/internet-options-16.png`, i32: `${ITEMS}/internet-options-32.png`, desc: 'Browser environments for testing, each with its own profile and debugging port.' },
         { id: 'containers', name: 'Containers', i16: `${ITEMS}/programs-and-features-16.png`, i32: `${ITEMS}/programs-and-features-32.png`, desc: 'Docker containers, images and volumes.' },
-        { id: 'builds', name: 'Builds', i16: `${ITEMS}/backup-and-restore-center-16.png`, i32: `${ITEMS}/backup-and-restore-center-32.png`, desc: 'Clean, tracked builds: pipelines, runs, logs and artifacts.' },
-        { id: 'replicas', name: 'Replicas', i16: '/static_images/melaton/net-server-16.png', i32: '/static_images/melaton/net-server-32.png', desc: 'Dreamscape replica servers for development, one per agent or task.' },
+        { id: 'builds', name: 'Builds', i16: `${VI}/generic-exe-16.png`, i32: `${VI}/generic-exe-32.png`, desc: 'Clean, tracked builds: pipelines, runs, logs and artifacts.' },
+        { id: 'replicas', name: 'Replicas', i16: `${ITEMS}/sync-center-16.png`, i32: `${ITEMS}/sync-center-32.png`, desc: 'Dreamscape replica servers for development, one per agent or task.' },
         { id: 'terminal', name: 'Terminal', i16: '/static_images/vista-cmd/cmd-16.png', i32: '/static_images/vista-cmd/cmd-32.png', desc: 'A shell on the server, and its tmux sessions.' },
         { id: 'storage', name: 'Storage', i16: '/static_images/vista-devmgr/disk-drives-16.png', i32: '/static_images/vista-devmgr/disk-drives-32.png', desc: 'Disks, file systems, volumes and RAM disks.' },
         { id: 'networking', name: 'Networking', i16: `${ITEMS}/network-and-sharing-center-16.png`, i32: `${ITEMS}/network-and-sharing-center-32.png`, desc: 'Interfaces, routes, bridges and listening ports.' },
@@ -69,7 +79,7 @@
     };
 
     const R = {
-        S, esc, ROLES, roleOf, bytes, num, when, ITEMS, VI, SRV16, SRV32,
+        S, esc, ROLES, roleOf, bytes, num, when, ITEMS, VI, SRV16, SRV32, light, lightSrc, jobIcon, JOBS16, panes: {}, statusX: {},
         pages: {}, commands: {}, selCommands: {}, actions: {}, hooks: { close: [], event: [], leave: [], open: [], ensure: [], row: [], refresh: [] }, inputs: {}
     };
 
@@ -235,6 +245,7 @@
             title: o.title,
             owner: c.modal,
             focusFirst: true,
+            modeless: !!o.modeless,   // a window of its own (Device Connection), not modal to the console
             cancel: o.cancel,
             init: (ctx) => {
                 ctx.html(100, `<div class="rm-form">${o.html}<div class="rm-err" hidden></div></div>`);
@@ -361,7 +372,7 @@
                         id: `s:${n}:roles`,
                         name: 'Roles',
                         icon: `${ITEMS}/administrative-tools-16.png`,
-                        children: ROLES.map((r) => ({ id: `s:${n}:r:${r.id}`, name: r.name, icon: r.i16 })).concat([{ id: `s:${n}:jobs`, name: 'Jobs', icon: `${ITEMS}/sync-center-16.png` }])
+                        children: ROLES.map((r) => ({ id: `s:${n}:r:${r.id}`, name: r.name, icon: r.i16 })).concat([{ id: `s:${n}:jobs`, name: 'Jobs', icon: JOBS16 }])
                     }
                 ]
             };
@@ -666,8 +677,6 @@
         const rows = [
             ['Server', esc(`${m.label} (${m.model})`)],
             ['iLO', m.ilo && m.ilo.connected ? 'Console session open' : m.ilo && m.ilo.power != null ? 'Available' : c.state(false, 'Not answering', true)],
-            ['Power', esc(hostText(m, st))],
-            ['rackd', m.rackd && m.rackd.state === 'up' ? 'Running' : c.state(false, rackdText(m) + (m.rackd && m.rackd.error ? `: ${m.rackd.error}` : ''), m.rackd && m.rackd.state === 'connecting')]
         ];
         let host = '';
         if (info) {
@@ -711,6 +720,7 @@
             { id: 'rm-srv', title: 'Server', body: c.props(rows) + `<div class="mmc-buttons">${btnHtml('nav-console', 'Open Console', n.server)}${btnHtml('nav-power', 'Power', n.server)}${btnHtml('nav-hardware', 'Hardware', n.server)}</div>` },
             info ? { id: 'rm-glance', title: 'At a Glance', body: glanceCards(c, n) } : null,
             R.hostBrief ? R.hostBrief(c, n) : null,
+            R.unmanagedSection ? R.unmanagedSection(c, n) : null,
             R.loadSection ? R.loadSection(c, n) : null,
             { id: 'rm-host', title: 'Host', body: host },
             info ? { id: 'rm-roles', title: 'Roles Summary', body: rolesList + `<div class="mmc-buttons">${btnHtml('addroles', 'Add Roles...')}</div>` } : null,
@@ -763,7 +773,7 @@
     function jobStrip(n, role) {
         const js = runningJobs(n.server, role || n.role);
         if (!js.length) return '';
-        return `<div class="rm-jobstrip">${js.map((j) => `<div><img src="${ITEMS}/sync-center-16.png" alt=""><span>${esc(j.title || j.id)}</span><div class="mmc-progress rm-bar"><div role="progressbar" class="is-marquee" aria-valuemin="0" aria-valuemax="100"><div></div></div></div>${link('nav-jobs', 'View', n.server)}</div>`).join('')}</div>`;
+        return `<div class="rm-jobstrip">${js.map((j) => `<div><img src="${jobIcon(j.state)}" alt=""><span>${esc(j.title || j.id)}</span><div class="mmc-progress rm-bar"><div role="progressbar" class="is-marquee" aria-valuemin="0" aria-valuemax="100"><div></div></div></div>${link('nav-jobs', 'View', n.server)}</div>`).join('')}</div>`;
     }
     R.jobStrip = jobStrip;
 
@@ -798,7 +808,7 @@
         if (m && m.rackd && m.rackd.state !== 'up' && m.rackd.state !== 'connecting') return plain(c, 'Jobs', rackdText(m), `<p>${c.state(false, `Jobs need rackd, which is ${rackdText(m).toLowerCase()} on ${m.label}.`, m.rackd.state === 'not-deployed')}</p>`);
         if (st.jobsError && !st.jobs.length) return plain(c, 'Jobs', 'Error', `<p>${c.state(false, `Jobs could not be read. ${st.jobsError}`)}</p><div class="mmc-buttons">${btnHtml('refresh', 'Try Again')}</div>`);
         if (!st.jobsLoaded) return plain(c, 'Jobs', 'Reading data, please wait...', '<p>Reading data, please wait...</p>');
-        const rows = st.jobs.map((j) => ({ key: j.id, icon: `${ITEMS}/sync-center-16.png`, data: j }));
+        const rows = st.jobs.map((j) => ({ key: j.id, icon: jobIcon(j.state), data: j }));
         const list = c.listView([
             { t: 'Job', w: 230, key: 't', text: (j) => j.title || j.id },
             { t: 'Role', w: 100, key: 'r', text: (j) => (roleOf(j.role) ? roleOf(j.role).name : j.role || '') },
@@ -1000,6 +1010,87 @@
         return n.meta ? `${n.meta.label}: ${powerState(n.server) !== 'up' ? PSTATE[powerState(n.server)] : rackdText(n.meta)}` : '';
     }
 
+    // ---- the status bar: panes with a light each (pushed data only: every repaint and row selection renders it again) ------
+
+    const RUNRE = { vms: [/(\d+) VM/, null], android: [/(\d+) AVD\(s\), (\d+) running/, 'tr'], sandboxes: [/(\d+)\/(\d+) running/, 'rt'], containers: [/(\d+)\/(\d+) running/, 'rt'], builds: [/(\d+) pipeline\(s\), (\d+) running/, 'tr'] };
+    /** "2 of 4 running" for a role, from rackd's info (running when sent, else the summary line). */
+    function roleCount(st, role) {
+        const x = (st.info && st.info.roles && st.info.roles[role]) || {};
+        const re = RUNRE[role];
+        const m = re ? re[0].exec(String(x.summary || '')) : null;
+        let run = typeof x.running === 'number' ? x.running : null;
+        let tot = null;
+        if (m) { if (re[1] === 'tr') { tot = Number(m[1]); if (run == null) run = Number(m[2]); } else if (re[1] === 'rt') { run = Number(m[1]); tot = Number(m[2]); } else tot = Number(m[1]); }
+        if (run != null && tot != null) return `${run} of ${tot} running`;
+        if (run != null) return `${run} running`;
+        return x.summary || '';
+    }
+    const stateKind = (x) => {
+        const v = x && (typeof x.state === 'string' ? x.state : typeof x.status === 'string' ? x.status : x.running != null ? (x.running ? 'running' : 'stopped') : x.active != null ? String(x.active) : '');
+        const t = String(v || '').toLowerCase();
+        if (!t) return { kind: 'off', text: '' };
+        const text = String(v).replace(/^./, (ch) => ch.toUpperCase());
+        if (/^(running|up|active|ok|on|done|healthy|completed|ready)/.test(t)) return { kind: 'on', text };
+        if (/fail|error|dead|crash|unhealthy/.test(t)) return { kind: 'bad', text };
+        if (/stop|exit|off|inactive|shut|created|paused/.test(t)) return { kind: 'off', text };
+        return { kind: 'warn', text };
+    };
+    /** The selected list row's item, found in the role's data by the row key (prefix:value). */
+    function selItem(n, key) {
+        if (key == null) return null;
+        if (n.kind === 'jobs') { const j = n.ss.jobs.find((y) => y.id === key); return j ? { label: j.title || j.id, st: { kind: ({ running: 'warn', done: 'on', failed: 'bad', cancelled: 'warn' })[j.state] || 'off', text: STATE_TEXT[j.state] || j.state || '' }, icon: jobIcon(j.state) } : null; }
+        const rs = n.kind === 'role' ? n.ss.roles[n.role] : null;
+        if (!rs || !rs.data) return null;
+        const v = String(key).replace(/^[a-z]{1,3}:/, '');
+        let hit = null;
+        const look = (a) => { if (!hit && Array.isArray(a)) hit = a.find((y) => y && typeof y === 'object' && [y.name, y.id, y.tag, y.unit, y.key].some((f) => f != null && (String(f) === String(key) || String(f) === v))) || null; };
+        Object.values(rs.data).forEach(look);
+        if (!hit) return null;
+        return { label: String(hit.name || hit.title || hit.id || hit.unit || v), st: stateKind(hit) };
+    }
+    function statusPanes(node, c) {
+        if (S.denied) return [{ icon: lightSrc('bad'), text: 'Access is denied' }];
+        if (!S.loaded) return [{ text: 'Reading data, please wait...' }];
+        const n = here(c);
+        if (n.kind === 'root') {
+            const up = S.servers.filter((s) => powerState(s.name) === 'up').length;
+            return [{ text: `${S.servers.length} server${S.servers.length === 1 ? '' : 's'}` }, { icon: lightSrc(up ? 'on' : 'off'), text: `${up} running` }];
+        }
+        if (!n.meta) return [{ text: '' }];
+        const m = n.meta;
+        const st = n.ss;
+        const ps = powerState(n.server);
+        const out = [{ text: n.kind === 'server' ? m.label : n.kind === 'role' ? ((roleOf(n.role) || {}).name || '') : n.kind === 'jobs' ? 'Jobs' : m.label }];
+        const hook = R.panes[n.kind === 'role' ? `role:${n.role}` : n.kind] || (n.kind === 'role' ? R.panes.role : null);
+        let extra = [];
+        if (typeof hook === 'function') { try { extra = hook(n, c) || []; } catch (_) { extra = []; } }
+        if (n.kind === 'role' && ps === 'up') {
+            const cnt = roleCount(st, n.role);
+            if (cnt) out[0].text += `: ${cnt}`;
+            const it = selItem(n, c.sel);
+            if (it) extra.push({ icon: lightSrc(it.st.kind), text: `${it.label}${it.st.text ? `: ${it.st.text}` : ''}` });
+        }
+        if (n.kind === 'jobs') {
+            const all = st.jobs.length;
+            out[0].text = `${all} job${all === 1 ? '' : 's'}`;
+            const it = selItem(n, c.sel);
+            if (it) extra.push({ icon: it.icon, text: `${it.label}: ${it.st.text}` });
+        }
+        out.push(...extra);
+        const pk = ps === 'up' ? 'on' : ps === 'off' ? 'off' : 'warn';
+        if (n.kind !== 'console') out.push({ icon: lightSrc(pk), text: `Power: ${PSTATE[ps] || ps}`, title: `${m.label} power state` });
+        const rk = (m.rackd && m.rackd.state) || '';
+        out.push({ icon: lightSrc(rk === 'up' ? 'on' : rk === 'down' ? 'bad' : 'warn'), text: `rackd: ${rackdText(m)}`, title: m.rackd && m.rackd.error ? m.rackd.error : 'rackd, the agent on the server' });
+        if (n.kind === 'server') {
+            const ls = (st.power || {}).leases;
+            const k = Array.isArray(ls) ? ls.length : 0;
+            out.push({ icon: lightSrc(k ? 'warn' : 'off'), text: `${k} lease${k === 1 ? '' : 's'}`, title: 'Leases keep this server on' });
+        }
+        const jr = runningJobs(n.server).length;
+        if (jr) out.push({ icon: JOBPIC.running, text: `${jr} job${jr === 1 ? '' : 's'} running` });
+        return out;
+    }
+
     function def() {
         return {
             id: ID,
@@ -1017,13 +1108,14 @@
             selCommands,
             toolbar: (node) => (node.id === 'root' ? [] : [{ id: 'refresh', i: 3, title: 'Refresh' }]),
             action,
-            rowOpen: (key, node, c) => { const n = here(c); if (n.kind === 'jobs') void readJob(c, n.server, key); return false; },
+            rowOpen: (key, node, c) => { const n = here(c); if (n.kind === 'jobs') void readJob(c, n.server, key); else if (n.kind === 'role' && n.role === 'vms' && R.vmConnect) void R.vmConnect(c, n.server, key); return false; },
             onSelectRow: (key, node, c) => {
                 const n = here(c);
                 if (n.kind === 'jobs') void readJob(c, n.server, key);
                 const h = R.hooks.row; if (h) h.forEach((fn) => fn(key, n, c));
             },
             status,
+            statusPanes,
             about: { version: '1.0.0', lines: ['Rack Manager runs the rack servers: iLO, virtual machines, Android devices, sandboxes, containers, builds and more.'] },
             onOpen: (c) => {
                 S.console = c;

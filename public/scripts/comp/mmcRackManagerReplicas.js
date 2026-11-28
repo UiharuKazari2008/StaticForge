@@ -13,7 +13,7 @@
     const arr = (v) => (v == null ? [] : Array.isArray(v) ? v : [v]);
     const A = R.actions;
     const { rolePage, dataOf, doit, run } = R;
-    const ICON16 = '/static_images/melaton/net-server-16.png';
+    const ICON16 = '/static_images/vista-cpl/items/sync-center-16.png';
     const STATE = { running: 'Running', exited: 'Stopped', created: 'Created', paused: 'Paused', restarting: 'Restarting', stopped: 'Stopped' };
     const list = (c, id, cols, rows, empty, extra) => c.listView(cols, rows, Object.assign({ sortId: id, empty, fit: true }, extra || {}));
     const repOf = (c, n) => arr(dataOf(n, 'replicas').replicas).find((x) => `rp:${x.name}` === c.sel);

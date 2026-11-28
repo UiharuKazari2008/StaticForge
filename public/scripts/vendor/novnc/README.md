@@ -1,0 +1,1 @@
+noVNC 1.5.0 (https://github.com/novnc/noVNC), MPL-2.0 (LICENSE.txt, AUTHORS). novnc-rfb.js is the npm package's lib/ (CommonJS) bundled by scripts/vendor/build-novnc.js; it defines window.RFB. Loaded on demand by the featureLoader feature rack_novnc (Rack Manager's virtual machine console).

@@ -17,7 +17,19 @@
     const HW = { view: 'health', which: 'server', filter: '', important: false };
 
     const dotCls = (s) => { s = String(s || '').toLowerCase(); return /^(ok|good|redundant|green)/.test(s) ? 'is-ok' : /not installed|n\/a|absent|unknown|^$/.test(s) ? '' : /degraded|warn|caution/.test(s) ? 'is-warn' : 'is-bad'; };
-    const dot = (s) => `<span class="rm-dot ${dotCls(s)}"></span>`;
+    const dot = (s) => R.light(dotCls(s));
+    /** The whole server's health from the glance statuses: ok / warn / bad / '' (unknown). */
+    R.healthKind = (st) => {
+        const h = st.ilo && st.ilo.health;
+        const all = h && h.HEALTH_AT_A_GLANCE ? Object.values(h.HEALTH_AT_A_GLANCE).flatMap(arr).map((x) => String(x.STATUS || '')).filter(Boolean) : [];
+        if (!all.length) return '';
+        const ks = all.map((x) => dotCls(x));
+        return ks.includes('is-bad') ? 'bad' : ks.includes('is-warn') ? 'warn' : 'ok';
+    };
+    R.panes.hardware = (n) => {
+        const k = R.healthKind(n.ss);
+        return [{ icon: R.lightSrc(k || 'off'), text: `Health: ${k === 'ok' ? 'Good' : k === 'warn' ? 'Degraded' : k === 'bad' ? 'Failed' : n.ss.ilo.healthErr ? 'Unreadable' : 'Reading'}` }];
+    };
 
     // ---- loading ---------------------------------------------------------------------------------------------
 

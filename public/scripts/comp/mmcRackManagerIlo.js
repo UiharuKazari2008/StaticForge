@@ -23,9 +23,12 @@
         const cv = $('cv'), ctx = cv.getContext('2d');
         let sock = null, queue = Promise.resolve(), buttons = 0, retry = null, capture = true, wanted = true, tries = 0, closed = false;
         const view = { server, cv, setCapture: (on) => { capture = on; cv.classList.toggle('is-capturing', on); if (on) cv.focus(); }, get capture() { return capture; } };
-        function setConn(state, text) { $('cdot').className = 'dot ' + state; $('ctxt').textContent = text; }
-        function setPower(on) { $('pdot').className = 'dot ' + (on === true ? 'on' : on === false ? 'off' : ''); $('ptxt').textContent = 'power ' + (on === true ? 'on' : on === false ? 'off' : '?'); }
-        function setHealth(h) { const c = { green: 'ok', yellow: 'warn', red: 'bad' }[h] || ''; $('hdot').className = 'dot ' + c; $('htxt').textContent = 'health ' + (h || '?'); }
+        // the connection, power, health, screen size and POST stage live in the status bar (R.statusX.console, drawn by R.panes.console)
+        const X = R.statusX.console = { cs: 'wait', ct: 'connecting', power: null, hs: '', ht: '', size: '', post: '' };
+        const paint = () => { try { c.renderStatus(); } catch (_) { /* window gone */ } };
+        function setConn(state, text) { X.cs = state; X.ct = text; paint(); }
+        function setPower(on) { X.power = on; paint(); }
+        function setHealth(h) { X.hs = { green: 'on', yellow: 'warn', red: 'bad' }[h] || ''; X.ht = { green: 'Good', yellow: 'Degraded', red: 'Failed' }[h] || h || ''; paint(); }
         function msg(t) { $('msg').textContent = t || ''; $('msg').style.display = t ? '' : 'none'; }
         function send(o) { if (sock && sock.readyState === 1) sock.send(JSON.stringify(o)); }
         async function inflate(bytes) {
@@ -35,7 +38,7 @@
         function onBinary(buf) {
           const d = new DataView(buf), type = d.getUint8(0);
           if (type === 1) {
-            queue = queue.then(() => { cv.width = d.getUint16(1, true); cv.height = d.getUint16(3, true); msg(''); $('foot').textContent = `Screen ${cv.width}×${cv.height}`; });
+            queue = queue.then(() => { cv.width = d.getUint16(1, true); cv.height = d.getUint16(3, true); msg(''); X.size = `${cv.width}×${cv.height}`; paint(); });
           } else if (type === 2) {
             const x = d.getUint16(1, true), y = d.getUint16(3, true), w = d.getUint16(5, true), h = d.getUint16(7, true);
             const data = new Uint8Array(buf, 9);
@@ -60,12 +63,14 @@
             $('postfill').style.width = (pct == null ? 100 : pct) + '%';
             $('postfill').classList.toggle('unknown', pct == null);
             const mmss = s => s >= 60 ? `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s` : `${s} s`;
+            X.post = o.postDone ? 'POST complete, booting from disk' : `${o.postStage || 'POST'} ${o.post}${pct != null ? ` ${pct}%` : ''}`;
             $('posttxt').textContent = o.postDone ? 'POST complete — booting from disk'
               : `${o.postStage || 'POST'} · ${o.post}` + (pct != null ? ` · ${pct}% · ~${mmss(o.postEta)} left` : ` · ${mmss(o.postElapsed || 0)} (first boot: learning the timing)`);
+            paint();
             $('postbar').title = `POST code ${o.post}${o.postElapsed != null ? `, ${o.postElapsed} s since power-on` : ''}. Progress is based on the timing of previous boots, up to the hand-off to the boot disk.`;
-            if (o.postDone) bar.hideT = setTimeout(() => { bar.style.display = 'none'; }, 8000);
+            if (o.postDone) bar.hideT = setTimeout(() => { bar.style.display = 'none'; X.post = ''; c.renderStatus(); }, 8000);
           }
-          if (o.text) $('foot').textContent = o.text;
+          if (o.text) { X.note = o.text; paint(); }
           if (o.log) console.log(o.log);
         }
 
@@ -117,7 +122,6 @@
                     ${R.btnHtml('kvm-cad', 'Ctrl+Alt+Del')}${R.btnHtml('kvm-type', 'Type Text...')}${R.btnHtml('kvm-media', 'Virtual Media...')}${R.btnHtml('kvm-shot', 'Screenshot')}${R.btnHtml('kvm-fit', 'Actual Size')}
                     <label class="rm-check"><input type="checkbox" data-rm-input="kvm-capture" checked> Capture keyboard</label>
                 </div>
-                <div class="rm-kvm-status"><span class="rm-dot" data-k="cdot"></span><span data-k="ctxt">connecting</span><span class="rm-dot" data-k="pdot"></span><span data-k="ptxt">power ?</span><span class="rm-dot" data-k="hdot"></span><span data-k="htxt">health ?</span><span class="rm-grow" data-k="foot"></span></div>
                 <div class="rm-post" data-k="postbar" hidden><div class="rm-post-fill" data-k="postfill"></div><span data-k="posttxt"></span></div>
                 <div class="rm-kvm-screen"><canvas class="rm-kvm-cv" data-k="cv" width="640" height="400" tabindex="0"></canvas><div class="rm-kvm-msg" data-k="msg">Connecting...</div></div>
             </div>`;
@@ -129,6 +133,18 @@
             },
             unmount: () => { if (K.view) { K.view.close(); K.view = null; } }
         };
+    };
+    R.panes.console = () => {
+        const X = R.statusX.console;
+        if (!X) return [];
+        const pw = X.power;
+        const out = [{ icon: R.lightSrc(X.cs), text: X.ct ? X.ct.replace(/^./, (ch) => ch.toUpperCase()) : '', title: 'Console connection' },
+            { icon: R.lightSrc(pw === true ? 'on' : 'off'), text: `Power: ${pw === true ? 'on' : pw === false ? 'off' : 'unknown'}` },
+            { icon: R.lightSrc(X.hs || 'off'), text: `Health: ${X.ht || 'unknown'}` }];
+        if (X.size) out.push({ text: `Screen ${X.size}` });
+        if (X.note) out.push({ text: X.note });
+        if (X.post) out.push({ icon: R.lightSrc('warn'), text: X.post, title: 'POST stage' });
+        return out;
     };
     R.hooks.close.push(() => { if (K.view) { K.view.close(); K.view = null; } });
 

@@ -3,11 +3,11 @@
 const crypto = require('crypto');
 const { EventEmitter } = require('events');
 
-function accept(req, socket) {
+function accept(req, socket, protocol) {
   const key = req.headers['sec-websocket-key'];
   if (!key) { socket.destroy(); return null; }
   const acc = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
-  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acc}\r\n\r\n`);
+  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acc}\r\n${protocol ? `Sec-WebSocket-Protocol: ${protocol}\r\n` : ''}\r\n`);
   socket.setNoDelay(true);
   const ws = new EventEmitter();
   let buf = Buffer.alloc(0), open = true;

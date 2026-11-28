@@ -1,0 +1,24 @@
+{
+  "id": "dreamos",
+  "name": "DreamOS image (mkosi, unsigned)",
+  "repo": "https://yozora.bluesteel.737.jp.net/DreamScape/DreamOS.git",
+  "ref": "main",
+  "dockerfileFile": "dreamos.Dockerfile",
+  "script": "set -x\n# /work/src = DreamScape/DreamOS at the requested ref; runs as root in a privileged container (mkosi: loop devices, systemd-repart, mounts).\n# Params (env): FLAVOR=dev|release, VERSION (default image/mkosi.version), CLEAN=1 for a cold package layer, DEV_PUBKEY (dev images: the key that may ssh in as \"dream\").\ngit config --global --add safe.directory '*'\nexport HOME=/root\ncd /work/src\nmkdir -p /cache/mkosi-cache out && rm -rf image/mkosi.cache && ln -s /cache/mkosi-cache image/mkosi.cache\nexport DREAMOS_CACHE_TMPFS=0\nVER=${VERSION:-$(cat image/mkosi.version)}\nexport DREAMOS_VERSION=$VER\nARGS=(--no-share)\n[ \"${CLEAN:-0}\" = 1 ] && ARGS+=(--clean)\nif [ \"${FLAVOR:-dev}\" = dev ]; then printf '%s\\n' \"$DEV_PUBKEY\" > /tmp/dev.pub; ARGS+=(--dev-key /tmp/dev.pub); fi\nT0=$(date +%s); echo \"[rack] dreamos $VER ${FLAVOR:-dev} commit $RACK_COMMIT start $(date -Is), $(nproc) cpus visible\"\ntools/build-image.sh \"${ARGS[@]}\"\nT1=$(date +%s)\nmkdir -p /out\nfor n in raw efi recovery.efi root.raw root-verity.raw hw-full.raw packs.raw esp.raw; do\n  f=out/dreamos_$VER.$n; [ -f \"$f\" ] && cp --sparse=always \"$f\" /out/ || echo \"[rack] no $f\"\ndone\ninstall -m 0755 cafeready/target/release/cafeready /out/cafeready\ncp image/mkosi.extra/usr/lib/dreamos/api-level /out/api-level 2>/dev/null || true\nprintf '{\"version\":\"%s\",\"flavor\":\"%s\",\"commit\":\"%s\",\"buildSeconds\":%s,\"finished\":\"%s\"}\\n' \"$VER\" \"${FLAVOR:-dev}\" \"$RACK_COMMIT\" $((T1-T0)) \"$(date -u +%FT%TZ)\" > /out/build-info.json\n(cd /out && sha256sum dreamos_* cafeready > SHA256SUMS)\necho \"[rack] built $VER in $((T1-T0))s; end $(date -Is)\"\n",
+  "privileged": true,
+  "devMount": true,
+  "envParams": [
+    "FLAVOR",
+    "VERSION",
+    "CLEAN",
+    "DEV_PUBKEY"
+  ],
+  "cpus": 32,
+  "memGB": 64,
+  "artifacts": [],
+  "timeoutMin": 240,
+  "env": {
+    "FLAVOR": "dev",
+    "DEV_PUBKEY": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEf/fATSn+aAfbcsZ4C0SNePEAIazDB5wHHzds9bccL dreamos-vm-test"
+  }
+}

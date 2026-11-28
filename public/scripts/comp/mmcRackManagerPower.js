@@ -136,7 +136,7 @@
             { t: 'Who', w: 110, key: 'w', text: (l) => l.who || '' },
             { t: 'Since', w: 130, key: 's', value: (l) => l.since, text: (l) => R.when(l.since) },
             { t: 'Ends', w: 130, key: 'e', value: (l) => l.ends, text: (l) => R.when(l.ends) }
-        ], lease.map((l, i) => ({ key: `lease:${l.id || i}`, icon: `${ITEMS}/sync-center-16.png`, data: l })), { sortId: 'rm-leases', fit: true }) : '<p class="mmc-hint">No leases are open.</p>';
+        ], lease.map((l, i) => ({ key: `lease:${l.id || i}`, icon: `${ITEMS}/date-and-time-16.png`, data: l })), { sortId: 'rm-leases', fit: true }) : '<p class="mmc-hint">No leases are open.</p>';
         const bl = busy.length ? `<p><b>What keeps it busy</b></p><ul class="rm-arts">${busy.map((b) => `<li>${esc(b.kind || '')}${b.id ? ` ${esc(b.id)}` : ''}${b.why ? `: ${esc(b.why)}` : ''}</li>`).join('')}</ul>` : '';
         return `<p>${idleTxt}</p>${ll}${bl}`;
     }
@@ -175,6 +175,16 @@
 
     // ---- the page ----------------------------------------------------------------------------------------------------
 
+
+    R.panes.power = (n) => {
+        const p = n.ss.ilo.power;
+        const w = p && p.present != null ? p.present : null;
+        const k = R.healthKind ? R.healthKind(n.ss) : '';
+        const out = [{ icon: R.lightSrc(w == null ? 'off' : w > 0 ? 'on' : 'off'), text: w == null ? 'Power: reading' : `${w} W now` }];
+        if (p && p.cap) out.push({ icon: R.lightSrc('warn'), text: `Cap ${p.cap} W` });
+        if (k) out.push({ icon: R.lightSrc(k), text: `Health: ${k === 'ok' ? 'Good' : k === 'warn' ? 'Degraded' : 'Failed'}` });
+        return out;
+    };
 
     R.pages.power = (c, n) => {
         const st = n.ss;

@@ -7,21 +7,8 @@
 .mmc-window .rm-hint, .rm-form .rm-hint { color: #6d6d6d; }
 
 /* ---- status dots, chips, tables ---- */
-.rm-dot {
-    display: inline-block;
-    flex: none;
-    width: 9px;
-    height: 9px;
-    margin: 0 4px 0 8px;
-    border: 1px solid #7a7a7a;
-    border-radius: 50%;
-    background: #b8b8b8;
-    vertical-align: -1px;
-}
-.rm-dot.is-ok, .rm-dot.on { background: #3bb54a; border-color: #2a8a37; }
-.rm-dot.is-warn, .rm-dot.wait { background: #f0b400; border-color: #b58500; }
-.rm-dot.is-bad, .rm-dot.off { background: #d9372b; border-color: #a52419; }
-.mmc-props .rm-dot, .rm-table .rm-dot { margin-left: 0; }
+/* the status lights are Vista's Network and Sharing Center pictures (<img class="rm-lt">, mmcRack.light) */
+.rm-lt { display: inline-block; flex: none; width: 16px; height: 16px; margin: 0 3px 0 0; vertical-align: -3px; }
 
 .mmc-window .rm-table {
     border-collapse: collapse;
@@ -55,7 +42,6 @@
 .rm-chip.is-warn { background: #fdf1cc; border-color: #d9b44a; }
 .rm-chip.is-bad { background: #fbdcd8; border-color: #d98a82; }
 .rm-pill { display: inline-block; margin: 1px 6px 1px 0; white-space: nowrap; font-size: 11px; }
-.rm-pill .rm-dot { margin-left: 0; }
 
 .rm-sev, .mmc-list i.rm-sev { font-style: normal; }
 .rm-sev.is-bad { color: #b3261e; }
@@ -232,12 +218,9 @@
 .mmc-window .rm-sheet .rm-check { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
 .mmc-window .rm-sheet .rm-caprow { margin: 2px 0 2px 22px; }
 
-/* the copied console code sets the dots' class names itself (dot on / off / wait) */
-.rm-kvm-status .dot { display: inline-block; flex: none; width: 9px; height: 9px; margin: 0 4px 0 12px; border: 1px solid #7a7a7a; border-radius: 50%; background: #b8b8b8; }
-.rm-kvm-status .dot.on, .rm-kvm-status .dot.ok { background: #3bb54a; border-color: #2a8a37; }
-.rm-kvm-status .dot.wait, .rm-kvm-status .dot.warn { background: #f0b400; border-color: #b58500; }
-.rm-kvm-status .dot.off, .rm-kvm-status .dot.bad { background: #d9372b; border-color: #a52419; }
-.rm-kvm-status > span:first-child { margin-left: 0; }
+/* the Device Connection window keeps its own status row; its light is the same picture */
+.rm-kvm-status .rm-lt { margin: 0 4px 0 12px; }
+.rm-kvm-status > :first-child { margin-left: 0; }
 
 /* the global Vista push button face would draw the command links as buttons: they are flat until hot */
 .rm-task .rm-cmdlink:not(#_) {
@@ -285,3 +268,29 @@
 .mmc-window .rm-card.is-off { opacity: .6; }
 .mmc-window .rm-card.is-warn .rm-card-n { color: #b54500; }
 .mmc-window .rm-card-foot { margin: 4px 0 0; }
+
+/* Device Connection (mmcRackManagerDevice.js): the window of one Android device */
+.rm-form .rm-dev { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.rm-dev .rm-kvm-screen { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.rm-dev .rm-kvm-cv { max-width: 100%; max-height: 100%; width: auto; height: auto; touch-action: none; }
+.rm-dev .rm-kvm-bar { margin-bottom: 4px; }
+.rm-dev .rm-dev-btn { min-width: 0; padding: 0 8px; }
+.rm-dev .rm-dev-btn:disabled { opacity: 0.55; }
+.rm-dev-foot { margin-top: 3px; color: #6d6d6d; min-height: 15px; }
+/* Screens grid on the Virtual Android Devices page */
+.rm-screens { display: flex; flex-wrap: wrap; gap: 10px; }
+.rm-screen { width: 190px; border: 1px solid #b8b8b8; background: #fff; cursor: default; }
+.rm-screen:focus, .rm-screen:hover { border-color: #3d7bad; box-shadow: 0 0 0 1px #3d7bad; outline: none; }
+.rm-screen.is-warn { border-color: #d98a00; }
+.rm-screen-img { display: flex; align-items: center; justify-content: center; height: 170px; background: #1e1e1e; overflow: hidden; }
+.rm-screen-img img { max-width: 100%; max-height: 100%; }
+.rm-screen-wait { padding: 8px; color: #c8c8c8; text-align: center; }
+.rm-screen-cap { display: flex; flex-direction: column; gap: 1px; padding: 3px 5px; font-size: 11px; }
+.rm-screen-cap b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-screen-cap span { color: #555; }
+.rm-screen-bad { color: #8a5a00 !important; white-space: normal; }
+.rm-screen-bad img { vertical-align: -3px; }
+.rm-warn { margin: 0 0 6px; padding: 5px 8px; border: 1px solid #d98a00; background: #fff6df; }
+.rm-warn img { vertical-align: -3px; }
+.rm-form .rm-dev, .rm-form .rm-dev .rm-kvm-screen, .rm-form .rm-dev .rm-kvm-cv { pointer-events: auto; }
+.rm-form .rm-dev .rm-kvm-msg { pointer-events: none; }

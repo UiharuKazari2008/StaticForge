@@ -6,12 +6,13 @@ const os = require('os');
 const path = require('path');
 const { DATA } = require('./util');
 const jobs = require('./jobs');
+const inventory = require('./inventory');
 const events = require('./events');
 
 const DIR = path.join(DATA, 'metrics');
 const STEP_MS = 30000, RING_MS = 24 * 3600e3, KEEP_DAYS = 7;
 const RANGES = { '3h': 3 * 3600e3, '6h': 6 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 86400e3 };
-const COUNTS = ['vms', 'avds', 'sandboxes', 'containers', 'replicas', 'builds', 'jobs'];
+const COUNTS = ['unmanaged', 'vms', 'avds', 'sandboxes', 'containers', 'replicas', 'builds', 'jobs'];
 let ring = [], prev = null, timer = null, roles = {};
 
 const day = t => new Date(t).toISOString().slice(0, 10);
@@ -28,7 +29,7 @@ function sample() {
     return {
       t: s.t, cpu: dTot > 0 ? Math.round((1 - (s.idle - prev.idle) / dTot) * 1000) / 10 : 0, memUsedB: m.totalB - m.availB, memTotalB: m.totalB,
       diskRBps: Math.max(0, Math.round((s.rd - prev.rd) / dt)), diskWBps: Math.max(0, Math.round((s.wr - prev.wr) / dt)), netRxBps: Math.max(0, Math.round((s.rx - prev.rx) / dt)), netTxBps: Math.max(0, Math.round((s.tx - prev.tx) / dt)), load1: os.loadavg()[0],
-      vms: roles.vms?.count?.() || 0, avds: roles.android?.count?.() || 0, sandboxes: roles.sandboxes?.count?.() || 0, containers: c.containers || 0, replicas: c.replicas || 0, builds: roles.builds?.count?.() || 0, jobs: jobs.runningCount(),
+      vms: roles.vms?.count?.() || 0, avds: roles.android?.count?.() || 0, sandboxes: roles.sandboxes?.count?.() || 0, containers: c.containers || 0, replicas: c.replicas || 0, builds: roles.builds?.count?.() || 0, jobs: jobs.runningCount(), unmanaged: inventory.unmanagedCount(),
     };
   })() : null;
   prev = s;

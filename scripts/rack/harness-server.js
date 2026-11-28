@@ -74,7 +74,7 @@ ${scripts.map((s) => `<script src="/scripts/comp/${s}.js" onerror="window.__load
 <script src="/scripts/comp/vistaDialogTemplate.js"></script>
 <script src="/scripts/vendor/xterm/xterm.js"></script><script src="/scripts/vendor/xterm/addon-fit.js"></script>
 <script src="/scripts/comp/mmcConsole.js"></script>
-${['mmcRackManager', 'mmcRackManagerIlo', 'mmcRackManagerHw', 'mmcRackManagerPower', 'mmcRackManagerLoad', 'mmcRackManagerRoles', 'mmcRackManagerRoles2'].map((s) => `<script src="/scripts/comp/${s}.js"></script>`).join('\n')}
+${['mmcRackManager', 'mmcRackManagerIlo', 'mmcRackManagerHw', 'mmcRackManagerPower', 'mmcRackManagerLoad', 'mmcRackManagerRoles', 'mmcRackManagerRoles2', 'mmcRackManagerVmc', 'mmcRackManagerVm', 'mmcRackManagerVmSet'].map((s) => `<script src="/scripts/comp/${s}.js"></script>`).join('\n')}
 </body></html>`);
     });
     app.use(express.static(PUB));

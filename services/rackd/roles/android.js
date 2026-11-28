@@ -12,6 +12,8 @@ const jobs = require('../lib/jobs');
 const events = require('../lib/events');
 const files = require('../lib/files');
 const storage = require('./storage');
+const scrcpy = require('../lib/scrcpy');
+const zlib = require('zlib');
 
 const packages = ['openjdk-21-jdk-headless', 'unzip', 'libpulse0', 'libnss3', 'libx11-6', 'libxkbfile1', 'libgl1', 'libxcomposite1', 'libxcursor1', 'libxdamage1', 'libxi6', 'libxtst6', 'libasound2t64', 'libdbus-1-3', 'libxrandr2', 'libxfixes3'];
 const SDK = '/opt/android-sdk';
@@ -89,7 +91,7 @@ function describe(name, l, lp) {
     ramMB: Number(c['hw.ramSize']) || null, diskB: sizeOf(path.join(avdDir(name), 'userdata-qemu.img')) + sizeOf(path.join(avdDir(name), 'sdcard.img')),
     backend: isLane(name) ? 'lane' : meta[name]?.backend || 'sdk-emulator', ...(isLane(name) ? { lane: { id: name, holder: null, leaseEndsAt: null, noAudio: lp ? lp.noAudio : null, gpu: lp ? lp.gpu : null, leaseNote: 'the coord lease lives on Dreamscape: rackManager fills holder / leaseEndsAt' } } : {}), emulator: meta[name]?.emulator ? path.basename(meta[name].emulator) : 'sdk',
     running: !!l, serial: l ? serialOf(l) : null, consolePort: l ? l.consolePort : null, adbPort: l ? l.consolePort + 1 : null,
-    boot: l ? l.boot : 'off', pid: l ? l.child.pid : null,
+    boot: l ? l.boot : 'off', pid: l ? l.child.pid : null, manageable: null, missing: [],
   };
 }
 async function installedImages() {
@@ -116,6 +118,93 @@ function laneGuard(name, p, what) {
   throw bad(`${name} is a lane instance: ${what} needs the lease holder's say (rackManager passes leaseChecked) or confirm:true and force:true`, 'LANE_LEASE');
 }
 const adb = (serial, args, o) => asRack([adbBin(), '-s', serial, ...args], { timeoutMs: 60000, ...o });
+
+// ---- manageability (strict: an emulator Rack Manager cannot see or drive is reported, never assumed fine) ----
+// manageable = adb answers for its serial, its console port is known and screencap works. `missing` says which is not so.
+const dispCache = new Map();    // name -> 'screencap' | 'screencap -d <id>' (foldables: several displays)
+const probeCache = new Map();   // name -> {t, ok, missing}
+async function capCmd(serial, name, fresh) {
+  if (!fresh && dispCache.has(name)) return dispCache.get(name);
+  let cmd = null;
+  const t1 = await adb(serial, ['shell', 'screencap | head -c 20 | wc -c'], { timeoutMs: 15000 });
+  if (t1.stdout.trim() === '20') cmd = 'screencap';
+  else {
+    const ids = await adb(serial, ['shell', 'dumpsys SurfaceFlinger --display-id'], { timeoutMs: 20000 });
+    const id = (ids.stdout.match(/Display (\d+)/) || [])[1];
+    if (id) { const t2 = await adb(serial, ['shell', `screencap -d ${id} | head -c 20 | wc -c`], { timeoutMs: 15000 }); if (t2.stdout.trim() === '20') cmd = `screencap -d ${id}`; }
+  }
+  if (cmd) dispCache.set(name, cmd);
+  return cmd;
+}
+async function probeManage(name, l) {
+  const c = probeCache.get(name); if (c && Date.now() - c.t < 20000) return c;
+  const missing = [];
+  if (!l || !l.consolePort) missing.push('console port unknown');
+  else {
+    const serial = serialOf(l);
+    const st = await adb(serial, ['get-state'], { timeoutMs: 6000 });
+    if (st.stdout.trim() !== 'device') missing.push(`adb cannot reach ${serial} (${(st.stdout + st.stderr).trim().replace(/\s+/g, ' ').slice(0, 80) || 'no answer'})`);
+    else if (!(await capCmd(serial, name, true))) missing.push('screencap fails');
+    else if ((thumbFails.get(name) || 0) >= 3) missing.push('screencap failed 3 times in a row');
+  }
+  const out = { t: Date.now(), ok: missing.length === 0, missing }; probeCache.set(name, out); return out;
+}
+// raw screencap -> small PNG (no image library: box-sampled RGBA, zlib, own CRC)
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = b => { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function pngChunk(type, data) { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td)); return Buffer.concat([len, td, crc]); }
+function rawToThumb(raw, maxW) {
+  if (raw.length < 16) return null;
+  const w = raw.readUInt32LE(0), h = raw.readUInt32LE(4), fmt = raw.readUInt32LE(8);
+  if (!w || !h || w > 8192 || h > 8192 || (fmt !== 1 && fmt !== 2)) return null;
+  const head = raw.length - w * h * 4; if (head < 12 || head > 64) return null;
+  const sc = Math.max(1, Math.ceil(w / maxW)), tw = Math.floor(w / sc), th = Math.floor(h / sc);
+  const out = Buffer.alloc(th * (tw * 3 + 1));
+  for (let y = 0; y < th; y++) {
+    let o = y * (tw * 3 + 1); out[o++] = 0;
+    for (let x = 0; x < tw; x++) {
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let dy = 0; dy < sc; dy += Math.max(1, sc >> 1)) for (let dx = 0; dx < sc; dx += Math.max(1, sc >> 1)) { const i = head + ((y * sc + dy) * w + x * sc + dx) * 4; r += raw[i]; g += raw[i + 1]; b += raw[i + 2]; n++; }
+      out[o++] = r / n; out[o++] = g / n; out[o++] = b / n;
+    }
+  }
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(tw, 0); ihdr.writeUInt32BE(th, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return { png: Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk('IHDR', ihdr), pngChunk('IDAT', zlib.deflateSync(out, { level: 1 })), pngChunk('IEND', Buffer.alloc(0))]), w: tw, h: th, fullW: w, fullH: h };
+}
+// ---- the screens grid: while someone subscribed (thumbs on) every running emulator is screencapped every 5 s; the picture is a file ----
+const thumbKeys = new Map() /* key -> last renewed (ms): a viewer that vanished without saying off lapses after 15 min */, thumbFails = new Map(), thumbLast = new Map(); let thumbTimer = null, thumbBusy = false;
+async function thumbOne(name) {
+  const lp = isLane(name) ? laneProcs()[name] : null; const l = live.get(name) || (lp && { consolePort: lp.consolePort });
+  if (!l) return;
+  const serial = serialOf(l);
+  try {
+    const cmd = await capCmd(serial, name); if (!cmd) throw new Error('no screencap');
+    const r = await adb(serial, ['exec-out', cmd], { binary: true, maxBytes: 40 * 2 ** 20, timeoutMs: 20000 });
+    const t = r.code === 0 ? rawToThumb(r.stdout, 360) : null; if (!t) throw new Error('screencap gave no picture');
+    const f = files.newPath('shots', `thumb-${name}`, 'png'); fs.writeFileSync(f.abs, t.png);
+    const prev = thumbLast.get(name); if (prev) { try { fs.unlinkSync(path.join(path.dirname(f.abs), prev)); } catch { /* gone */ } }
+    thumbLast.set(name, path.basename(f.abs)); thumbFails.set(name, 0);
+    events.emit('android', 'thumb', name, { name, file: path.basename(f.abs), w: t.w, h: t.h, fullW: t.fullW, fullH: t.fullH, at: Date.now() });
+  } catch (e) {
+    thumbFails.set(name, (thumbFails.get(name) || 0) + 1); probeCache.delete(name);
+    events.emit('android', 'thumb', name, { name, error: String(e.message).slice(0, 120), at: Date.now() });
+  }
+}
+async function thumbTick() {
+  if (thumbBusy) return; thumbBusy = true;
+  try {
+    for (const [k, t] of thumbKeys) if (Date.now() - t > 15 * 60e3) thumbKeys.delete(k);
+    if (!thumbKeys.size) return thumbStop();
+    if (!events.listening()) return thumbPause();   // nobody listens: no captures (they resume when a stream opens again)
+    const names = [...new Set([...live.keys(), ...Object.keys(laneProcs())])];
+    for (let i = 0; i < names.length; i += 2) await Promise.all(names.slice(i, i + 2).map(thumbOne));
+  } finally { thumbBusy = false; }
+}
+function thumbPause() { if (thumbTimer) { clearInterval(thumbTimer); thumbTimer = null; } }
+function thumbStop() { thumbKeys.clear(); thumbPause(); }
+function thumbStart() { if (!thumbTimer) { thumbTimer = setInterval(() => thumbTick().catch(() => {}), 5000); thumbTimer.unref(); } }
+events.onIdle(thumbPause);
+events.onActive(() => { if (thumbKeys.size) { thumbStart(); thumbTick().catch(() => {}); } });
 
 async function waitBoot(name, timeoutS) {
   const l = live.get(name); const t0 = Date.now();
@@ -165,7 +254,7 @@ module.exports = {
     if (!exists(sdkmanager())) missing.push('android-sdk');
     else { if (!exists(adbBin())) missing.push('android-sdk-platform-tools'); if (!exists(bin('emulator', 'emulator'))) missing.push('android-sdk-emulator'); }
     const kvm = await kvmUsable();
-    return { installed: !missing.length, ready: !missing.length && kvm, summary: `${avdNames().length} AVD(s), ${live.size} running, kvm ${kvm ? 'ok' : 'unavailable'}`, missing };
+    return { installed: !missing.length, ready: !missing.length && kvm, summary: `${avdNames().length} AVD(s), ${new Set([...live.keys(), ...Object.keys(laneProcs())]).size} running, kvm ${kvm ? 'ok' : 'unavailable'}`, missing };
   },
   async get() {
     const lanes = laneProcs();
@@ -174,13 +263,23 @@ module.exports = {
       lp.boot = r.stdout.trim() === '1' ? 'ready' : 'booting';
     }
     const inst = await installedImages(); const all = [...new Set([...inst, ...SUGGESTED])];
+    const avds = avdNames().map(n => describe(n, live.get(n), lanes[n]));
+    await Promise.all(avds.filter(a => a.running).map(async a => { const pr = await probeManage(a.name, live.get(a.name) || lanes[a.name]); a.manageable = pr.ok; a.missing = pr.missing; }));
     return {
       sdk: { path: SDK, emulator: exists(bin('emulator', 'emulator')), platformTools: exists(adbBin()), emulatorBuilds: (() => { try { return fs.readdirSync('/opt/android-emulators'); } catch { return []; } })() },
       kvm: await kvmUsable(),
-      avds: avdNames().map(n => describe(n, live.get(n), lanes[n])),
+      avds,
       images: all.map(p => ({ package: p, installed: inst.includes(p) })),
       devices: await devices(),
     };
+  },
+  knows: name => live.has(name) || (isLane(name) && !!laneProcs()[name]),
+  // the WebSocket screen route (rackd.js): who may be streamed, and the adb / SDK it runs with
+  screenTarget(name, q) {
+    const n = must(name); const l = liveOf(n);
+    const control = bool(q.control, false) || q.control === '1';
+    if (control && isLane(n) && !bool(q.leaseChecked, false) && q.leaseChecked !== '1') throw bad(`${n} is a lane instance: control needs the lease holder's say (rackManager passes leaseChecked)`, 'LANE_LEASE');
+    return { name: n, serial: serialOf(l), sdk: SDK, adb: adbBin(), control, lane: isLane(n) };
   },
   count: () => live.size + Object.keys(laneProcs()).length,   // lane emulators count as running AVDs (metrics history `avds`, the idle check)
   async busy() { return [...new Set([...live.keys(), ...Object.keys(laneProcs())])].map(n => ({ kind: 'avd', id: n, why: isLane(n) ? 'running (lane)' : 'running' })); },
@@ -221,7 +320,8 @@ module.exports = {
         const port = LANE_PORTS[name]; const gpu = p.gpu ? str(p.gpu, 'gpu', /^[a-z_]{2,30}$/) : (/a53/.test(name) ? 'guest' : 'swiftshader_indirect');
         const extra = bool(p.golden, false) ? ['-snapshot', 'golden', '-force-snapshot-load'] : ['-no-snapshot-load'];
         if (!exists(path.join(LANE_HOME, 'start.sh'))) throw bad('the lane has no start.sh on this host (lane.sh create ... makes it)', 'NOT_INSTALLED');
-        const child = spawn('runuser', ['-u', 'rack', '--', path.join(LANE_HOME, 'start.sh'), name, String(port), gpu, ...extra], { detached: true, stdio: 'ignore' });
+        // its own systemd scope (lane-<name>.scope): a rackd restart or deploy kills what is in rackd.service's cgroup, and a lane instance someone holds must survive it
+        const child = spawn('systemd-run', ['--scope', '--quiet', `--unit=lane-${name}`, '--slice=system.slice', 'runuser', '-u', 'rack', '--', path.join(LANE_HOME, 'start.sh'), name, String(port), gpu, ...extra], { detached: true, stdio: 'ignore' });
         child.on('error', () => {}); child.unref();
         events.emit('android', 'state', name, { name, boot: 'booting' });
         return { name, lane: true, started: true, consolePort: port, serial: `emulator-${port}`, gpu };
@@ -295,6 +395,46 @@ module.exports = {
         if (url) { file = `/tmp/rackd-${Date.now()}.apk`; await c.exec(['curl', '-fL', '-o', file, url], { timeoutMs: 600e3 }); await run(['chmod', '644', file]); }
         try { await c.exec([adbBin(), '-s', serialOf(l), 'install', '-r', file], { user: 'rack', env: sdkEnv(), timeoutMs: 600e3 }); } finally { if (url) fs.unlinkSync(file); }
       } }) };
+    },
+    async input(p) {   // adb input: {type:'tap',x,y} {type:'swipe',x1,y1,x2,y2,ms} {type:'text',text} {type:'key',key:'BACK'|'HOME'|number} {type:'wait',ms}
+      const name = must(p.name); const l = liveOf(name); laneGuard(name, p, 'input');
+      const ev = Array.isArray(p.events) ? p.events : [];
+      if (!ev.length || ev.length > 100) throw bad('events must hold 1 to 100 events');
+      const n = (v, w) => { const x = Math.round(Number(v)); if (!Number.isFinite(x) || x < 0 || x > 20000) throw bad(`${w} must be a number from 0 to 20000`); return x; };
+      const cmds = ev.map(e => {
+        if (!e || typeof e !== 'object') throw bad('each event is an object');
+        switch (e.type) {
+          case 'tap': return `input tap ${n(e.x, 'x')} ${n(e.y, 'y')}`;
+          case 'swipe': return `input swipe ${n(e.x1, 'x1')} ${n(e.y1, 'y1')} ${n(e.x2, 'x2')} ${n(e.y2, 'y2')} ${n(e.ms === undefined ? 300 : e.ms, 'ms')}`;
+          case 'text': { const t = String(e.text === undefined ? '' : e.text); if (!t || t.length > 500) throw bad('text must be 1 to 500 characters'); return `input text '${t.replace(/ /g, '%s').replace(/'/g, "'\\''")}'`; }
+          case 'key': { const k = String(e.key); if (/^\d{1,3}$/.test(k)) return `input keyevent ${k}`; if (!/^[A-Za-z0-9_]{2,40}$/.test(k)) throw bad('key is a name such as BACK or HOME, or a keycode number'); return `input keyevent ${/^KEYCODE_/i.test(k) ? k.toUpperCase() : `KEYCODE_${k.toUpperCase()}`}`; }
+          case 'wait': return `sleep ${Math.min(10, n(e.ms, 'ms') / 1000)}`;
+          default: throw bad('event type must be tap, swipe, text, key or wait');
+        }
+      });
+      const r = await adb(serialOf(l), ['shell', cmds.join('; ')], { timeoutMs: 60000 });
+      return { code: r.code, out: (r.stdout + (r.stderr ? `\n${r.stderr}` : '')).trim(), count: cmds.length };
+    },
+    async pull(p) {   // a file from the device: utf8 text when it is text, else base64 (at most 8 MB)
+      const name = must(p.name); const l = liveOf(name); const f = absPath(p.path, 'path');
+      const r = await adb(serialOf(l), ['exec-out', `cat '${f.replace(/'/g, "'\\''")}'`], { binary: true, maxBytes: 8 * 2 ** 20, timeoutMs: 120e3 });
+      if (r.code !== 0) throw bad(`could not read ${f}: ${(r.stderr || r.stdout.toString()).toString().trim().slice(0, 200)}`, 'ADB');
+      const b = r.stdout; const txt = b.toString('utf8');
+      const isText = !b.includes(0) && Buffer.from(txt, 'utf8').equals(b);
+      return { path: f, sizeB: b.length, truncated: !!r.truncated, encoding: isText ? 'utf8' : 'base64', content: isText ? txt : b.toString('base64') };
+    },
+    async push(p) {   // write a file on the device: content utf8 text or base64 (encoding), at most 8 MB
+      const name = must(p.name); const l = liveOf(name); laneGuard(name, p, 'push'); const f = absPath(p.path, 'path');
+      if (typeof p.content !== 'string') throw bad('content is required');
+      const b = Buffer.from(p.content, p.encoding === 'base64' ? 'base64' : 'utf8'); if (b.length > 8 * 2 ** 20) throw bad('content is over 8 MB');
+      const tmp = `/tmp/rackd-push-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`; fs.writeFileSync(tmp, b, { mode: 0o644 });
+      try { const r = await adb(serialOf(l), ['push', tmp, f], { timeoutMs: 120e3 }); if (r.code !== 0) throw bad(`adb push failed: ${(r.stderr || r.stdout).trim().slice(0, 200)}`, 'ADB'); return { path: f, sizeB: b.length }; } finally { try { fs.unlinkSync(tmp); } catch { /* gone */ } }
+    },
+    async thumbs(p) {   // on: capture every running emulator every 5 s while someone listens (`thumb` events carry the file); off: stop
+      const key = str(String(p.key || 'default'), 'key', /^[A-Za-z0-9_.:-]{1,80}$/);
+      if (bool(p.on, true)) { const fresh = !thumbKeys.has(key); thumbKeys.set(key, Date.now()); thumbStart(); if (fresh) thumbTick().catch(() => {}); }
+      else { thumbKeys.delete(key); if (!thumbKeys.size) thumbStop(); }
+      return { on: thumbKeys.size > 0, subscribers: thumbKeys.size };
     },
     async shell(p) {
       const name = must(p.name); const l = liveOf(name); const cmd = str(p.cmd, 'cmd', null, 20000);
