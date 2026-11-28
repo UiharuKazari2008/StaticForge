@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
-# Deploy rackd to a rack host: scripts/rack/deploy-rackd.sh [server]   (default misaka). Idempotent.
+# Deploy rackd to a rack host. Idempotent.
+#   scripts/rack/deploy-rackd.sh [server] [--tree] [--force] [--why "<reason>"]     (default server misaka)
+# What is deployed: the COMMITTED services/rackd (git archive HEAD) of this checkout - never another agent's half-done
+# working-tree files. --tree deploys the working tree instead (your own unfinished test only; say so in --why).
+# Safety (Nov 27 2026: agents deployed from different trees, overwrote each other twice and killed a live emulator stream):
+#   - one deploy at a time per host (flock on the host, 10 min wait at most);
+#   - refused while rackd runs children other than its watchers (jobs, emulators, sandboxes, screen streams) unless --force;
+#   - /opt/rackd/DEPLOYED records commit, tree/committed, who, when and why; the previous deploy is printed first.
 set -euo pipefail
-server="${1:-misaka}"
+server=misaka; mode=committed; force=0; why=""
+while [ $# -gt 0 ]; do case "$1" in --tree) mode=tree;; --force) force=1;; --why) why="${2:-}"; shift;; -*) echo "unknown option $1" >&2; exit 2;; *) server="$1";; esac; shift; done
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cfg="$root/.cache/rack-manager/servers.json"
 alias=""
@@ -13,12 +21,24 @@ secrets="$HOME/.secrets"; tokfile="$secrets/rackd-$server.token"
 gitTok="$secrets/yozora-claude.token"
 [ -r "$gitTok" ] || gitTok="$secrets/yozora-grok.cursor.token"
 
-echo "== $server ($alias): copying rackd"
+src="$(mktemp -d)"; trap 'rm -rf "$src"' EXIT
+commit="$(git -C "$root" rev-parse --short HEAD)"
+if [ "$mode" = tree ]; then cp -a "$root/services/rackd/." "$src/"; commit="$commit+tree"
+else git -C "$root" archive HEAD services/rackd | tar -x -C "$src" --strip-components=2; fi
+who="${AGENT_COORD_ID:-${USER:-unknown}}@$(hostname)"
+
+echo "== $server ($alias): last deploy: $(ssh "$alias" 'cat /opt/rackd/DEPLOYED 2>/dev/null || echo none')"
+kids="$(ssh "$alias" 'systemd-cgls -u rackd.service --no-pager 2>/dev/null | grep -E "^[^U]" | grep -vE "rackd\.js|virsh -c qemu:///system event|docker events" | sed "s/^[^0-9]*//" | cut -c1-90' || true)"
+if [ -n "$kids" ] && [ "$force" != 1 ]; then
+  echo "rackd runs work that a deploy would kill (use --force only when that work is yours and may die):" >&2; echo "$kids" >&2; exit 3
+fi
+echo "== copying rackd ($commit)"
 tmp="$(ssh "$alias" 'mktemp -d')"
-rsync -a --delete -e ssh "$root/services/rackd/" "$alias:$tmp/"
+rsync -a --delete -e ssh "$src/" "$alias:$tmp/"
+printf '%s %s by %s at %s: %s\n' "$commit" "$mode" "$who" "$(date -Is)" "${why:-no reason given}" | ssh "$alias" "cat > $tmp/DEPLOYED"
 
 echo "== installing"
-ssh "$alias" "sudo bash -s -- '$tmp'" <<'REMOTE'
+ssh "$alias" "sudo flock -w 600 /run/rackd-deploy.lock bash -s -- '$tmp'" <<'REMOTE'
 set -euo pipefail
 tmp="$1"
 install -d -m 755 /opt/rackd
