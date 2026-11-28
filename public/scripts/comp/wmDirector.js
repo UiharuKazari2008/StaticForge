@@ -2111,7 +2111,16 @@
             new ResizeObserver(() => { const d = dir(); if (shown && d && d.mascot && d.mascot._result) d.mascot.placeResult(); }).observe(page.querySelector('.wmd-dock'));
         }
         // the keyboard (WM's SIP) lifted the composer and the dock with the soft keys: her box goes over them
-        document.addEventListener('wmSipChange', () => { const d = dir(); if (shown && d && d.mascot && d.mascot._result) d.mascot.placeResult(); });
+        // The log over her scene ends above the composer, so it refits too (#1319 finding 5): the keyboard moves the composer
+        // by --wm-sip-lift, which no element resize reports
+        document.addEventListener('wmSipChange', () => {
+            const d = dir();
+            if (!shown || !d || !d.mascot) return;
+            if (d.mascot._result) d.mascot.placeResult();
+            // the composer slides up (its own transition): the stage measures every frame for a moment, the log
+            // following it, as it does when the bar slides between home and the bottom
+            d.mascot.settleLayout(600);
+        });
         // the HUD's chips (turns, prints, context): a tap opens Prints, as the desktop quick bar's Prints
         page.querySelector('.wmd-host').addEventListener('click', (e) => {
             const chip = e.target.closest && e.target.closest('.dm-vn-layer .dm-hud');

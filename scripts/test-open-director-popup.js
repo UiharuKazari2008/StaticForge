@@ -261,6 +261,7 @@ async function wmDirectorChecks() {
     const opened = [];
     const events = [];
     const listeners = new Map();
+    const docListeners = new Map();
     const pageEl = el({ appended: [] });
     pageEl.appendChild = (n) => { pageEl.appended.push(n); return n; };
     const strips = [];
@@ -269,7 +270,7 @@ async function wmDirectorChecks() {
     const doc = {
         hidden: false,
         documentElement: { classList: { contains: (c) => c === 'ui-mobile' }, dataset: { wmBoot: 'done' }, style: { getPropertyValue: () => '' } },
-        addEventListener: () => {}, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [],
+        addEventListener: (t, fn) => { if (!docListeners.has(t)) docListeners.set(t, []); docListeners.get(t).push(fn); }, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [],
         createElement: () => {
             const e = el();
             // a page the app builds (pushPage): its html is a tab strip and a list
@@ -406,6 +407,20 @@ async function wmDirectorChecks() {
     onOpenApp({ detail: { id: 'director', persona: 'constructor', sessionId: 'w1' } });
     await flush();
     assert.deepStrictEqual(opened, ['director'], 'only the Director object with no persona opens the app; others are ignored');
+
+    // ---- #1319 finding 5: the keyboard lifts the composer (wmSipChange); the log over her scene follows it
+    {
+        const settles = []; let placed = 0;
+        try { if (typeof app.mount === 'function') app.mount(pageEl); } catch (err) { console.error('mount', err.message); }
+        const onSip = (docListeners.get('wmSipChange') || [])[0];
+        assert.ok(onSip, 'the app listens for the keyboard (wmSipChange)');
+        wmShell.current = 'director';
+        d.mascot = { _result: { reply: 1 }, settleLayout: (ms) => settles.push(ms), placeResult: () => { placed++; } };
+        onSip({ detail: { height: 310 } });
+        assert.deepStrictEqual(settles, [600], 'the stage measures for a moment, the log following the composer up');
+        assert.strictEqual(placed, 1, 'her reply box is placed over it too');
+        delete d.mascot;
+    }
 
     // ---- the Sessions page and its tabs
     reset();
