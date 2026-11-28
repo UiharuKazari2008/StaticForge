@@ -1,0 +1,10 @@
+fleet: session 7ceeb829-a1d6-4ee5-9efa-fafcf23a626a title "Fix the tray clock"
+  launcher command (from the claude binary on): '/home/agents/.local/bin/claude' --session-id 7ceeb829-a1d6-4ee5-9efa-fafcf23a626a --remote-control 'Fix the tray clock' --permission-mode bypassPermissions --mcp-config $SP/acc/state/fleet-mcp-sessions/7ceeb829-a1d6-4ee5-9efa-fafcf23a626a.json -- 'acceptance run for #1199'; sleep 3600
+  config servers: ['dreamscape']  dreamscape.type=http url=http://127.0.0.1:9302/<mcp-path>/mcp
+  headersHelper: '/usr/bin/node' '/srv/rack/replicas/fleet-37a93128/src/scripts/fleet-mcp-headers.js' '$SP/acc/state/fleet-mcp/fleet.key' '7ceeb829-a1d6-4ee5-9efa-fafcf23a626a'
+  config file mode: 0o600  keys in config: False
+item: session 5d356147-b86a-4fce-8f87-e38d06526a00 title "Remote Access notice says Fleet" workId 1
+  launcher command (from the claude binary on): '/home/agents/.local/bin/claude' --session-id 5d356147-b86a-4fce-8f87-e38d06526a00 --remote-control 'Remote Access notice says Fleet' --permission-mode bypassPermissions --mcp-config $SP/acc/state/fleet-mcp-sessions/5d356147-b86a-4fce-8f87-e38d06526a00.json -- 'acceptance run for #1199'; sleep 3600
+  config servers: ['dreamscape']  dreamscape.type=http url=http://127.0.0.1:9302/<mcp-path>/mcp
+  headersHelper: '/usr/bin/node' '/srv/rack/replicas/fleet-37a93128/src/scripts/fleet-mcp-headers.js' '$SP/acc/state/fleet-mcp/fleet-items.key' '5d356147-b86a-4fce-8f87-e38d06526a00'
+  config file mode: 0o600  keys in config: False

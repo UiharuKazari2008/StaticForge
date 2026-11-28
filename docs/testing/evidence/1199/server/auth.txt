@@ -1,0 +1,3 @@
+fleet: tools/list HTTP 200, tools 119, bind_session true, run_client_js true, mail|dovecote names 0
+item: tools/list HTTP 200, tools 119, bind_session true, run_client_js true, mail|dovecote names 0
+compare: tools/list HTTP 200, tools 119, bind_session true, run_client_js true, mail|dovecote names 0

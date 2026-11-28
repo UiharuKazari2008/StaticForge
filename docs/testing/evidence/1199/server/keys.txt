@@ -1,0 +1,9 @@
+id(8)     app name          user agent                     status  #scopes  scopes
+09d139fd  Fleet             DreamscapeFleet/1.0            active   18      generation,gallery,workspace,search,references,wiki,autofill,notes,knowledge,presets,chat,vfs,explore,nax,sfapp_cake_pantry,sfapp_apocrypha,sfapp_report_issue,sfapp_usage   [fleet]
+08866428  Fleet work items  DreamscapeFleet/1.0            active   18      generation,gallery,workspace,search,references,wiki,autofill,notes,knowledge,presets,chat,vfs,explore,nax,sfapp_cake_pantry,sfapp_apocrypha,sfapp_report_issue,sfapp_usage   [item]
+6d0c8eac  Claude Code       claude-code/2.1.332 (sdk-cli)  active   18      generation,gallery,workspace,search,references,wiki,autofill,notes,knowledge,presets,chat,vfs,explore,nax,sfapp_cake_pantry,sfapp_apocrypha,sfapp_report_issue,sfapp_usage   [compare]
+fleet: forbidden scopes (universal, sfapp_dovecote, plaud*, sfapp_claude_fleet) present: no
+item: forbidden scopes (universal, sfapp_dovecote, plaud*, sfapp_claude_fleet) present: no
+compare: forbidden scopes (universal, sfapp_dovecote, plaud*, sfapp_claude_fleet) present: no
+Fleet, Fleet work items and comparison scope sets identical: true
+keys in the replica auth DB in total: 3

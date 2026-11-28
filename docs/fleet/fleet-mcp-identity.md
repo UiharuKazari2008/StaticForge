@@ -80,6 +80,9 @@ notifications", so Settings > Sounds & Notifications > Notifications > Other not
 pops or waits in the title bar. Its soft keys are Hide | Dismiss, and Disconnect (the tray icon's right-click item on the desktop,
 `agent_session_unbind`) while an agent is bound to the client. There is no access log on the phone (Periscope is a desktop program) and no
 status bar icon of its own. DeX is the desktop shell on the phone: it keeps the balloon.
+With "Display message on screen" off for "Other notifications" there is no bubble: the note waits in the title bar and the left soft key
+reads Notification. The source has no row of its own in the phone's Event list; like the server's system messages it follows "Other
+notifications" (the #1299 rule for a source without a row).
 
 ## Label or raw name
 
@@ -105,3 +108,13 @@ pending apply jobs, memory session images); nothing parses it. A Fleet key witho
 `PRIORITY_EXEMPT_ACTORS` (`Dreamscape Director`, `Xi`, `Wren`) is compared with the name a bind carries. The "Claude Code" key was not
 exempt, so Fleet labels are not exempt either (a label always starts with `Fleet access`, so it can never equal an exempt name). The labels
 of the exempt keys are their raw names, so they stay exempt.
+
+## Proof
+
+`docs/testing/evidence/1199/README.md`: the acceptance run of Nov 28 2026 on a replica. A real Claude Code process started with the
+launcher-written config took the session of a desktop client and of a Melaton Mobile client; the notice read
+`Fleet access "<session title>"`, `Fleet access, work item #<id> "<item title>"` for a work item session, and `"Claude Code"` for the
+comparison key. The folder holds the key list, the launcher's configs, the server's packets, the screenshots and the scripts.
+
+To repeat it on a replica: restart the replica first when its server started before its worktree was moved (it then still runs the
+older modules and sends the raw key names), then follow the README's "How it was done".

@@ -98,6 +98,7 @@ The audit does not hand its open points to Yukimi; each was decided against N1-N
 | Cost receipts of a print / upscale / vibe (the toast) | stays removed | N2: the cost of the user's own action; deposits (money arriving) keep their balloon |
 | Battery fully charged (phone note, ActiveSync balloon) | stays, silent | her own #829 request, and it is a call to action (unplug); no sound (N7), switch in Sounds & Notifications / the ActiveSync icon menu |
 | Remote Access balloon | stays | her only live sight of an agent in her session; has the tray switch and a click target |
+| Remote Access on Melaton Mobile (#1199, 2026-11-28) | one phone notification, silent, class "Other notifications" | the phone has no taskbar, so the balloon never showed there; same words as the balloon, Disconnect while an agent is bound, one note at a time; no row of its own in Sounds & Notifications, so it follows "Other notifications" (Display message on screen off: it waits in the title bar); proof in `docs/testing/evidence/1199/` |
 | Wallet renewal / Anlas-expiring balloons | stay | money, a call to action, switchable |
 | Main Battery Low / Very Low default tone | stays | the phone is about to die: a hardware-style alert, one per stage |
 | Inbox channel HIGH for status classes (#1314) | status classes move to a quiet channel | needs a new channel id in the app; filed on #1314 for the next app change |

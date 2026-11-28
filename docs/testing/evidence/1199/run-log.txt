@@ -1,0 +1,123 @@
+Acceptance run for StaticForge #1199 on replica fleet-37a93128 (Fat Misaka), server code = origin/main 4dc7cdca9 after restart (gate 385).
+Clients: desktop sandbox acc1199-desktop (client 06df45fb9a59, uiShell desktop, 1600x900), phone sandbox acc1199-phone (client e77832745e65, uiShell mobile, 412x915 dpr 2.625).
+Callers: Fleet session 7ceeb829 "Fix the tray clock" (key Fleet), work item session 5d356147 work item #1 "Remote Access notice says Fleet" (key Fleet work items), comparison key "Claude Code".
+
+=== D1-fleet-bind  (08:32:14Z)
+trigger: real Claude Code CLI as the fleet session: tool bind_session {"clientId":"06df45fb9a59"}
+claude exit: 0  output: $SP/acc/out/cli-fleet-20261128-033214.jsonl
+mcp_servers dreamscape: {"name":"dreamscape","status":"connected","source":"dynamic"}
+claude_code_version: 2.1.332  model: claude-haiku-5-5
+tool_use mcp__dreamscape__bind_session -> {"success":true,"clientId":"06df45fb9a59","bound":true,"userType":"admin","workspaceId":"default"}
+desktop notice: {"uiShell":"desktop","visible":true,"title":"Remote Access","text":"Your session was accessed by Fleet access \"Fix the tray clock\""}
+desktop screenshot: shots/D1-fleet-bind-desktop.png
+
+=== D2-fleet-read  (08:32:28Z)
+trigger: MCP call as fleet: tools/call get_studio_state {}
+status 200
+{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"success\":true,\"bound\":true,\"autoBound\":false,\"checkpointId\":\"87045546-3b73-4ff6-aa6c-2e2b9ff5f892\",\"diff\":false,\"unchanged\":false,\"clientId\":\"06df45fb9a59\",\"workspaceId\":
+desktop notice: {"uiShell":"desktop","visible":true,"title":"Remote Access","text":"Studio was read by Fleet access \"Fix the tray clock\""}
+desktop screenshot: shots/D2-fleet-read-desktop.png
+
+=== D3-item-bind  (08:32:32Z)
+trigger: real Claude Code CLI as the item session: tool bind_session {"clientId":"06df45fb9a59"}
+claude exit: 0  output: $SP/acc/out/cli-item-20261128-033233.jsonl
+mcp_servers dreamscape: {"name":"dreamscape","status":"connected","source":"dynamic"}
+claude_code_version: 2.1.332  model: claude-haiku-5-5
+tool_use mcp__dreamscape__bind_session -> {"success":true,"clientId":"06df45fb9a59","bound":true,"userType":"admin","workspaceId":"default"}
+desktop notice: {"uiShell":"desktop","visible":true,"title":"Remote Access","text":"Your session was accessed by Fleet access, work item #1 \"Remote Access notice says Fleet\""}
+desktop screenshot: shots/D3-item-bind-desktop.png
+
+=== D4-claude-code-bind  (08:32:41Z)
+trigger: MCP call as compare: tools/call bind_session {"clientId":"06df45fb9a59"}
+status 200
+{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"success\":true,\"clientId\":\"06df45fb9a59\",\"bound\":true,\"userType\":\"admin\",\"workspaceId\":\"default\"}"}],"isError":false}}
+desktop notice: {"uiShell":"desktop","visible":true,"title":"Remote Access","text":"Your session was accessed by \"Claude Code\""}
+desktop screenshot: shots/D4-claude-code-bind-desktop.png
+
+=== P1-fleet-bind  (08:33:02Z)
+trigger: real Claude Code CLI as the fleet session: tool bind_session {"clientId":"e77832745e65"}
+claude exit: 0  output: $SP/acc/out/cli-fleet-20261128-033302.jsonl
+mcp_servers dreamscape: {"name":"dreamscape","status":"connected","source":"dynamic"}
+claude_code_version: 2.1.332  model: claude-haiku-5-5
+tool_use mcp__dreamscape__bind_session -> {"success":true,"clientId":"e77832745e65","bound":true,"userType":"admin","workspaceId":"default"}
+phone notice: {"uiShell":"mobile","noteUp":true,"bubbleShown":true,"title":"Remote Access","text":"Your session was accessed by Fleet access \"Fix the tray clock\"","toastTitle":"Remote Access","toastText":"Your session was accessed by Fleet access \"Fix the tray clock\"","softKeys":{"left":"Disconnect","right":"Dismiss"}}
+phone screenshot: shots/P1-fleet-bind-phone.png
+
+=== P2-fleet-read-same-note  (08:33:11Z)
+trigger: MCP call as fleet: tools/call get_studio_state {}
+status 200
+{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"success\":true,\"bound\":true,\"autoBound\":false,\"checkpointId\":\"791fa531-b4f6-4cba-9cf1-11378ebc00bc\",\"diff\":false,\"unchanged\":false,\"clientId\":\"e77832745e65\",\"workspaceId\":
+phone notice: {"uiShell":"mobile","noteUp":true,"bubbleShown":true,"title":"Remote Access","text":"Studio was read by Fleet access \"Fix the tray clock\"","toastTitle":"Remote Access","toastText":"Studio was read by Fleet access \"Fix the tray clock\"","softKeys":{"left":"Disconnect","right":"Dismiss"}}
+phone screenshot: shots/P2-fleet-read-same-note-phone.png
+{"toasts":0,"phoneNoteId":"toast-6","bound":true}
+
+=== P3-item-bind  (08:33:23Z)
+trigger: real Claude Code CLI as the item session: tool bind_session {"clientId":"e77832745e65"}
+claude exit: 0  output: $SP/acc/out/cli-item-20261128-033324.jsonl
+mcp_servers dreamscape: {"name":"dreamscape","status":"connected","source":"dynamic"}
+claude_code_version: 2.1.332  model: claude-haiku-5-5
+tool_use mcp__dreamscape__bind_session -> {"success":true,"clientId":"e77832745e65","bound":true,"userType":"admin","workspaceId":"default"}
+phone notice: {"uiShell":"mobile","noteUp":true,"bubbleShown":true,"title":"Remote Access","text":"Your session was accessed by Fleet access, work item #1 \"Remote Access notice says Fleet\"","toastTitle":"Remote Access","toastText":"Your session was accessed by Fleet access, work item #1 \"Remote Access notice says Fleet\"","softKeys":{"left":"Disconnect","right":"Dismiss"}}
+phone screenshot: shots/P3-item-bind-phone.png
+
+=== P4-claude-code-bind  (08:33:32Z)
+trigger: MCP call as compare: tools/call bind_session {"clientId":"e77832745e65"}
+status 200
+{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"success\":true,\"clientId\":\"e77832745e65\",\"bound\":true,\"userType\":\"admin\",\"workspaceId\":\"default\"}"}],"isError":false}}
+phone notice: {"uiShell":"mobile","noteUp":true,"bubbleShown":true,"title":"Remote Access","text":"Your session was accessed by \"Claude Code\"","toastTitle":"Remote Access","toastText":"Your session was accessed by \"Claude Code\"","softKeys":{"left":"Disconnect","right":"Dismiss"}}
+phone screenshot: shots/P4-claude-code-bind-phone.png
+
+=== P5-dismiss (08:33:53Z): a touch tap on the right soft key (Dismiss)
+{"pressed":"right","label":"Dismiss","at":{"x":331.6428680419922,"y":896.119062423706}}
+phone notice: {"uiShell":"mobile","noteUp":false,"bubbleShown":false,"title":null,"text":null,"toastTitle":null,"toastText":null,"softKeys":{"left":"Pictures","right":"Menu"}}
+
+=== P6-switch-off (08:33:56Z): Settings > Sounds & Notifications > Notifications > Event: Other notifications > Display message on screen OFF, by touch taps
+{"want":"off","checkboxBefore":true,"tappedCheckbox":true,"checkboxAfter":false,"displayState":false,"onToday":true}
+display-state: {"display":false}
+
+=== P7-fleet-read-display-off  (08:34:14Z)
+trigger: MCP call as fleet: tools/call get_studio_state {}
+status 200
+{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"success\":true,\"bound\":true,\"autoBound\":false,\"checkpointId\":\"0fc6ee38-dea6-4e00-9c27-3d65308c6e7d\",\"diff\":false,\"unchanged\":false,\"clientId\":\"e77832745e65\",\"workspaceId\":
+phone notice: {"uiShell":"mobile","noteUp":true,"bubbleShown":false,"title":null,"text":null,"toastTitle":"Remote Access","toastText":"Studio was read by Fleet access \"Fix the tray clock\"","softKeys":{"left":"Notification1","right":"Menu"}}
+phone screenshot: shots/P7-fleet-read-display-off-phone.png
+{"notesWaiting":true,"bubbleHidden":true,"softLeft":"Notification1","notifyIconShown":true}
+
+=== P8-switch-on (08:34:38Z): the same Settings path, Display message on screen ON again, by touch taps
+{"want":"on","checkboxBefore":false,"tappedCheckbox":true,"checkboxAfter":true,"displayState":true,"onToday":true}
+display-state: {"display":true}
+phone notice after switching on: {"uiShell":"mobile","noteUp":true,"bubbleShown":false,"title":null,"text":null,"toastTitle":"Remote Access","toastText":"Studio was read by Fleet access \"Fix the tray clock\"","softKeys":{"left":"","right":"Menu"}}
+
+=== P9-item-read-before-disconnect  (08:34:56Z)
+trigger: MCP call as item: tools/call get_studio_state {}
+status 200
+{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"success\":true,\"bound\":true,\"autoBound\":false,\"checkpointId\":\"818c89fd-5571-4ef3-8cb4-6e13399ec7b8\",\"diff\":false,\"unchanged\":false,\"clientId\":\"e77832745e65\",\"workspaceId\":
+phone notice: {"uiShell":"mobile","noteUp":true,"bubbleShown":true,"title":"Remote Access","text":"Studio was read by Fleet access, work item #1 \"Remote Access notice says Fleet\"","toastTitle":"Remote Access","toastText":"Studio was read by Fleet access, work item #1 \"Remote Access notice says Fleet\"","softKeys":{"left":"Disconnect","right":"Dismiss"}}
+phone screenshot: shots/P9-item-read-before-disconnect-phone.png
+
+=== P10-disconnect (08:35:01Z): a touch tap on the left soft key (Disconnect)
+before: {"pageBound":true}
+{"pressed":"left","label":"Disconnect","at":{"x":80.54762268066406,"y":896.119062423706}}
+after: {"pageBound":false}
+phone notice: {"uiShell":"mobile","noteUp":false,"bubbleShown":false,"title":null,"text":null,"toastTitle":null,"toastText":null,"softKeys":{"left":"Pictures","right":"Menu"}}
+phone screenshot: shots/P10-after-disconnect-phone.png
+
+=== D5-desktop-switch-off (08:36:50Z): the desktop switch (Customize Notifications > Remote Access) set by the function that page calls, traySetPopupHidden('remote-access', true); not driven through the dialog
+balloon before: {"uiShell":"desktop","visible":false,"title":null,"text":null}
+true
+
+=== D5-fleet-bind-switch-off  (08:36:52Z)
+trigger: MCP call as fleet: tools/call bind_session {"clientId":"06df45fb9a59"}
+status 200
+{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"success\":true,\"clientId\":\"06df45fb9a59\",\"bound\":true,\"userType\":\"admin\",\"workspaceId\":\"default\"}"}],"isError":false}}
+desktop notice: {"uiShell":"desktop","visible":false,"title":null,"text":null}
+desktop screenshot: shots/D5-fleet-bind-switch-off-desktop.png
+false
+switch restored to shown (false above)
+
+=== D6-item-bind-switch-on  (08:36:57Z)
+trigger: MCP call as item: tools/call bind_session {"clientId":"06df45fb9a59"}
+status 200
+{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"success\":true,\"clientId\":\"06df45fb9a59\",\"bound\":true,\"userType\":\"admin\",\"workspaceId\":\"default\"}"}],"isError":false}}
+desktop notice: {"uiShell":"desktop","visible":true,"title":"Remote Access","text":"Your session was accessed by Fleet access, work item #1 \"Remote Access notice says Fleet\""}
+desktop screenshot: shots/D6-item-bind-switch-on-desktop.png
