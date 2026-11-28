@@ -1,0 +1,24 @@
+{
+ "ver": "6.5",
+ "app": "today",
+ "fx": "tilt breathe stagger overshoot catch exit gloss digits blur glasslight weather haptics startopen startfrost startlaunch startticks superbar",
+ "shine": true,
+ "rm": false,
+ "cssLen": 38537,
+ "cssIsDrift": true,
+ "jsLen": 83916,
+ "jsSk": true,
+ "jsTime": false,
+ "css110": true,
+ "cssHas": {
+  "is-drift": true,
+  "110deg": true
+ },
+ "jsShineDrift": false,
+ "loadedSheetIsDrift": true,
+ "updateAction": {
+  "kind": "install",
+  "count": 1,
+  "restart": true
+ }
+}

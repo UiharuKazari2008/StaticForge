@@ -1,0 +1,132 @@
+StaticForge #1413 device acceptance, Fri Nov 27 2026 18:22:21 GMT-0500 (Eastern Standard Time)
+instance aemu-a53-1, console port 5560, out docs/testing/evidence/1413/before-fix, only all, install false
+Lean on the emulator: a still sensor sends no deviceorientation events, so a pose holds its offset until the next one; on a real phone the resting hold re-centres within seconds (tiltBase follows at 1 % per reading), by design.
+
+A. Preconditions
+INFO  aemu-a53-1: a53 1080x2400, Android 36, app versionCode 3632992, top jp.net.seventhreeseven.dreamscape/.MainActivity
+PASS  A: data-wm-version 6.5 (want 6.5)
+PASS  A: data-wm-app today (want today)
+PASS  A: data-wm-ti-fx has tilt and glasslight (tilt, glasslight)
+PASS  A: the shine element .wm-ti-shine > i exists
+PASS  A: prefers-reduced-motion: reduce is false (want false)
+INFO  A: wm-titanium.css 37164 bytes, has is-drift: false; wmTitanium.js 83588 bytes, has "--wm-ti-sk": false (the minified file has no function names; shineDrift: false); the loaded stylesheet has an is-drift rule: false
+INFO  A: serviceWorkerManager.updateAction() = null
+INFO  A: fix=absent
+
+B. Leaning moves the light
+INFO  B pose 0 (0 deg, steady after 2.28 s): app=today vis=visible scr=null sx=0.00px sk=- dr=0% drift=false tr=0% e=0 c=0 running=[]
+INFO  B pose plus9 (9 deg, steady after 2.73 s): app=today vis=visible scr=null sx=14.10px sk=- dr=0% drift=false tr=0% e=14.1 c=0 running=[]
+INFO  B pose minus9 (-9 deg, steady after 2.59 s): app=today vis=visible scr=null sx=-17.90px sk=- dr=0% drift=false tr=0% e=-17.9 c=0 running=[]
+INFO  B pose plus18 (18 deg, steady after 2.24 s): app=today vis=visible scr=null sx=24.76px sk=- dr=0% drift=false tr=0% e=24.76 c=0 running=[]
+INFO  B pose minus18 (-18 deg, steady after 2.33 s): app=today vis=visible scr=null sx=-31.62px sk=- dr=0% drift=false tr=0% e=-31.62 c=0 running=[]
+INFO  B pose 0-back (0 deg, steady after 2.2 s): app=today vis=visible scr=null sx=6.48px sk=- dr=0% drift=false tr=0% e=6.48 c=0 running=[]
+PASS  B: sx at +9 deg 14.10px, at -9 deg -17.90px: opposite signs, each at least 5 px
+PASS  B: |sx| at 18 deg (24.76px, -31.62px) larger than at 9 deg (14.10px, -17.90px)
+INFO  B: which way the light moves: a lean of +9 deg (positive x on the accelerometer) gives sx 14.10px (light moves right)
+FAIL  B: sx at rest 0.00px, after the leans 6.48px (want within 1.5 px of 0; the reference hold follows each pose by 1 % per sensor reading, by design, so a sequence of leans leaves an offset on the emulator: traces in B-poses.json)
+PASS  B: the computed transform matrix e equals sx at every pose (0: e 0 sx 0; plus9: e 14.1 sx 14.1; minus9: e -17.9 sx -17.9; plus18: e 24.76 sx 24.76; minus18: e -31.62 sx -31.62; 0-back: e 6.48 sx 6.48)
+INFO  B: fix=absent: the slant (--wm-ti-sk) belongs to the newest code, its checks are skipped (sk readings: 0: '', plus9: '', minus9: '', plus18: '', minus18: '', 0-back: '')
+INFO  B pixels: each pose shot with the glass light on and off (the difference is the rays alone), same minute, the lean unchanged
+INFO  B pixels plus9: sx before the shot 16.76px, after the with-light shot 16.76px, while off 16.76px, after on 16.76px
+INFO  B pixels minus9: sx before the shot -16.76px, after the with-light shot -16.76px, while off -16.76px, after on -16.76px
+INFO  B pixels: ray pattern strength (rms of the detrended alpha estimate, percent): +9 2.21, -9 2.55
+INFO  B pixels: best shift 88 device px (correlation 0.434); the next best peak elsewhere -79 px (0.342); expected (sx(+9) - sx(-9)) * 2.625 = 88.0 px; reliable=false
+INFO  B pixels: the correlation is NOT reliable on this wallpaper (peak weak or ambiguous); the DOM numbers above remain the check, this is not a pass
+FAIL  B: pixel shift of the rays between +9 and -9 is 88 device px, expected 88.0 (within 6; correlation 0.43, NOT reliable)
+
+C. Rays at different widths
+INFO  C: lean at the start of C: app=today vis=visible scr=null sx=0.00px sk=- dr=0% drift=false tr=0% e=0 c=0 running=[]
+INFO  C: the <i> box is 659.5 x 103.5 CSS px; 7 gradients, ray widths (CSS px across the ray, between its first and last zero-alpha stops), sorted: 7.31, 7.98, 7.98, 11.3, 53.2, 53.2, 66.49; peak alphas 0.16, 0.22, 0.11, 0.2, 0.075, 0.15, 0.067
+PASS  C: 7 rays, 4 distinct widths (differing by more than 2 px), widest 66.49 px vs narrowest 7.31 px (9.1x; want 7, at least 4, at least 4x)
+INFO  C: glasslight switched off and on the way Settings does; localStorage.wmTodayFx put back to null (now null)
+INFO  C pixels: expected run widths along a row (device px) from the 7 ray widths: 20, 22, 22, 31, 144, 144, 180
+INFO  C pixels: middle row (136, covered by the clock and weather text where they stand): 13 runs: 110-144 (35 px); 166-202 (37 px); 236-254 (19 px); 397-425 (29 px); 498-527 (30 px); 537-552 (16 px); 557-571 (15 px); 576-594 (19 px); 603-620 (18 px); 667-669 (3 px); 674-682 (9 px); 735-878 (144 px); 928-945 (18 px)
+INFO  C pixels: clearest row (202): 8 runs where the light's alpha estimate ((on - off) / (255 - off) of the luminance, percent) is at least 1.5: 82-85 (4 px, peak 1.5); 89-194 (106 px, peak 6.7); 219-238 (20 px, peak 15.7); 381-409 (29 px, peak 22); 479-601 (123 px, peak 10.8); 651-670 (20 px, peak 19.4); 719-866 (148 px, peak 7.3); 912-929 (18 px, peak 14.3)
+PASS  C: 8 pixel runs on the clearest row, widths 4, 18, 20, 20, 29, 106, 123, 148 device px: 6 width classes (differing by more than 4 px), widest 148 vs narrowest 4 (want at least 4 runs, at least 3 classes, widest at least 3x)
+
+D. The idle drift settles and stops
+INFO  D: with +9 held and Today freshly shown: app=today vis=visible scr=null sx=13.33px sk=- dr=0% drift=false tr=0% e=13.33 c=0 running=[]
+INFO  D: wake touch T0 at device clock 18:23:51.162
+INFO  D +5 s (control): game fusion(no mag) enabled (1 clients); app registrations since T0: 18:23:51 -, 18:23:51 +
+INFO  D +25 s (page +25.2): app=today vis=visible scr=null sx=13.33px sk=- dr=0% drift=false tr=0% e=13.33 c=0 running=[]
+INFO  D +31 s (page +31.2): app=today vis=visible scr=null sx=13.33px sk=- dr=1.2% drift=false tr=0.677178% e=13.33 c=0 running=[translate@:running]
+INFO  D +33 s (page +33.2): app=today vis=visible scr=null sx=13.33px sk=- dr=1.2% drift=false tr=1.07233% e=13.33 c=0 running=[translate@:running]
+INFO  D +36 s (page +36.2): app=today vis=visible scr=null sx=13.33px sk=- dr=1.2% drift=false tr=1.19612% e=13.33 c=0 running=[translate@:running]
+INFO  D +40 s (page +40.2): app=today vis=visible scr=null sx=13.33px sk=- dr=1.2% drift=false tr=1.2% e=13.33 c=0 running=[]
+INFO  D +45 s (page +45.2): app=today vis=visible scr=null sx=13.33px sk=- dr=1.2% drift=false tr=1.2% e=13.33 c=0 running=[]
+PASS  D: before the idle (+25 s) dr is '0%' and nothing drifts (running: 0)
+PASS  D: after the idle starts (+31 s, +33 s) a translate transition runs and the computed translate moves toward dr 1.2%: 0.677178% -> 1.07233% -> 1.19612% at +36 s (running at +36: 1)
+PASS  D: dr 1.2% goes the way the light was leaning (sx 13.33px)
+PASS  D: by +40 s no animation runs (0) and the computed translate 1.2% equals dr 1.2%
+PASS  D: still nothing at +45 s (running 0, translate 1.2%)
+PASS  D control: frames the app drew over the drift window (+29.3 to +38 s): 24384 -> 24801 = 417 (must be > 0)
+PASS  D control: at about +5 s the sensor service says "game fusion(no mag) enabled (1 clients)" (want enabled (1 clients))
+INFO  D settled: the app's registrations since T0: 18:23:51 -, 18:23:51 +, 18:24:16 -, 18:24:16 +, 18:24:21 -, 18:25:00 +, 18:25:01 -; game fusion(no mag) disabled (0 clients)
+INFO  D settled: window 18:25:05.462 to 18:25:25.636 on the device clock; registrations inside it: (none)
+FAIL  D settled: frames over 20 s 24839 -> 24853 (delta 14), running animations 0, "game fusion(no mag) disabled (0 clients)", newest registration 18:25:01 -, the idle unregister 18:24:21 (T0 + 29.8 s)
+INFO  D minute boundary (INFO, the peek of rule #890, expected): app registrations from 18:25:55.333 past the boundary 18:26:00.000: 18:26:00 +, 18:26:01 - (expected one + at :00 and one - about 1 s later); at :00.45 the sensor service said "game fusion(no mag) enabled (1 clients)"; frames over the boundary (18:25:55.333 to +5 s past it) 24903 -> 24932 = 29; after it: running animations 0
+
+E. Nothing runs while Today is not what shows
+
+E1. another Android program in front (Settings)
+INFO  E1: starting from the settled state of step D
+INFO  E1 state before the action (settled): app=today vis=visible scr=null sx=13.33px sk=- dr=1.2% drift=false tr=1.2% e=13.33 c=0 running=[]
+PASS  E1: the start is settled with the drift at its end (dr 1.2%, running 0)
+INFO  E1: action "another Android program in front (Settings)" at device clock 18:26:06.239
+INFO  E1 probe 1 (+0.7 s): app=today vis=hidden scr=null sx=0px sk=- dr=0% drift=false tr=1.2% e=0 c=0 running=[translate@:running]
+INFO  E1 probe +4 (+4.3 s): app=today vis=hidden scr=null sx=0px sk=- dr=0% drift=false tr=0.0879355% e=0 c=0 running=[translate@:running]
+INFO  E1: lean set to -9 deg at +5 s
+INFO  E1 probe +10 (+10.3 s): app=today vis=hidden scr=null sx=0px sk=- dr=0% drift=false tr=0% e=0 c=0 running=[]
+FAIL (expected before the fix)  E1 (settled): no animation runs at any probe (probe 1: 1, probe +4: 1, probe +10: 0) running: probe 1 translate@:running | probe +4 translate@:running
+PASS  E1 (settled): every probe has sx 0px, sk 0deg or empty, dr 0%, no is-drift (probe 1: sx 0px sk - dr 0% drift false; probe +4: sx 0px sk - dr 0% drift false; probe +10: sx 0px sk - dr 0% drift false)
+PASS  E1 (settled): app registrations since the action: (none); no + ok; nothing to unregister (the idle already did, 30 s earlier); "game fusion(no mag) disabled (0 clients)"
+PASS  E1 (settled): frames drawn by the app between +2 s and +10 s: 24957 -> 24957 = 0 (want 0)
+PASS  E1 (settled): with Today shown again the tilt listens again: registrations since the action 18:26:17 +, 18:26:20 -, 18:26:20 +; "game fusion(no mag) enabled (1 clients)"; page app=today
+
+E1. another Android program in front (Settings), from the in-use leaned state
+INFO  E1 state before the action (leaned): app=today vis=visible scr=null sx=12.95px sk=- dr=0% drift=false tr=0% e=12.95 c=0 running=[]
+PASS  E1: the start is in use and leaned (sx 12.95px)
+INFO  E1: action "another Android program in front (Settings), from the in-use leaned state" at device clock 18:26:32.812
+INFO  E1 probe 1 (+0.9 s): app=today vis=hidden scr=null sx=0px sk=- dr=0% drift=false tr=0% e=0 c=0 running=[]
+INFO  E1 probe +4 (+4.3 s): app=today vis=hidden scr=null sx=0px sk=- dr=0% drift=false tr=0% e=0 c=0 running=[]
+INFO  E1: lean set to -9 deg at +5 s
+INFO  E1 probe +10 (+10.3 s): app=today vis=hidden scr=null sx=0px sk=- dr=0% drift=false tr=0% e=0 c=0 running=[]
+PASS  E1 (leaned): no animation runs at any probe (probe 1: 0, probe +4: 0, probe +10: 0)
+PASS  E1 (leaned): every probe has sx 0px, sk 0deg or empty, dr 0%, no is-drift (probe 1: sx 0px sk - dr 0% drift false; probe +4: sx 0px sk - dr 0% drift false; probe +10: sx 0px sk - dr 0% drift false)
+FAIL  E1 (leaned): app registrations since the action: 18:26:32 -, 18:26:32 +, 18:26:33 -; no + FAILED; the unregister at the action found; "game fusion(no mag) disabled (0 clients)"
+PASS  E1 (leaned): frames drawn by the app between +2 s and +10 s: 25074 -> 25074 = 0 (want 0)
+PASS  E1 (leaned): with Today shown again the tilt listens again: registrations since the action 18:26:32 -, 18:26:32 +, 18:26:33 -, 18:26:44 +, 18:26:46 -, 18:26:46 +; "game fusion(no mag) enabled (1 clients)"; page app=today
+
+E2. screen off
+INFO  E2 state before the action (settled): app=today vis=visible scr=null sx=12.95px sk=- dr=1.2% drift=false tr=1.2% e=12.95 c=0 running=[]
+PASS  E2: the start is settled with the drift at its end (dr 1.2%, running 0)
+INFO  E2: action "screen off" at device clock 18:27:46.313
+INFO  E2 probe 1 (+1.8 s): app=today vis=hidden scr=1 sx=0px sk=- dr=0% drift=false tr=0% e=0 c=0 running=[]
+INFO  E2 probe +4 (+4.3 s): app=today vis=hidden scr=1 sx=0px sk=- dr=0% drift=false tr=0% e=0 c=0 running=[]
+INFO  E2: lean set to -9 deg at +5 s
+INFO  E2 probe +10 (+10.2 s): app=today vis=hidden scr=1 sx=0px sk=- dr=0% drift=false tr=0% e=0 c=0 running=[]
+INFO  E2 probe past the minute (+18 s): app=today vis=hidden scr=1 sx=0px sk=- dr=0% drift=false tr=0% e=0 c=0 running=[]
+INFO  E2: the minute boundary was at 18:28:00.000
+PASS  E2 (settled): no animation runs at any probe (probe 1: 0, probe +4: 0, probe +10: 0, probe past the minute: 0)
+PASS  E2 (settled): every probe has sx 0px, sk 0deg or empty, dr 0%, no is-drift (probe 1: sx 0px sk - dr 0% drift false; probe +4: sx 0px sk - dr 0% drift false; probe +10: sx 0px sk - dr 0% drift false; probe past the minute: sx 0px sk - dr 0% drift false)
+PASS  E2 (settled): app registrations since the action: (none); no + ok; nothing to unregister (the idle already did, 30 s earlier); "game fusion(no mag) disabled (0 clients)"
+PASS  E2 (settled): frames drawn by the app between +2 s and +10 s: 25556 -> 25556 = 0 (want 0)
+PASS  E2 (settled): across the minute boundary with the screen off no registration appeared (no peek): (none)
+PASS  E2 (settled): with Today shown again the tilt listens again: registrations since the action 18:28:05 +, 18:28:10 -, 18:28:10 +; "game fusion(no mag) enabled (1 clients)"; page app=today
+
+E3. a Melaton program (Calculator) in front inside the page
+INFO  E3 state before the action (settled): app=today vis=visible scr=null sx=12.95px sk=- dr=1.2% drift=false tr=1.2% e=12.95 c=0 running=[]
+PASS  E3: the start is settled with the drift at its end (dr 1.2%, running 0)
+INFO  E3: action "a Melaton program (Calculator) in front inside the page" at device clock 18:29:01.925 (wmShell.open answered opened)
+INFO  E3 probe 1 (+1.1 s): app=calculator vis=visible scr=null sx=0px sk=- dr=0% drift=false tr=0% e=- c=- running=[]
+INFO  E3 probe +4 (+4.3 s): app=calculator vis=visible scr=null sx=0px sk=- dr=0% drift=false tr=0% e=- c=- running=[]
+INFO  E3: lean set to -9 deg at +5 s
+INFO  E3 probe +10 (+10.3 s): app=calculator vis=visible scr=null sx=0px sk=- dr=0% drift=false tr=0% e=- c=- running=[]
+PASS  E3 (settled): no animation runs at any probe (probe 1: 0, probe +4: 0, probe +10: 0)
+PASS  E3 (settled): every probe has sx 0px, sk 0deg or empty, dr 0%, no is-drift (probe 1: sx 0px sk - dr 0% drift false; probe +4: sx 0px sk - dr 0% drift false; probe +10: sx 0px sk - dr 0% drift false)
+PASS  E3 (settled): app registrations since the action: 18:29:01 -; no + ok; nothing to unregister (the idle already did, 30 s earlier); "game fusion(no mag) disabled (0 clients)"
+INFO  E3 (settled): frames between +2 s and +10 s: 26074 -> 26074 (Calculator is on screen, not required to be 0)
+PASS  E3 (settled): with Today shown again the tilt listens again: registrations since the action 18:29:01 -, 18:29:12 +, 18:29:13 -, 18:29:13 +, 18:29:13 -, 18:29:14 +; "game fusion(no mag) enabled (1 clients)"; page app=today
+INFO  restore: default accelerometer pose, screen on, app in front: app=today vis=visible; wmTodayFx null (was null), glasslight on: true
+
+accept-1413 (fix=absent): 39 PASS, 4 FAIL, 1 FAIL (expected before the fix)

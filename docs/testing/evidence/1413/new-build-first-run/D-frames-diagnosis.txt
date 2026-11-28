@@ -1,0 +1,9 @@
+D-settled frames diagnosis (the settled state of step D, three 20 s windows; no minute tick inside), Fri Nov 27 18:45:33 EST 2026
+glasslight on, run 1: frames 47243 -> 48076 = 833 (window started at second 6 of the minute)
+glasslight on, run 2: frames 48089 -> 49050 = 961 (window started at second 26 of the minute)
+glasslight OFF (Settings' own switch), no shine layer: frames 49955 -> 50868 = 913 (window started at second 6 of the minute)
+{"ok":true,"value":"{\"ls\":null,\"gl\":true}"}
+Finding: in all three windows (also with glasslight off, which removes the shine layer) the app drew 833 to 961 frames in 20 s (about 42 to 48 per second).
+Read right after the windows (glasslight on again), the page listed exactly one running animation: wm-wx-cloud (the weather effect's drifting cloud, infinite);
+the other wm-wx-cloud was paused offscreen. That cloud is the likely source of these frames (not measured per frame); it does not depend on the glass light.
+In the D run itself no animation was listed as running after the window and the delta was 2 in 20 s.

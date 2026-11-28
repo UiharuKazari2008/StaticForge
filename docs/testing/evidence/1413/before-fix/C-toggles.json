@@ -1,0 +1,15 @@
+{
+ "off": {
+  "had": null,
+  "fx": false
+ },
+ "on": {
+  "had": "{\"glasslight\":false}",
+  "fx": true
+ },
+ "restored": {
+  "ls": null,
+  "fx": true
+ },
+ "lsOriginal": null
+}

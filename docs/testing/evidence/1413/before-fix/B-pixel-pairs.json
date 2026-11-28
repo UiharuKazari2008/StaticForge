@@ -1,0 +1,65 @@
+{
+ "plus9": {
+  "before": "app=today vis=visible scr=null sx=16.76px sk=- dr=0% drift=false tr=0% e=16.76 c=0 running=[]",
+  "afterOnShot": "app=today vis=visible scr=null sx=16.76px sk=- dr=0% drift=false tr=0% e=16.76 c=0 running=[]",
+  "whileOff": "app=today vis=visible scr=null sx=16.76px sk=- dr=0% drift=false tr=0% e=- c=- running=[]",
+  "afterOn": "app=today vis=visible scr=null sx=16.76px sk=- dr=0% drift=false tr=0% e=16.76 c=0 running=[]",
+  "sxAtOnShot": 16.76,
+  "toggles": [
+   {
+    "had": null,
+    "fx": false
+   },
+   {
+    "had": "{\"glasslight\":false}",
+    "fx": true
+   }
+  ],
+  "trace": [
+   {
+    "t": 1.83,
+    "sx": "16.76px",
+    "sk": ""
+   },
+   {
+    "t": 2.26,
+    "sx": "16.76px",
+    "sk": ""
+   }
+  ]
+ },
+ "minus9": {
+  "before": "app=today vis=visible scr=null sx=-16.76px sk=- dr=0% drift=false tr=0% e=-16.76 c=0 running=[]",
+  "afterOnShot": "app=today vis=visible scr=null sx=-16.76px sk=- dr=0% drift=false tr=0% e=-16.76 c=0 running=[]",
+  "whileOff": "app=today vis=visible scr=null sx=-16.76px sk=- dr=0% drift=false tr=0% e=- c=- running=[]",
+  "afterOn": "app=today vis=visible scr=null sx=-16.76px sk=- dr=0% drift=false tr=0% e=-16.76 c=0 running=[]",
+  "sxAtOnShot": -16.76,
+  "toggles": [
+   {
+    "had": "{\"glasslight\":true}",
+    "fx": false
+   },
+   {
+    "had": "{\"glasslight\":false}",
+    "fx": true
+   }
+  ],
+  "trace": [
+   {
+    "t": 1.81,
+    "sx": "-12.57px",
+    "sk": ""
+   },
+   {
+    "t": 2.28,
+    "sx": "-16.76px",
+    "sk": ""
+   },
+   {
+    "t": 2.66,
+    "sx": "-16.76px",
+    "sk": ""
+   }
+  ]
+ }
+}

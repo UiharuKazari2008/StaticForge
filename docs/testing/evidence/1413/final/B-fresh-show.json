@@ -1,0 +1,31 @@
+{
+ "ts": 1795825861312,
+ "vis": "visible",
+ "app": "today",
+ "scr": null,
+ "sx": "0.00px",
+ "sk": "0.0deg",
+ "dr": "0%",
+ "drift": false,
+ "tf": "matrix(1, 0, 0, 1, 0, 0)",
+ "tr": "0%",
+ "anims": [
+  "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+  "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+  "wm-ti-dg-in@wm-ti-dg-in:finished",
+  "wm-ti-dg-out@wm-ti-dg-out:finished"
+ ],
+ "running": [],
+ "sxN": 0,
+ "skN": 0,
+ "drN": 0,
+ "trN": 0,
+ "mat": {
+  "a": 1,
+  "b": 0,
+  "c": 0,
+  "d": 1,
+  "e": 0,
+  "f": 0
+ }
+}

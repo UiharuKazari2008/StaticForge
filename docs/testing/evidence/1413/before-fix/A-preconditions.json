@@ -1,0 +1,14 @@
+{
+ "ver": "6.5",
+ "app": "today",
+ "fx": "tilt breathe stagger overshoot catch exit gloss digits blur glasslight weather haptics startopen startfrost startlaunch startticks superbar",
+ "shine": true,
+ "rm": false,
+ "cssLen": 37164,
+ "cssIsDrift": false,
+ "jsLen": 83588,
+ "jsSk": false,
+ "jsShineDrift": false,
+ "loadedSheetIsDrift": false,
+ "updateAction": null
+}

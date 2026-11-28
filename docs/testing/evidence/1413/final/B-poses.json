@@ -1,0 +1,545 @@
+{
+ "0": {
+  "deg": 0,
+  "probe": {
+   "ts": 1795825807334,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "0.00px",
+   "sk": "0.0deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, 0, 1, 0, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-wx-cloud@wm-wx-cloud:running"
+   ],
+   "sxN": 0,
+   "skN": 0,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": 0,
+    "d": 1,
+    "e": 0,
+    "f": 0
+   }
+  },
+  "later": {
+   "ts": 1795825809126,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "0.00px",
+   "sk": "0.0deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, 0, 1, 0, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-wx-cloud@wm-wx-cloud:running"
+   ],
+   "sxN": 0,
+   "skN": 0,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": 0,
+    "d": 1,
+    "e": 0,
+    "f": 0
+   }
+  },
+  "trace": [
+   {
+    "t": 4.53,
+    "sx": "0.00px",
+    "sk": "0.0deg"
+   },
+   {
+    "t": 5.2,
+    "sx": "0.00px",
+    "sk": "0.0deg"
+   },
+   {
+    "t": 5.97,
+    "sx": "0.00px",
+    "sk": "0.0deg"
+   }
+  ]
+ },
+ "plus9": {
+  "deg": 9,
+  "probe": {
+   "ts": 1795825815312,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "8.38px",
+   "sk": "-1.0deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, -0.0174551, 1, 8.38, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-wx-cloud@wm-wx-cloud:running"
+   ],
+   "sxN": 8.38,
+   "skN": -1,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": -0.0174551,
+    "d": 1,
+    "e": 8.38,
+    "f": 0
+   }
+  },
+  "later": {
+   "ts": 1795825816739,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "8.38px",
+   "sk": "-1.0deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, -0.0174551, 1, 8.38, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-wx-cloud@wm-wx-cloud:running"
+   ],
+   "sxN": 8.38,
+   "skN": -1,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": -0.0174551,
+    "d": 1,
+    "e": 8.38,
+    "f": 0
+   }
+  },
+  "trace": [
+   {
+    "t": 4.29,
+    "sx": "8.38px",
+    "sk": "-1.0deg"
+   },
+   {
+    "t": 4.99,
+    "sx": "8.38px",
+    "sk": "-1.0deg"
+   },
+   {
+    "t": 5.61,
+    "sx": "8.38px",
+    "sk": "-1.0deg"
+   }
+  ]
+ },
+ "minus9": {
+  "deg": -9,
+  "probe": {
+   "ts": 1795825822884,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "-10.29px",
+   "sk": "1.2deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, 0.020947, 1, -10.29, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [],
+   "sxN": -10.29,
+   "skN": 1.2,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": 0.020947,
+    "d": 1,
+    "e": -10.29,
+    "f": 0
+   }
+  },
+  "later": {
+   "ts": 1795825824232,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "-10.29px",
+   "sk": "1.2deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, 0.020947, 1, -10.29, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [],
+   "sxN": -10.29,
+   "skN": 1.2,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": 0.020947,
+    "d": 1,
+    "e": -10.29,
+    "f": 0
+   }
+  },
+  "trace": [
+   {
+    "t": 4.31,
+    "sx": "-10.29px",
+    "sk": "1.2deg"
+   },
+   {
+    "t": 4.89,
+    "sx": "-10.29px",
+    "sk": "1.2deg"
+   },
+   {
+    "t": 5.5,
+    "sx": "-10.29px",
+    "sk": "1.2deg"
+   }
+  ]
+ },
+ "plus18": {
+  "deg": 18,
+  "probe": {
+   "ts": 1795825830534,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "16.00px",
+   "sk": "-2.0deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, -0.0349208, 1, 16, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [],
+   "sxN": 16,
+   "skN": -2,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": -0.0349208,
+    "d": 1,
+    "e": 16,
+    "f": 0
+   }
+  },
+  "later": {
+   "ts": 1795825831894,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "16.00px",
+   "sk": "-2.0deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, -0.0349208, 1, 16, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [],
+   "sxN": 16,
+   "skN": -2,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": -0.0349208,
+    "d": 1,
+    "e": 16,
+    "f": 0
+   }
+  },
+  "trace": [
+   {
+    "t": 4.31,
+    "sx": "16.00px",
+    "sk": "-2.0deg"
+   },
+   {
+    "t": 4.94,
+    "sx": "16.00px",
+    "sk": "-2.0deg"
+   },
+   {
+    "t": 5.62,
+    "sx": "16.00px",
+    "sk": "-2.0deg"
+   }
+  ]
+ },
+ "minus18": {
+  "deg": -18,
+  "probe": {
+   "ts": 1795825839874,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "-20.19px",
+   "sk": "2.4deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, 0.0419124, 1, -20.19, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [],
+   "sxN": -20.19,
+   "skN": 2.4,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": 0.0419124,
+    "d": 1,
+    "e": -20.19,
+    "f": 0
+   }
+  },
+  "later": {
+   "ts": 1795825841242,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "-20.19px",
+   "sk": "2.4deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, 0.0419124, 1, -20.19, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [],
+   "sxN": -20.19,
+   "skN": 2.4,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": 0.0419124,
+    "d": 1,
+    "e": -20.19,
+    "f": 0
+   }
+  },
+  "trace": [
+   {
+    "t": 4.3,
+    "sx": "-21.33px",
+    "sk": "2.6deg"
+   },
+   {
+    "t": 4.92,
+    "sx": "-21.33px",
+    "sk": "2.6deg"
+   },
+   {
+    "t": 5.63,
+    "sx": "-20.57px",
+    "sk": "2.5deg"
+   },
+   {
+    "t": 6.2,
+    "sx": "-20.19px",
+    "sk": "2.4deg"
+   },
+   {
+    "t": 6.8,
+    "sx": "-20.19px",
+    "sk": "2.4deg"
+   },
+   {
+    "t": 7.39,
+    "sx": "-20.19px",
+    "sk": "2.4deg"
+   }
+  ]
+ },
+ "0-back": {
+  "deg": 0,
+  "probe": {
+   "ts": 1795825847417,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "5.71px",
+   "sk": "-0.7deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, -0.0122179, 1, 5.71, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [],
+   "sxN": 5.71,
+   "skN": -0.7,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": -0.0122179,
+    "d": 1,
+    "e": 5.71,
+    "f": 0
+   }
+  },
+  "later": {
+   "ts": 1795825848724,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "5.71px",
+   "sk": "-0.7deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, -0.0122179, 1, 5.71, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-wx-cloud@wm-wx-cloud offscreen-paused:paused",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished",
+    "wm-ti-dg-in@wm-ti-dg-in:finished",
+    "wm-ti-dg-out@wm-ti-dg-out:finished"
+   ],
+   "running": [],
+   "sxN": 5.71,
+   "skN": -0.7,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": -0.0122179,
+    "d": 1,
+    "e": 5.71,
+    "f": 0
+   }
+  },
+  "trace": [
+   {
+    "t": 4.34,
+    "sx": "5.71px",
+    "sk": "-0.7deg"
+   },
+   {
+    "t": 5.02,
+    "sx": "5.71px",
+    "sk": "-0.7deg"
+   },
+   {
+    "t": 5.63,
+    "sx": "5.71px",
+    "sk": "-0.7deg"
+   }
+  ]
+ }
+}

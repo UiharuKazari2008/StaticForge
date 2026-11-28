@@ -1,0 +1,42 @@
+{
+ "restored": {
+  "ls": null,
+  "fx": true
+ },
+ "framesBefore": 10306,
+ "framesAfter": 10918,
+ "probe": {
+  "ts": 1795826060000,
+  "vis": "visible",
+  "app": "today",
+  "scr": null,
+  "sx": "8.76px",
+  "sk": "-1.0deg",
+  "dr": "1.2%",
+  "drift": true,
+  "tf": "matrix(1, 0, -0.0174551, 1, 8.76, 0)",
+  "tr": "1.2%",
+  "anims": [
+   "wm-wx-cloud@wm-wx-cloud:running",
+   "wm-wx-cloud@wm-wx-cloud:running",
+   "wm-ti-dg-in@wm-ti-dg-in:finished",
+   "wm-ti-dg-out@wm-ti-dg-out:finished"
+  ],
+  "running": [
+   "wm-wx-cloud@wm-wx-cloud:running",
+   "wm-wx-cloud@wm-wx-cloud:running"
+  ],
+  "sxN": 8.76,
+  "skN": -1,
+  "drN": 1.2,
+  "trN": 1.2,
+  "mat": {
+   "a": 1,
+   "b": 0,
+   "c": -0.0174551,
+   "d": 1,
+   "e": 8.76,
+   "f": 0
+  }
+ }
+}

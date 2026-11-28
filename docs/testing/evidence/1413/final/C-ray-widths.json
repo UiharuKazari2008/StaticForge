@@ -1,0 +1,65 @@
+[
+ {
+  "angle": 110,
+  "gradientLen": 655.13,
+  "stops": 15,
+  "width": 104.82,
+  "peakAlpha": 0.06,
+  "from": 124.5,
+  "to": 229.3
+ },
+ {
+  "angle": 109,
+  "gradientLen": 657.27,
+  "stops": 15,
+  "width": 32.86,
+  "peakAlpha": 0.1,
+  "from": 203.8,
+  "to": 236.6
+ },
+ {
+  "angle": 107,
+  "gradientLen": 660.94,
+  "stops": 15,
+  "width": 59.48,
+  "peakAlpha": 0.09,
+  "from": 274.3,
+  "to": 333.8
+ },
+ {
+  "angle": 105,
+  "gradientLen": 663.82,
+  "stops": 15,
+  "width": 25.23,
+  "peakAlpha": 0.11,
+  "from": 335.9,
+  "to": 361.1
+ },
+ {
+  "angle": 104,
+  "gradientLen": 664.95,
+  "stops": 15,
+  "width": 146.29,
+  "peakAlpha": 0.05,
+  "from": 339.1,
+  "to": 485.4
+ },
+ {
+  "angle": 103,
+  "gradientLen": 665.88,
+  "stops": 15,
+  "width": 46.61,
+  "peakAlpha": 0.086,
+  "from": 412.8,
+  "to": 459.5
+ },
+ {
+  "angle": 101,
+  "gradientLen": 667.13,
+  "stops": 15,
+  "width": 82.72,
+  "peakAlpha": 0.067,
+  "from": 479,
+  "to": 561.7
+ }
+]

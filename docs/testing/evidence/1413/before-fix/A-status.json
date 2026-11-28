@@ -1,0 +1,39 @@
+{
+ "ok": true,
+ "id": "aemu-a53-1",
+ "serial": "emulator-5560",
+ "shape": "a53",
+ "running": true,
+ "booted": true,
+ "uptimeSecs": 3067,
+ "androidSdk": "36",
+ "wmSize": "1080x2400",
+ "wmDensity": "420",
+ "hingeAngle": "KO: 'hinge-angle0' sensor is disabled.",
+ "rotation": "0",
+ "autoRotate": "1",
+ "screen": "Awake",
+ "doze": "ACTIVE",
+ "appPid": 7946,
+ "appVersionCode": 3632992,
+ "top": "jp.net.seventhreeseven.dreamscape/.MainActivity",
+ "externalDisplay": "",
+ "noAudio": true,
+ "shizukuRunning": true,
+ "shizukuPid": 3216,
+ "adb": {
+  "listening5555": true,
+  "note5555": "always listening on the emulator (not the phone's rule): use appPort",
+  "appPort": 5555,
+  "listeningAppPort": true,
+  "serviceAdbTcpPort": "5555",
+  "persistAdbTcpPort": "",
+  "adbEnabled": "1",
+  "adbWifiEnabled": "0",
+  "adbdUid": 2000
+ },
+ "deviceId": "32448570b3a6f8bd899ef46c3e5f93d0",
+ "displays": [
+  0
+ ]
+}

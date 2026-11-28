@@ -1,0 +1,8174 @@
+{
+ "actionDevice": "19:38:04.496",
+ "probes": [
+  {
+   "ts": 1795826285622,
+   "vis": "visible",
+   "app": "calculator",
+   "scr": null,
+   "sx": "0px",
+   "sk": "0deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "none",
+   "tr": "0%",
+   "anims": [],
+   "running": [],
+   "sxN": 0,
+   "skN": 0,
+   "drN": 0,
+   "trN": 0,
+   "label": "probe 1",
+   "atSec": 1.2
+  },
+  {
+   "ts": 1795826288931,
+   "vis": "visible",
+   "app": "calculator",
+   "scr": null,
+   "sx": "0px",
+   "sk": "0deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "none",
+   "tr": "0%",
+   "anims": [],
+   "running": [],
+   "sxN": 0,
+   "skN": 0,
+   "drN": 0,
+   "trN": 0,
+   "label": "probe +3",
+   "atSec": 4.5
+  },
+  {
+   "ts": 1795826294905,
+   "vis": "visible",
+   "app": "calculator",
+   "scr": null,
+   "sx": "0px",
+   "sk": "0deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "none",
+   "tr": "0%",
+   "anims": [],
+   "running": [],
+   "sxN": 0,
+   "skN": 0,
+   "drN": 0,
+   "trN": 0,
+   "label": "probe +9",
+   "atSec": 10.5
+  }
+ ],
+ "framesAt2": 20891,
+ "framesAt10": 20891,
+ "sensorsBefore": {
+  "fusion": {
+   "state": "disabled",
+   "clients": 0,
+   "text": "game fusion(no mag) disabled (0 clients)"
+  },
+  "regs": [
+   {
+    "t": "19:29:41",
+    "sod": 70181,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825781000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:51",
+    "sod": 70191,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825791000
+   },
+   {
+    "t": "19:29:51",
+    "sod": 70191,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825791000
+   },
+   {
+    "t": "19:29:52",
+    "sod": 70192,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825792000
+   },
+   {
+    "t": "19:29:54",
+    "sod": 70194,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825794000
+   },
+   {
+    "t": "19:29:55",
+    "sod": 70195,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825795000
+   },
+   {
+    "t": "19:29:55",
+    "sod": 70195,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825795000
+   },
+   {
+    "t": "19:29:55",
+    "sod": 70195,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825795000
+   },
+   {
+    "t": "19:29:55",
+    "sod": 70195,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825795000
+   },
+   {
+    "t": "19:29:59",
+    "sod": 70199,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825799000
+   },
+   {
+    "t": "19:29:59",
+    "sod": 70199,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825799000
+   },
+   {
+    "t": "19:30:01",
+    "sod": 70201,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825801000
+   },
+   {
+    "t": "19:30:01",
+    "sod": 70201,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825801000
+   },
+   {
+    "t": "19:30:04",
+    "sod": 70204,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825804000
+   },
+   {
+    "t": "19:30:04",
+    "sod": 70204,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825804000
+   },
+   {
+    "t": "19:30:04",
+    "sod": 70204,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825804000
+   },
+   {
+    "t": "19:30:04",
+    "sod": 70204,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825804000
+   },
+   {
+    "t": "19:30:05",
+    "sod": 70205,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825805000
+   },
+   {
+    "t": "19:30:05",
+    "sod": 70205,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825805000
+   },
+   {
+    "t": "19:30:06",
+    "sod": 70206,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825806000
+   },
+   {
+    "t": "19:30:06",
+    "sod": 70206,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825806000
+   },
+   {
+    "t": "19:30:07",
+    "sod": 70207,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825807000
+   },
+   {
+    "t": "19:30:07",
+    "sod": 70207,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825807000
+   },
+   {
+    "t": "19:30:09",
+    "sod": 70209,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825809000
+   },
+   {
+    "t": "19:30:09",
+    "sod": 70209,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825809000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:13",
+    "sod": 70213,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825813000
+   },
+   {
+    "t": "19:30:13",
+    "sod": 70213,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825813000
+   },
+   {
+    "t": "19:30:14",
+    "sod": 70214,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825814000
+   },
+   {
+    "t": "19:30:14",
+    "sod": 70214,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825814000
+   },
+   {
+    "t": "19:30:14",
+    "sod": 70214,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825814000
+   },
+   {
+    "t": "19:30:14",
+    "sod": 70214,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825814000
+   },
+   {
+    "t": "19:30:15",
+    "sod": 70215,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825815000
+   },
+   {
+    "t": "19:30:15",
+    "sod": 70215,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825815000
+   },
+   {
+    "t": "19:30:16",
+    "sod": 70216,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825816000
+   },
+   {
+    "t": "19:30:16",
+    "sod": 70216,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825816000
+   },
+   {
+    "t": "19:30:21",
+    "sod": 70221,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825821000
+   },
+   {
+    "t": "19:30:21",
+    "sod": 70221,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825821000
+   },
+   {
+    "t": "19:30:22",
+    "sod": 70222,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825822000
+   },
+   {
+    "t": "19:30:22",
+    "sod": 70222,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825822000
+   },
+   {
+    "t": "19:30:22",
+    "sod": 70222,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825822000
+   },
+   {
+    "t": "19:30:22",
+    "sod": 70222,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825822000
+   },
+   {
+    "t": "19:30:24",
+    "sod": 70224,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825824000
+   },
+   {
+    "t": "19:30:24",
+    "sod": 70224,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825824000
+   },
+   {
+    "t": "19:30:29",
+    "sod": 70229,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825829000
+   },
+   {
+    "t": "19:30:29",
+    "sod": 70229,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825829000
+   },
+   {
+    "t": "19:30:29",
+    "sod": 70229,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825829000
+   },
+   {
+    "t": "19:30:29",
+    "sod": 70229,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825829000
+   },
+   {
+    "t": "19:30:30",
+    "sod": 70230,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825830000
+   },
+   {
+    "t": "19:30:30",
+    "sod": 70230,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825830000
+   },
+   {
+    "t": "19:30:31",
+    "sod": 70231,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825831000
+   },
+   {
+    "t": "19:30:31",
+    "sod": 70231,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825831000
+   },
+   {
+    "t": "19:30:36",
+    "sod": 70236,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825836000
+   },
+   {
+    "t": "19:30:36",
+    "sod": 70236,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825836000
+   },
+   {
+    "t": "19:30:37",
+    "sod": 70237,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825837000
+   },
+   {
+    "t": "19:30:37",
+    "sod": 70237,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825837000
+   },
+   {
+    "t": "19:30:38",
+    "sod": 70238,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825838000
+   },
+   {
+    "t": "19:30:38",
+    "sod": 70238,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825838000
+   },
+   {
+    "t": "19:30:38",
+    "sod": 70238,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825838000
+   },
+   {
+    "t": "19:30:38",
+    "sod": 70238,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825838000
+   },
+   {
+    "t": "19:30:39",
+    "sod": 70239,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825839000
+   },
+   {
+    "t": "19:30:39",
+    "sod": 70239,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825839000
+   },
+   {
+    "t": "19:30:39",
+    "sod": 70239,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825839000
+   },
+   {
+    "t": "19:30:39",
+    "sod": 70239,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825839000
+   },
+   {
+    "t": "19:30:41",
+    "sod": 70241,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825841000
+   },
+   {
+    "t": "19:30:41",
+    "sod": 70241,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825841000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:46",
+    "sod": 70246,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825846000
+   },
+   {
+    "t": "19:30:46",
+    "sod": 70246,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825846000
+   },
+   {
+    "t": "19:30:46",
+    "sod": 70246,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825846000
+   },
+   {
+    "t": "19:30:46",
+    "sod": 70246,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825846000
+   },
+   {
+    "t": "19:30:47",
+    "sod": 70247,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825847000
+   },
+   {
+    "t": "19:30:47",
+    "sod": 70247,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825847000
+   },
+   {
+    "t": "19:30:48",
+    "sod": 70248,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825848000
+   },
+   {
+    "t": "19:30:48",
+    "sod": 70248,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825848000
+   },
+   {
+    "t": "19:30:49",
+    "sod": 70249,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825849000
+   },
+   {
+    "t": "19:30:49",
+    "sod": 70249,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825849000
+   },
+   {
+    "t": "19:30:49",
+    "sod": 70249,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825849000
+   },
+   {
+    "t": "19:30:51",
+    "sod": 70251,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825851000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:57",
+    "sod": 70257,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825857000
+   },
+   {
+    "t": "19:30:57",
+    "sod": 70257,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825857000
+   },
+   {
+    "t": "19:31:01",
+    "sod": 70261,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825861000
+   },
+   {
+    "t": "19:31:01",
+    "sod": 70261,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825861000
+   },
+   {
+    "t": "19:31:03",
+    "sod": 70263,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825863000
+   },
+   {
+    "t": "19:31:03",
+    "sod": 70263,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825863000
+   },
+   {
+    "t": "19:31:07",
+    "sod": 70267,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825867000
+   },
+   {
+    "t": "19:31:07",
+    "sod": 70267,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825867000
+   },
+   {
+    "t": "19:31:08",
+    "sod": 70268,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825868000
+   },
+   {
+    "t": "19:31:08",
+    "sod": 70268,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825868000
+   },
+   {
+    "t": "19:31:09",
+    "sod": 70269,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825869000
+   },
+   {
+    "t": "19:31:09",
+    "sod": 70269,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825869000
+   },
+   {
+    "t": "19:31:10",
+    "sod": 70270,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825870000
+   },
+   {
+    "t": "19:31:10",
+    "sod": 70270,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825870000
+   },
+   {
+    "t": "19:31:10",
+    "sod": 70270,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825870000
+   },
+   {
+    "t": "19:31:10",
+    "sod": 70270,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825870000
+   },
+   {
+    "t": "19:31:12",
+    "sod": 70272,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825872000
+   },
+   {
+    "t": "19:31:12",
+    "sod": 70272,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825872000
+   },
+   {
+    "t": "19:31:14",
+    "sod": 70274,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825874000
+   },
+   {
+    "t": "19:31:14",
+    "sod": 70274,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825874000
+   },
+   {
+    "t": "19:31:15",
+    "sod": 70275,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825875000
+   },
+   {
+    "t": "19:31:15",
+    "sod": 70275,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825875000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:19",
+    "sod": 70279,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825879000
+   },
+   {
+    "t": "19:31:19",
+    "sod": 70279,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825879000
+   },
+   {
+    "t": "19:31:20",
+    "sod": 70280,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825880000
+   },
+   {
+    "t": "19:31:20",
+    "sod": 70280,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825880000
+   },
+   {
+    "t": "19:31:21",
+    "sod": 70281,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825881000
+   },
+   {
+    "t": "19:31:21",
+    "sod": 70281,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825881000
+   },
+   {
+    "t": "19:31:22",
+    "sod": 70282,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825882000
+   },
+   {
+    "t": "19:31:22",
+    "sod": 70282,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825882000
+   },
+   {
+    "t": "19:31:22",
+    "sod": 70282,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825882000
+   },
+   {
+    "t": "19:31:22",
+    "sod": 70282,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825882000
+   },
+   {
+    "t": "19:31:24",
+    "sod": 70284,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825884000
+   },
+   {
+    "t": "19:31:24",
+    "sod": 70284,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825884000
+   },
+   {
+    "t": "19:31:25",
+    "sod": 70285,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825885000
+   },
+   {
+    "t": "19:31:25",
+    "sod": 70285,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825885000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:28",
+    "sod": 70288,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825888000
+   },
+   {
+    "t": "19:31:30",
+    "sod": 70290,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825890000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:36",
+    "sod": 70296,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825896000
+   },
+   {
+    "t": "19:31:36",
+    "sod": 70296,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825896000
+   },
+   {
+    "t": "19:31:41",
+    "sod": 70301,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825901000
+   },
+   {
+    "t": "19:31:41",
+    "sod": 70301,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825901000
+   },
+   {
+    "t": "19:31:41",
+    "sod": 70301,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825901000
+   },
+   {
+    "t": "19:31:41",
+    "sod": 70301,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825901000
+   },
+   {
+    "t": "19:31:41",
+    "sod": 70301,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825901000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:49",
+    "sod": 70309,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825909000
+   },
+   {
+    "t": "19:31:49",
+    "sod": 70309,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825909000
+   },
+   {
+    "t": "19:31:51",
+    "sod": 70311,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825911000
+   },
+   {
+    "t": "19:31:51",
+    "sod": 70311,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825911000
+   },
+   {
+    "t": "19:31:51",
+    "sod": 70311,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825911000
+   },
+   {
+    "t": "19:31:51",
+    "sod": 70311,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825911000
+   },
+   {
+    "t": "19:32:03",
+    "sod": 70323,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825923000
+   },
+   {
+    "t": "19:32:03",
+    "sod": 70323,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825923000
+   },
+   {
+    "t": "19:32:05",
+    "sod": 70325,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825925000
+   },
+   {
+    "t": "19:32:05",
+    "sod": 70325,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825925000
+   },
+   {
+    "t": "19:32:08",
+    "sod": 70328,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825928000
+   },
+   {
+    "t": "19:32:08",
+    "sod": 70328,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825928000
+   },
+   {
+    "t": "19:32:09",
+    "sod": 70329,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825929000
+   },
+   {
+    "t": "19:32:09",
+    "sod": 70329,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825929000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:18",
+    "sod": 70338,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825938000
+   },
+   {
+    "t": "19:32:18",
+    "sod": 70338,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825938000
+   },
+   {
+    "t": "19:32:23",
+    "sod": 70343,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825943000
+   },
+   {
+    "t": "19:32:23",
+    "sod": 70343,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825943000
+   },
+   {
+    "t": "19:32:48",
+    "sod": 70368,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825968000
+   },
+   {
+    "t": "19:32:48",
+    "sod": 70368,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825968000
+   },
+   {
+    "t": "19:32:53",
+    "sod": 70373,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825973000
+   },
+   {
+    "t": "19:33:00",
+    "sod": 70380,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825980000
+   },
+   {
+    "t": "19:33:01",
+    "sod": 70381,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825981000
+   },
+   {
+    "t": "19:34:00",
+    "sod": 70440,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826040000
+   },
+   {
+    "t": "19:34:01",
+    "sod": 70441,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826041000
+   },
+   {
+    "t": "19:34:31",
+    "sod": 70471,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826071000
+   },
+   {
+    "t": "19:34:34",
+    "sod": 70474,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826074000
+   },
+   {
+    "t": "19:34:34",
+    "sod": 70474,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826074000
+   },
+   {
+    "t": "19:34:37",
+    "sod": 70477,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826077000
+   },
+   {
+    "t": "19:34:39",
+    "sod": 70479,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826079000
+   },
+   {
+    "t": "19:34:44",
+    "sod": 70484,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826084000
+   },
+   {
+    "t": "19:34:44",
+    "sod": 70484,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826084000
+   },
+   {
+    "t": "19:34:49",
+    "sod": 70489,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826089000
+   },
+   {
+    "t": "19:34:49",
+    "sod": 70489,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826089000
+   },
+   {
+    "t": "19:34:50",
+    "sod": 70490,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826090000
+   },
+   {
+    "t": "19:35:00",
+    "sod": 70500,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826100000
+   },
+   {
+    "t": "19:35:01",
+    "sod": 70501,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826101000
+   },
+   {
+    "t": "19:35:01",
+    "sod": 70501,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826101000
+   },
+   {
+    "t": "19:35:01",
+    "sod": 70501,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826101000
+   },
+   {
+    "t": "19:35:01",
+    "sod": 70501,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826101000
+   },
+   {
+    "t": "19:35:03",
+    "sod": 70503,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826103000
+   },
+   {
+    "t": "19:35:03",
+    "sod": 70503,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826103000
+   },
+   {
+    "t": "19:35:05",
+    "sod": 70505,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826105000
+   },
+   {
+    "t": "19:35:07",
+    "sod": 70507,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826107000
+   },
+   {
+    "t": "19:35:12",
+    "sod": 70512,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826112000
+   },
+   {
+    "t": "19:35:12",
+    "sod": 70512,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826112000
+   },
+   {
+    "t": "19:35:12",
+    "sod": 70512,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826112000
+   },
+   {
+    "t": "19:35:12",
+    "sod": 70512,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826112000
+   },
+   {
+    "t": "19:35:47",
+    "sod": 70547,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826147000
+   },
+   {
+    "t": "19:36:00",
+    "sod": 70560,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826160000
+   },
+   {
+    "t": "19:36:01",
+    "sod": 70561,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826161000
+   },
+   {
+    "t": "19:37:05",
+    "sod": 70625,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826225000
+   },
+   {
+    "t": "19:37:05",
+    "sod": 70625,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826225000
+   },
+   {
+    "t": "19:37:05",
+    "sod": 70625,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826225000
+   },
+   {
+    "t": "19:37:10",
+    "sod": 70630,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826230000
+   },
+   {
+    "t": "19:37:10",
+    "sod": 70630,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826230000
+   },
+   {
+    "t": "19:37:12",
+    "sod": 70632,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826232000
+   },
+   {
+    "t": "19:37:12",
+    "sod": 70632,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826232000
+   },
+   {
+    "t": "19:37:13",
+    "sod": 70633,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826233000
+   },
+   {
+    "t": "19:37:13",
+    "sod": 70633,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826233000
+   },
+   {
+    "t": "19:37:13",
+    "sod": 70633,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826233000
+   },
+   {
+    "t": "19:37:13",
+    "sod": 70633,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826233000
+   },
+   {
+    "t": "19:37:13",
+    "sod": 70633,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826233000
+   },
+   {
+    "t": "19:37:15",
+    "sod": 70635,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826235000
+   },
+   {
+    "t": "19:37:20",
+    "sod": 70640,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826240000
+   },
+   {
+    "t": "19:37:20",
+    "sod": 70640,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826240000
+   },
+   {
+    "t": "19:37:55",
+    "sod": 70675,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826275000
+   },
+   {
+    "t": "19:38:00",
+    "sod": 70680,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826280000
+   },
+   {
+    "t": "19:38:01",
+    "sod": 70681,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826281000
+   }
+  ],
+  "dumpAt": 1795826284496.5
+ },
+ "sensorsMid": {
+  "fusion": {
+   "state": "disabled",
+   "clients": 0,
+   "text": "game fusion(no mag) disabled (0 clients)"
+  },
+  "regs": [
+   {
+    "t": "19:29:41",
+    "sod": 70181,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825781000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:43",
+    "sod": 70183,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825783000
+   },
+   {
+    "t": "19:29:51",
+    "sod": 70191,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825791000
+   },
+   {
+    "t": "19:29:51",
+    "sod": 70191,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825791000
+   },
+   {
+    "t": "19:29:52",
+    "sod": 70192,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825792000
+   },
+   {
+    "t": "19:29:54",
+    "sod": 70194,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825794000
+   },
+   {
+    "t": "19:29:55",
+    "sod": 70195,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825795000
+   },
+   {
+    "t": "19:29:55",
+    "sod": 70195,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825795000
+   },
+   {
+    "t": "19:29:55",
+    "sod": 70195,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825795000
+   },
+   {
+    "t": "19:29:55",
+    "sod": 70195,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825795000
+   },
+   {
+    "t": "19:29:59",
+    "sod": 70199,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825799000
+   },
+   {
+    "t": "19:29:59",
+    "sod": 70199,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825799000
+   },
+   {
+    "t": "19:30:01",
+    "sod": 70201,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825801000
+   },
+   {
+    "t": "19:30:01",
+    "sod": 70201,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825801000
+   },
+   {
+    "t": "19:30:04",
+    "sod": 70204,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825804000
+   },
+   {
+    "t": "19:30:04",
+    "sod": 70204,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825804000
+   },
+   {
+    "t": "19:30:04",
+    "sod": 70204,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825804000
+   },
+   {
+    "t": "19:30:04",
+    "sod": 70204,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825804000
+   },
+   {
+    "t": "19:30:05",
+    "sod": 70205,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825805000
+   },
+   {
+    "t": "19:30:05",
+    "sod": 70205,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825805000
+   },
+   {
+    "t": "19:30:06",
+    "sod": 70206,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825806000
+   },
+   {
+    "t": "19:30:06",
+    "sod": 70206,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825806000
+   },
+   {
+    "t": "19:30:07",
+    "sod": 70207,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825807000
+   },
+   {
+    "t": "19:30:07",
+    "sod": 70207,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825807000
+   },
+   {
+    "t": "19:30:09",
+    "sod": 70209,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825809000
+   },
+   {
+    "t": "19:30:09",
+    "sod": 70209,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825809000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:12",
+    "sod": 70212,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825812000
+   },
+   {
+    "t": "19:30:13",
+    "sod": 70213,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825813000
+   },
+   {
+    "t": "19:30:13",
+    "sod": 70213,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825813000
+   },
+   {
+    "t": "19:30:14",
+    "sod": 70214,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825814000
+   },
+   {
+    "t": "19:30:14",
+    "sod": 70214,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825814000
+   },
+   {
+    "t": "19:30:14",
+    "sod": 70214,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825814000
+   },
+   {
+    "t": "19:30:14",
+    "sod": 70214,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825814000
+   },
+   {
+    "t": "19:30:15",
+    "sod": 70215,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825815000
+   },
+   {
+    "t": "19:30:15",
+    "sod": 70215,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825815000
+   },
+   {
+    "t": "19:30:16",
+    "sod": 70216,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825816000
+   },
+   {
+    "t": "19:30:16",
+    "sod": 70216,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825816000
+   },
+   {
+    "t": "19:30:21",
+    "sod": 70221,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825821000
+   },
+   {
+    "t": "19:30:21",
+    "sod": 70221,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825821000
+   },
+   {
+    "t": "19:30:22",
+    "sod": 70222,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825822000
+   },
+   {
+    "t": "19:30:22",
+    "sod": 70222,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825822000
+   },
+   {
+    "t": "19:30:22",
+    "sod": 70222,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825822000
+   },
+   {
+    "t": "19:30:22",
+    "sod": 70222,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825822000
+   },
+   {
+    "t": "19:30:24",
+    "sod": 70224,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825824000
+   },
+   {
+    "t": "19:30:24",
+    "sod": 70224,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825824000
+   },
+   {
+    "t": "19:30:29",
+    "sod": 70229,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825829000
+   },
+   {
+    "t": "19:30:29",
+    "sod": 70229,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825829000
+   },
+   {
+    "t": "19:30:29",
+    "sod": 70229,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825829000
+   },
+   {
+    "t": "19:30:29",
+    "sod": 70229,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825829000
+   },
+   {
+    "t": "19:30:30",
+    "sod": 70230,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825830000
+   },
+   {
+    "t": "19:30:30",
+    "sod": 70230,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825830000
+   },
+   {
+    "t": "19:30:31",
+    "sod": 70231,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825831000
+   },
+   {
+    "t": "19:30:31",
+    "sod": 70231,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825831000
+   },
+   {
+    "t": "19:30:36",
+    "sod": 70236,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825836000
+   },
+   {
+    "t": "19:30:36",
+    "sod": 70236,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825836000
+   },
+   {
+    "t": "19:30:37",
+    "sod": 70237,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825837000
+   },
+   {
+    "t": "19:30:37",
+    "sod": 70237,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825837000
+   },
+   {
+    "t": "19:30:38",
+    "sod": 70238,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825838000
+   },
+   {
+    "t": "19:30:38",
+    "sod": 70238,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825838000
+   },
+   {
+    "t": "19:30:38",
+    "sod": 70238,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825838000
+   },
+   {
+    "t": "19:30:38",
+    "sod": 70238,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825838000
+   },
+   {
+    "t": "19:30:39",
+    "sod": 70239,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825839000
+   },
+   {
+    "t": "19:30:39",
+    "sod": 70239,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825839000
+   },
+   {
+    "t": "19:30:39",
+    "sod": 70239,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825839000
+   },
+   {
+    "t": "19:30:39",
+    "sod": 70239,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825839000
+   },
+   {
+    "t": "19:30:41",
+    "sod": 70241,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825841000
+   },
+   {
+    "t": "19:30:41",
+    "sod": 70241,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825841000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:44",
+    "sod": 70244,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825844000
+   },
+   {
+    "t": "19:30:46",
+    "sod": 70246,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825846000
+   },
+   {
+    "t": "19:30:46",
+    "sod": 70246,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825846000
+   },
+   {
+    "t": "19:30:46",
+    "sod": 70246,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825846000
+   },
+   {
+    "t": "19:30:46",
+    "sod": 70246,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825846000
+   },
+   {
+    "t": "19:30:47",
+    "sod": 70247,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825847000
+   },
+   {
+    "t": "19:30:47",
+    "sod": 70247,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825847000
+   },
+   {
+    "t": "19:30:48",
+    "sod": 70248,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825848000
+   },
+   {
+    "t": "19:30:48",
+    "sod": 70248,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825848000
+   },
+   {
+    "t": "19:30:49",
+    "sod": 70249,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825849000
+   },
+   {
+    "t": "19:30:49",
+    "sod": 70249,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825849000
+   },
+   {
+    "t": "19:30:49",
+    "sod": 70249,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825849000
+   },
+   {
+    "t": "19:30:51",
+    "sod": 70251,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825851000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:52",
+    "sod": 70252,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825852000
+   },
+   {
+    "t": "19:30:57",
+    "sod": 70257,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825857000
+   },
+   {
+    "t": "19:30:57",
+    "sod": 70257,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825857000
+   },
+   {
+    "t": "19:31:01",
+    "sod": 70261,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825861000
+   },
+   {
+    "t": "19:31:01",
+    "sod": 70261,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825861000
+   },
+   {
+    "t": "19:31:03",
+    "sod": 70263,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825863000
+   },
+   {
+    "t": "19:31:03",
+    "sod": 70263,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825863000
+   },
+   {
+    "t": "19:31:07",
+    "sod": 70267,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825867000
+   },
+   {
+    "t": "19:31:07",
+    "sod": 70267,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825867000
+   },
+   {
+    "t": "19:31:08",
+    "sod": 70268,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825868000
+   },
+   {
+    "t": "19:31:08",
+    "sod": 70268,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825868000
+   },
+   {
+    "t": "19:31:09",
+    "sod": 70269,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825869000
+   },
+   {
+    "t": "19:31:09",
+    "sod": 70269,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825869000
+   },
+   {
+    "t": "19:31:10",
+    "sod": 70270,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825870000
+   },
+   {
+    "t": "19:31:10",
+    "sod": 70270,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825870000
+   },
+   {
+    "t": "19:31:10",
+    "sod": 70270,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825870000
+   },
+   {
+    "t": "19:31:10",
+    "sod": 70270,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825870000
+   },
+   {
+    "t": "19:31:12",
+    "sod": 70272,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825872000
+   },
+   {
+    "t": "19:31:12",
+    "sod": 70272,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825872000
+   },
+   {
+    "t": "19:31:14",
+    "sod": 70274,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825874000
+   },
+   {
+    "t": "19:31:14",
+    "sod": 70274,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825874000
+   },
+   {
+    "t": "19:31:15",
+    "sod": 70275,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825875000
+   },
+   {
+    "t": "19:31:15",
+    "sod": 70275,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825875000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:16",
+    "sod": 70276,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825876000
+   },
+   {
+    "t": "19:31:19",
+    "sod": 70279,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825879000
+   },
+   {
+    "t": "19:31:19",
+    "sod": 70279,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825879000
+   },
+   {
+    "t": "19:31:20",
+    "sod": 70280,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825880000
+   },
+   {
+    "t": "19:31:20",
+    "sod": 70280,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825880000
+   },
+   {
+    "t": "19:31:21",
+    "sod": 70281,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825881000
+   },
+   {
+    "t": "19:31:21",
+    "sod": 70281,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825881000
+   },
+   {
+    "t": "19:31:22",
+    "sod": 70282,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825882000
+   },
+   {
+    "t": "19:31:22",
+    "sod": 70282,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825882000
+   },
+   {
+    "t": "19:31:22",
+    "sod": 70282,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825882000
+   },
+   {
+    "t": "19:31:22",
+    "sod": 70282,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825882000
+   },
+   {
+    "t": "19:31:24",
+    "sod": 70284,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825884000
+   },
+   {
+    "t": "19:31:24",
+    "sod": 70284,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825884000
+   },
+   {
+    "t": "19:31:25",
+    "sod": 70285,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825885000
+   },
+   {
+    "t": "19:31:25",
+    "sod": 70285,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825885000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:27",
+    "sod": 70287,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825887000
+   },
+   {
+    "t": "19:31:28",
+    "sod": 70288,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825888000
+   },
+   {
+    "t": "19:31:30",
+    "sod": 70290,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825890000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:31",
+    "sod": 70291,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825891000
+   },
+   {
+    "t": "19:31:36",
+    "sod": 70296,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825896000
+   },
+   {
+    "t": "19:31:36",
+    "sod": 70296,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825896000
+   },
+   {
+    "t": "19:31:41",
+    "sod": 70301,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825901000
+   },
+   {
+    "t": "19:31:41",
+    "sod": 70301,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825901000
+   },
+   {
+    "t": "19:31:41",
+    "sod": 70301,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825901000
+   },
+   {
+    "t": "19:31:41",
+    "sod": 70301,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825901000
+   },
+   {
+    "t": "19:31:41",
+    "sod": 70301,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825901000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:44",
+    "sod": 70304,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825904000
+   },
+   {
+    "t": "19:31:49",
+    "sod": 70309,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825909000
+   },
+   {
+    "t": "19:31:49",
+    "sod": 70309,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825909000
+   },
+   {
+    "t": "19:31:51",
+    "sod": 70311,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825911000
+   },
+   {
+    "t": "19:31:51",
+    "sod": 70311,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825911000
+   },
+   {
+    "t": "19:31:51",
+    "sod": 70311,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825911000
+   },
+   {
+    "t": "19:31:51",
+    "sod": 70311,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825911000
+   },
+   {
+    "t": "19:32:03",
+    "sod": 70323,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825923000
+   },
+   {
+    "t": "19:32:03",
+    "sod": 70323,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825923000
+   },
+   {
+    "t": "19:32:05",
+    "sod": 70325,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825925000
+   },
+   {
+    "t": "19:32:05",
+    "sod": 70325,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825925000
+   },
+   {
+    "t": "19:32:08",
+    "sod": 70328,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825928000
+   },
+   {
+    "t": "19:32:08",
+    "sod": 70328,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825928000
+   },
+   {
+    "t": "19:32:09",
+    "sod": 70329,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825929000
+   },
+   {
+    "t": "19:32:09",
+    "sod": 70329,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825929000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:10",
+    "sod": 70330,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825930000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:13",
+    "sod": 70333,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825933000
+   },
+   {
+    "t": "19:32:18",
+    "sod": 70338,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825938000
+   },
+   {
+    "t": "19:32:18",
+    "sod": 70338,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825938000
+   },
+   {
+    "t": "19:32:23",
+    "sod": 70343,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825943000
+   },
+   {
+    "t": "19:32:23",
+    "sod": 70343,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825943000
+   },
+   {
+    "t": "19:32:48",
+    "sod": 70368,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825968000
+   },
+   {
+    "t": "19:32:48",
+    "sod": 70368,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825968000
+   },
+   {
+    "t": "19:32:53",
+    "sod": 70373,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825973000
+   },
+   {
+    "t": "19:33:00",
+    "sod": 70380,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825980000
+   },
+   {
+    "t": "19:33:01",
+    "sod": 70381,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795825981000
+   },
+   {
+    "t": "19:34:00",
+    "sod": 70440,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826040000
+   },
+   {
+    "t": "19:34:01",
+    "sod": 70441,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826041000
+   },
+   {
+    "t": "19:34:31",
+    "sod": 70471,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826071000
+   },
+   {
+    "t": "19:34:34",
+    "sod": 70474,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826074000
+   },
+   {
+    "t": "19:34:34",
+    "sod": 70474,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826074000
+   },
+   {
+    "t": "19:34:37",
+    "sod": 70477,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826077000
+   },
+   {
+    "t": "19:34:39",
+    "sod": 70479,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826079000
+   },
+   {
+    "t": "19:34:44",
+    "sod": 70484,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826084000
+   },
+   {
+    "t": "19:34:44",
+    "sod": 70484,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826084000
+   },
+   {
+    "t": "19:34:49",
+    "sod": 70489,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826089000
+   },
+   {
+    "t": "19:34:49",
+    "sod": 70489,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826089000
+   },
+   {
+    "t": "19:34:50",
+    "sod": 70490,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826090000
+   },
+   {
+    "t": "19:35:00",
+    "sod": 70500,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826100000
+   },
+   {
+    "t": "19:35:01",
+    "sod": 70501,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826101000
+   },
+   {
+    "t": "19:35:01",
+    "sod": 70501,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826101000
+   },
+   {
+    "t": "19:35:01",
+    "sod": 70501,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826101000
+   },
+   {
+    "t": "19:35:01",
+    "sod": 70501,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826101000
+   },
+   {
+    "t": "19:35:03",
+    "sod": 70503,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826103000
+   },
+   {
+    "t": "19:35:03",
+    "sod": 70503,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826103000
+   },
+   {
+    "t": "19:35:05",
+    "sod": 70505,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826105000
+   },
+   {
+    "t": "19:35:07",
+    "sod": 70507,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826107000
+   },
+   {
+    "t": "19:35:12",
+    "sod": 70512,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826112000
+   },
+   {
+    "t": "19:35:12",
+    "sod": 70512,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826112000
+   },
+   {
+    "t": "19:35:12",
+    "sod": 70512,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826112000
+   },
+   {
+    "t": "19:35:12",
+    "sod": 70512,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826112000
+   },
+   {
+    "t": "19:35:47",
+    "sod": 70547,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826147000
+   },
+   {
+    "t": "19:36:00",
+    "sod": 70560,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826160000
+   },
+   {
+    "t": "19:36:01",
+    "sod": 70561,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826161000
+   },
+   {
+    "t": "19:37:05",
+    "sod": 70625,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826225000
+   },
+   {
+    "t": "19:37:05",
+    "sod": 70625,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826225000
+   },
+   {
+    "t": "19:37:05",
+    "sod": 70625,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826225000
+   },
+   {
+    "t": "19:37:10",
+    "sod": 70630,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826230000
+   },
+   {
+    "t": "19:37:10",
+    "sod": 70630,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826230000
+   },
+   {
+    "t": "19:37:12",
+    "sod": 70632,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826232000
+   },
+   {
+    "t": "19:37:12",
+    "sod": 70632,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826232000
+   },
+   {
+    "t": "19:37:13",
+    "sod": 70633,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826233000
+   },
+   {
+    "t": "19:37:13",
+    "sod": 70633,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826233000
+   },
+   {
+    "t": "19:37:13",
+    "sod": 70633,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826233000
+   },
+   {
+    "t": "19:37:13",
+    "sod": 70633,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826233000
+   },
+   {
+    "t": "19:37:13",
+    "sod": 70633,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826233000
+   },
+   {
+    "t": "19:37:15",
+    "sod": 70635,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826235000
+   },
+   {
+    "t": "19:37:20",
+    "sod": 70640,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826240000
+   },
+   {
+    "t": "19:37:20",
+    "sod": 70640,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826240000
+   },
+   {
+    "t": "19:37:55",
+    "sod": 70675,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826275000
+   },
+   {
+    "t": "19:38:00",
+    "sod": 70680,
+    "sign": "+",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826280000
+   },
+   {
+    "t": "19:38:01",
+    "sod": 70681,
+    "sign": "-",
+    "pid": 1550,
+    "sensor": "Game Rotation Vector Sensor",
+    "devMs": 1795826281000
+   }
+  ],
+  "dumpAt": 1795826295162.5
+ },
+ "extra": null,
+ "back": {
+  "probe": {
+   "ts": 1795826296669,
+   "vis": "visible",
+   "app": "today",
+   "scr": null,
+   "sx": "0.00px",
+   "sk": "0.0deg",
+   "dr": "0%",
+   "drift": false,
+   "tf": "matrix(1, 0, 0, 1, 0, 0)",
+   "tr": "0%",
+   "anims": [
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "undefined@wm-ti-band:running"
+   ],
+   "running": [
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "wm-wx-cloud@wm-wx-cloud:running",
+    "undefined@wm-ti-band:running"
+   ],
+   "sxN": 0,
+   "skN": 0,
+   "drN": 0,
+   "trN": 0,
+   "mat": {
+    "a": 1,
+    "b": 0,
+    "c": 0,
+    "d": 1,
+    "e": 0,
+    "f": 0
+   }
+  },
+  "sensors": {
+   "fusion": {
+    "state": "enabled",
+    "clients": 1,
+    "text": "game fusion(no mag) enabled (1 clients)"
+   },
+   "regs": [
+    {
+     "t": "19:29:41",
+     "sod": 70181,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825781000
+    },
+    {
+     "t": "19:29:43",
+     "sod": 70183,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825783000
+    },
+    {
+     "t": "19:29:43",
+     "sod": 70183,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825783000
+    },
+    {
+     "t": "19:29:43",
+     "sod": 70183,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825783000
+    },
+    {
+     "t": "19:29:43",
+     "sod": 70183,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825783000
+    },
+    {
+     "t": "19:29:43",
+     "sod": 70183,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825783000
+    },
+    {
+     "t": "19:29:43",
+     "sod": 70183,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825783000
+    },
+    {
+     "t": "19:29:51",
+     "sod": 70191,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825791000
+    },
+    {
+     "t": "19:29:51",
+     "sod": 70191,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825791000
+    },
+    {
+     "t": "19:29:52",
+     "sod": 70192,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825792000
+    },
+    {
+     "t": "19:29:54",
+     "sod": 70194,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825794000
+    },
+    {
+     "t": "19:29:55",
+     "sod": 70195,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825795000
+    },
+    {
+     "t": "19:29:55",
+     "sod": 70195,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825795000
+    },
+    {
+     "t": "19:29:55",
+     "sod": 70195,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825795000
+    },
+    {
+     "t": "19:29:55",
+     "sod": 70195,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825795000
+    },
+    {
+     "t": "19:29:59",
+     "sod": 70199,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825799000
+    },
+    {
+     "t": "19:29:59",
+     "sod": 70199,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825799000
+    },
+    {
+     "t": "19:30:01",
+     "sod": 70201,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825801000
+    },
+    {
+     "t": "19:30:01",
+     "sod": 70201,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825801000
+    },
+    {
+     "t": "19:30:04",
+     "sod": 70204,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825804000
+    },
+    {
+     "t": "19:30:04",
+     "sod": 70204,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825804000
+    },
+    {
+     "t": "19:30:04",
+     "sod": 70204,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825804000
+    },
+    {
+     "t": "19:30:04",
+     "sod": 70204,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825804000
+    },
+    {
+     "t": "19:30:05",
+     "sod": 70205,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825805000
+    },
+    {
+     "t": "19:30:05",
+     "sod": 70205,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825805000
+    },
+    {
+     "t": "19:30:06",
+     "sod": 70206,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825806000
+    },
+    {
+     "t": "19:30:06",
+     "sod": 70206,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825806000
+    },
+    {
+     "t": "19:30:07",
+     "sod": 70207,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825807000
+    },
+    {
+     "t": "19:30:07",
+     "sod": 70207,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825807000
+    },
+    {
+     "t": "19:30:09",
+     "sod": 70209,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825809000
+    },
+    {
+     "t": "19:30:09",
+     "sod": 70209,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825809000
+    },
+    {
+     "t": "19:30:12",
+     "sod": 70212,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825812000
+    },
+    {
+     "t": "19:30:12",
+     "sod": 70212,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825812000
+    },
+    {
+     "t": "19:30:12",
+     "sod": 70212,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825812000
+    },
+    {
+     "t": "19:30:12",
+     "sod": 70212,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825812000
+    },
+    {
+     "t": "19:30:12",
+     "sod": 70212,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825812000
+    },
+    {
+     "t": "19:30:12",
+     "sod": 70212,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825812000
+    },
+    {
+     "t": "19:30:13",
+     "sod": 70213,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825813000
+    },
+    {
+     "t": "19:30:13",
+     "sod": 70213,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825813000
+    },
+    {
+     "t": "19:30:14",
+     "sod": 70214,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825814000
+    },
+    {
+     "t": "19:30:14",
+     "sod": 70214,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825814000
+    },
+    {
+     "t": "19:30:14",
+     "sod": 70214,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825814000
+    },
+    {
+     "t": "19:30:14",
+     "sod": 70214,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825814000
+    },
+    {
+     "t": "19:30:15",
+     "sod": 70215,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825815000
+    },
+    {
+     "t": "19:30:15",
+     "sod": 70215,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825815000
+    },
+    {
+     "t": "19:30:16",
+     "sod": 70216,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825816000
+    },
+    {
+     "t": "19:30:16",
+     "sod": 70216,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825816000
+    },
+    {
+     "t": "19:30:21",
+     "sod": 70221,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825821000
+    },
+    {
+     "t": "19:30:21",
+     "sod": 70221,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825821000
+    },
+    {
+     "t": "19:30:22",
+     "sod": 70222,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825822000
+    },
+    {
+     "t": "19:30:22",
+     "sod": 70222,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825822000
+    },
+    {
+     "t": "19:30:22",
+     "sod": 70222,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825822000
+    },
+    {
+     "t": "19:30:22",
+     "sod": 70222,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825822000
+    },
+    {
+     "t": "19:30:24",
+     "sod": 70224,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825824000
+    },
+    {
+     "t": "19:30:24",
+     "sod": 70224,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825824000
+    },
+    {
+     "t": "19:30:29",
+     "sod": 70229,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825829000
+    },
+    {
+     "t": "19:30:29",
+     "sod": 70229,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825829000
+    },
+    {
+     "t": "19:30:29",
+     "sod": 70229,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825829000
+    },
+    {
+     "t": "19:30:29",
+     "sod": 70229,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825829000
+    },
+    {
+     "t": "19:30:30",
+     "sod": 70230,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825830000
+    },
+    {
+     "t": "19:30:30",
+     "sod": 70230,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825830000
+    },
+    {
+     "t": "19:30:31",
+     "sod": 70231,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825831000
+    },
+    {
+     "t": "19:30:31",
+     "sod": 70231,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825831000
+    },
+    {
+     "t": "19:30:36",
+     "sod": 70236,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825836000
+    },
+    {
+     "t": "19:30:36",
+     "sod": 70236,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825836000
+    },
+    {
+     "t": "19:30:37",
+     "sod": 70237,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825837000
+    },
+    {
+     "t": "19:30:37",
+     "sod": 70237,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825837000
+    },
+    {
+     "t": "19:30:38",
+     "sod": 70238,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825838000
+    },
+    {
+     "t": "19:30:38",
+     "sod": 70238,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825838000
+    },
+    {
+     "t": "19:30:38",
+     "sod": 70238,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825838000
+    },
+    {
+     "t": "19:30:38",
+     "sod": 70238,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825838000
+    },
+    {
+     "t": "19:30:39",
+     "sod": 70239,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825839000
+    },
+    {
+     "t": "19:30:39",
+     "sod": 70239,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825839000
+    },
+    {
+     "t": "19:30:39",
+     "sod": 70239,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825839000
+    },
+    {
+     "t": "19:30:39",
+     "sod": 70239,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825839000
+    },
+    {
+     "t": "19:30:41",
+     "sod": 70241,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825841000
+    },
+    {
+     "t": "19:30:41",
+     "sod": 70241,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825841000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:44",
+     "sod": 70244,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825844000
+    },
+    {
+     "t": "19:30:46",
+     "sod": 70246,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825846000
+    },
+    {
+     "t": "19:30:46",
+     "sod": 70246,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825846000
+    },
+    {
+     "t": "19:30:46",
+     "sod": 70246,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825846000
+    },
+    {
+     "t": "19:30:46",
+     "sod": 70246,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825846000
+    },
+    {
+     "t": "19:30:47",
+     "sod": 70247,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825847000
+    },
+    {
+     "t": "19:30:47",
+     "sod": 70247,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825847000
+    },
+    {
+     "t": "19:30:48",
+     "sod": 70248,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825848000
+    },
+    {
+     "t": "19:30:48",
+     "sod": 70248,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825848000
+    },
+    {
+     "t": "19:30:49",
+     "sod": 70249,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825849000
+    },
+    {
+     "t": "19:30:49",
+     "sod": 70249,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825849000
+    },
+    {
+     "t": "19:30:49",
+     "sod": 70249,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825849000
+    },
+    {
+     "t": "19:30:51",
+     "sod": 70251,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825851000
+    },
+    {
+     "t": "19:30:52",
+     "sod": 70252,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825852000
+    },
+    {
+     "t": "19:30:52",
+     "sod": 70252,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825852000
+    },
+    {
+     "t": "19:30:52",
+     "sod": 70252,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825852000
+    },
+    {
+     "t": "19:30:52",
+     "sod": 70252,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825852000
+    },
+    {
+     "t": "19:30:52",
+     "sod": 70252,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825852000
+    },
+    {
+     "t": "19:30:52",
+     "sod": 70252,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825852000
+    },
+    {
+     "t": "19:30:52",
+     "sod": 70252,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825852000
+    },
+    {
+     "t": "19:30:52",
+     "sod": 70252,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825852000
+    },
+    {
+     "t": "19:30:52",
+     "sod": 70252,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825852000
+    },
+    {
+     "t": "19:30:52",
+     "sod": 70252,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825852000
+    },
+    {
+     "t": "19:30:57",
+     "sod": 70257,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825857000
+    },
+    {
+     "t": "19:30:57",
+     "sod": 70257,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825857000
+    },
+    {
+     "t": "19:31:01",
+     "sod": 70261,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825861000
+    },
+    {
+     "t": "19:31:01",
+     "sod": 70261,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825861000
+    },
+    {
+     "t": "19:31:03",
+     "sod": 70263,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825863000
+    },
+    {
+     "t": "19:31:03",
+     "sod": 70263,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825863000
+    },
+    {
+     "t": "19:31:07",
+     "sod": 70267,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825867000
+    },
+    {
+     "t": "19:31:07",
+     "sod": 70267,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825867000
+    },
+    {
+     "t": "19:31:08",
+     "sod": 70268,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825868000
+    },
+    {
+     "t": "19:31:08",
+     "sod": 70268,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825868000
+    },
+    {
+     "t": "19:31:09",
+     "sod": 70269,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825869000
+    },
+    {
+     "t": "19:31:09",
+     "sod": 70269,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825869000
+    },
+    {
+     "t": "19:31:10",
+     "sod": 70270,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825870000
+    },
+    {
+     "t": "19:31:10",
+     "sod": 70270,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825870000
+    },
+    {
+     "t": "19:31:10",
+     "sod": 70270,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825870000
+    },
+    {
+     "t": "19:31:10",
+     "sod": 70270,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825870000
+    },
+    {
+     "t": "19:31:12",
+     "sod": 70272,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825872000
+    },
+    {
+     "t": "19:31:12",
+     "sod": 70272,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825872000
+    },
+    {
+     "t": "19:31:14",
+     "sod": 70274,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825874000
+    },
+    {
+     "t": "19:31:14",
+     "sod": 70274,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825874000
+    },
+    {
+     "t": "19:31:15",
+     "sod": 70275,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825875000
+    },
+    {
+     "t": "19:31:15",
+     "sod": 70275,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825875000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:16",
+     "sod": 70276,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825876000
+    },
+    {
+     "t": "19:31:19",
+     "sod": 70279,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825879000
+    },
+    {
+     "t": "19:31:19",
+     "sod": 70279,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825879000
+    },
+    {
+     "t": "19:31:20",
+     "sod": 70280,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825880000
+    },
+    {
+     "t": "19:31:20",
+     "sod": 70280,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825880000
+    },
+    {
+     "t": "19:31:21",
+     "sod": 70281,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825881000
+    },
+    {
+     "t": "19:31:21",
+     "sod": 70281,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825881000
+    },
+    {
+     "t": "19:31:22",
+     "sod": 70282,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825882000
+    },
+    {
+     "t": "19:31:22",
+     "sod": 70282,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825882000
+    },
+    {
+     "t": "19:31:22",
+     "sod": 70282,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825882000
+    },
+    {
+     "t": "19:31:22",
+     "sod": 70282,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825882000
+    },
+    {
+     "t": "19:31:24",
+     "sod": 70284,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825884000
+    },
+    {
+     "t": "19:31:24",
+     "sod": 70284,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825884000
+    },
+    {
+     "t": "19:31:25",
+     "sod": 70285,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825885000
+    },
+    {
+     "t": "19:31:25",
+     "sod": 70285,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825885000
+    },
+    {
+     "t": "19:31:27",
+     "sod": 70287,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825887000
+    },
+    {
+     "t": "19:31:27",
+     "sod": 70287,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825887000
+    },
+    {
+     "t": "19:31:27",
+     "sod": 70287,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825887000
+    },
+    {
+     "t": "19:31:27",
+     "sod": 70287,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825887000
+    },
+    {
+     "t": "19:31:27",
+     "sod": 70287,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825887000
+    },
+    {
+     "t": "19:31:27",
+     "sod": 70287,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825887000
+    },
+    {
+     "t": "19:31:28",
+     "sod": 70288,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825888000
+    },
+    {
+     "t": "19:31:30",
+     "sod": 70290,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825890000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:31",
+     "sod": 70291,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825891000
+    },
+    {
+     "t": "19:31:36",
+     "sod": 70296,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825896000
+    },
+    {
+     "t": "19:31:36",
+     "sod": 70296,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825896000
+    },
+    {
+     "t": "19:31:41",
+     "sod": 70301,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825901000
+    },
+    {
+     "t": "19:31:41",
+     "sod": 70301,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825901000
+    },
+    {
+     "t": "19:31:41",
+     "sod": 70301,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825901000
+    },
+    {
+     "t": "19:31:41",
+     "sod": 70301,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825901000
+    },
+    {
+     "t": "19:31:41",
+     "sod": 70301,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825901000
+    },
+    {
+     "t": "19:31:44",
+     "sod": 70304,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825904000
+    },
+    {
+     "t": "19:31:44",
+     "sod": 70304,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825904000
+    },
+    {
+     "t": "19:31:44",
+     "sod": 70304,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825904000
+    },
+    {
+     "t": "19:31:44",
+     "sod": 70304,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825904000
+    },
+    {
+     "t": "19:31:44",
+     "sod": 70304,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825904000
+    },
+    {
+     "t": "19:31:44",
+     "sod": 70304,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825904000
+    },
+    {
+     "t": "19:31:44",
+     "sod": 70304,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825904000
+    },
+    {
+     "t": "19:31:49",
+     "sod": 70309,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825909000
+    },
+    {
+     "t": "19:31:49",
+     "sod": 70309,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825909000
+    },
+    {
+     "t": "19:31:51",
+     "sod": 70311,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825911000
+    },
+    {
+     "t": "19:31:51",
+     "sod": 70311,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825911000
+    },
+    {
+     "t": "19:31:51",
+     "sod": 70311,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825911000
+    },
+    {
+     "t": "19:31:51",
+     "sod": 70311,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825911000
+    },
+    {
+     "t": "19:32:03",
+     "sod": 70323,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825923000
+    },
+    {
+     "t": "19:32:03",
+     "sod": 70323,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825923000
+    },
+    {
+     "t": "19:32:05",
+     "sod": 70325,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825925000
+    },
+    {
+     "t": "19:32:05",
+     "sod": 70325,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825925000
+    },
+    {
+     "t": "19:32:08",
+     "sod": 70328,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825928000
+    },
+    {
+     "t": "19:32:08",
+     "sod": 70328,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825928000
+    },
+    {
+     "t": "19:32:09",
+     "sod": 70329,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825929000
+    },
+    {
+     "t": "19:32:09",
+     "sod": 70329,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825929000
+    },
+    {
+     "t": "19:32:10",
+     "sod": 70330,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825930000
+    },
+    {
+     "t": "19:32:10",
+     "sod": 70330,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825930000
+    },
+    {
+     "t": "19:32:10",
+     "sod": 70330,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825930000
+    },
+    {
+     "t": "19:32:10",
+     "sod": 70330,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825930000
+    },
+    {
+     "t": "19:32:10",
+     "sod": 70330,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825930000
+    },
+    {
+     "t": "19:32:10",
+     "sod": 70330,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825930000
+    },
+    {
+     "t": "19:32:10",
+     "sod": 70330,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825930000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:13",
+     "sod": 70333,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825933000
+    },
+    {
+     "t": "19:32:18",
+     "sod": 70338,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825938000
+    },
+    {
+     "t": "19:32:18",
+     "sod": 70338,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825938000
+    },
+    {
+     "t": "19:32:23",
+     "sod": 70343,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825943000
+    },
+    {
+     "t": "19:32:23",
+     "sod": 70343,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825943000
+    },
+    {
+     "t": "19:32:48",
+     "sod": 70368,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825968000
+    },
+    {
+     "t": "19:32:48",
+     "sod": 70368,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825968000
+    },
+    {
+     "t": "19:32:53",
+     "sod": 70373,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825973000
+    },
+    {
+     "t": "19:33:00",
+     "sod": 70380,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825980000
+    },
+    {
+     "t": "19:33:01",
+     "sod": 70381,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795825981000
+    },
+    {
+     "t": "19:34:00",
+     "sod": 70440,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826040000
+    },
+    {
+     "t": "19:34:01",
+     "sod": 70441,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826041000
+    },
+    {
+     "t": "19:34:31",
+     "sod": 70471,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826071000
+    },
+    {
+     "t": "19:34:34",
+     "sod": 70474,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826074000
+    },
+    {
+     "t": "19:34:34",
+     "sod": 70474,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826074000
+    },
+    {
+     "t": "19:34:37",
+     "sod": 70477,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826077000
+    },
+    {
+     "t": "19:34:39",
+     "sod": 70479,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826079000
+    },
+    {
+     "t": "19:34:44",
+     "sod": 70484,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826084000
+    },
+    {
+     "t": "19:34:44",
+     "sod": 70484,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826084000
+    },
+    {
+     "t": "19:34:49",
+     "sod": 70489,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826089000
+    },
+    {
+     "t": "19:34:49",
+     "sod": 70489,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826089000
+    },
+    {
+     "t": "19:34:50",
+     "sod": 70490,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826090000
+    },
+    {
+     "t": "19:35:00",
+     "sod": 70500,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826100000
+    },
+    {
+     "t": "19:35:01",
+     "sod": 70501,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826101000
+    },
+    {
+     "t": "19:35:01",
+     "sod": 70501,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826101000
+    },
+    {
+     "t": "19:35:01",
+     "sod": 70501,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826101000
+    },
+    {
+     "t": "19:35:01",
+     "sod": 70501,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826101000
+    },
+    {
+     "t": "19:35:03",
+     "sod": 70503,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826103000
+    },
+    {
+     "t": "19:35:03",
+     "sod": 70503,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826103000
+    },
+    {
+     "t": "19:35:05",
+     "sod": 70505,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826105000
+    },
+    {
+     "t": "19:35:07",
+     "sod": 70507,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826107000
+    },
+    {
+     "t": "19:35:12",
+     "sod": 70512,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826112000
+    },
+    {
+     "t": "19:35:12",
+     "sod": 70512,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826112000
+    },
+    {
+     "t": "19:35:12",
+     "sod": 70512,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826112000
+    },
+    {
+     "t": "19:35:12",
+     "sod": 70512,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826112000
+    },
+    {
+     "t": "19:35:47",
+     "sod": 70547,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826147000
+    },
+    {
+     "t": "19:36:00",
+     "sod": 70560,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826160000
+    },
+    {
+     "t": "19:36:01",
+     "sod": 70561,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826161000
+    },
+    {
+     "t": "19:37:05",
+     "sod": 70625,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826225000
+    },
+    {
+     "t": "19:37:05",
+     "sod": 70625,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826225000
+    },
+    {
+     "t": "19:37:05",
+     "sod": 70625,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826225000
+    },
+    {
+     "t": "19:37:10",
+     "sod": 70630,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826230000
+    },
+    {
+     "t": "19:37:10",
+     "sod": 70630,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826230000
+    },
+    {
+     "t": "19:37:12",
+     "sod": 70632,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826232000
+    },
+    {
+     "t": "19:37:12",
+     "sod": 70632,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826232000
+    },
+    {
+     "t": "19:37:13",
+     "sod": 70633,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826233000
+    },
+    {
+     "t": "19:37:13",
+     "sod": 70633,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826233000
+    },
+    {
+     "t": "19:37:13",
+     "sod": 70633,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826233000
+    },
+    {
+     "t": "19:37:13",
+     "sod": 70633,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826233000
+    },
+    {
+     "t": "19:37:13",
+     "sod": 70633,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826233000
+    },
+    {
+     "t": "19:37:15",
+     "sod": 70635,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826235000
+    },
+    {
+     "t": "19:37:20",
+     "sod": 70640,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826240000
+    },
+    {
+     "t": "19:37:20",
+     "sod": 70640,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826240000
+    },
+    {
+     "t": "19:37:55",
+     "sod": 70675,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826275000
+    },
+    {
+     "t": "19:38:00",
+     "sod": 70680,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826280000
+    },
+    {
+     "t": "19:38:01",
+     "sod": 70681,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826281000
+    },
+    {
+     "t": "19:38:15",
+     "sod": 70695,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826295000
+    },
+    {
+     "t": "19:38:16",
+     "sod": 70696,
+     "sign": "-",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826296000
+    },
+    {
+     "t": "19:38:16",
+     "sod": 70696,
+     "sign": "+",
+     "pid": 1550,
+     "sensor": "Game Rotation Vector Sensor",
+     "devMs": 1795826296000
+    }
+   ],
+   "dumpAt": 1795826298410.5
+  }
+ }
+}
