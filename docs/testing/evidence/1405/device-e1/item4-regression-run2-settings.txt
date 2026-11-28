@@ -1,0 +1,8 @@
+back-key-out | differs open-vs-before: 1.41379e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.SubSettings
+soft-back-out | differs open-vs-before: 1.41379e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.SubSettings
+edge-left-out | differs open-vs-before: 1.41402e+06 px | differs after-close-vs-before: 235 px | top: com.android.settings/.SubSettings
+edge-right-out | differs open-vs-before: 1.41379e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.SubSettings
+outside-out | differs open-vs-before: 1.41379e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.SubSettings
+swipe-up-out | differs open-vs-before: 1.41379e+06 px | differs after-close-vs-before: 4.24885e+06 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+screen-off-on-out | differs open-vs-before: 1.41379e+06 px | differs after-close-vs-before: 368 px | top: com.android.settings/.SubSettings
+screen-off-on-wide | differs open-vs-before: 1.41308e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.SubSettings

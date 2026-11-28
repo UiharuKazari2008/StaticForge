@@ -1,0 +1,16 @@
+# item 3, aemu-fold-1: Quick Access re-opened by an edge swipe after a close (itv-N-dD = D s between the close tap and the swipe). Only d >= 0.5 re-opened at all
+trial	closed-by-app->reopen-swipe-returned ms	re-open: swipe returned -> ask ms	N (ask->got)	swipe returned -> still got ms	code3/other
+itv-1-d3	3783	NO RE-OPEN STILL (1 stills)			panel push: limit passed, still out for 251 ms (limit 400 ms, 401 ms since the open); panel push: late push asks for the program's window picture (try 1, 519 ms after the open); panel push: late still 817 ms after the ask, 567 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel); panel push: late push: window pic
+itv-2-d3	3528	NO RE-OPEN STILL (1 stills)			panel push: limit passed, still out for 244 ms (limit 400 ms, 403 ms since the open); panel push: late push asks for the program's window picture (try 1, 573 ms after the open); panel push: late still 772 ms after the ask, 531 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel); panel push: late push: window pic
+itv-3-d0	420	NO RE-OPEN STILL (1 stills)			
+itv-4-d0	365	NO RE-OPEN STILL (1 stills)			
+itv-5-d0.05	357	NO RE-OPEN STILL (1 stills)			
+itv-6-d0.1	569	NO RE-OPEN STILL (1 stills)			
+itv-7-d0.15	585	NO RE-OPEN STILL (0 stills)			panel push: limit passed, still out for 273 ms (limit 400 ms, 401 ms since the open); panel push: late push asks for the program's window picture (try 1, 486 ms after the open); panel push: late still 360 ms after the ask, 88 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel); panel push: late push: window pi
+itv-8-d0.2	575	NO RE-OPEN STILL (0 stills)			panel push: limit passed, still out for 400 ms (limit 400 ms, 501 ms since the open); panel push: late push asks for the program's window picture (try 1, 595 ms after the open); panel push: late still 497 ms after the ask, 198 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel); panel push: late push: window pi
+itv-9-d0.25	507	NO RE-OPEN STILL (1 stills)			
+itv-10-d0.3	528	NO RE-OPEN STILL (1 stills)			
+itv-11-d0.35	828	NO RE-OPEN STILL (1 stills)			
+itv-12-d0.4	639	NO RE-OPEN STILL (1 stills)			
+itv-13-d0.5	1044	45	180	225	
+itv-14-d0.8	1242	63	214	277	

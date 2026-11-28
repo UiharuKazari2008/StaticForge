@@ -1,0 +1,46 @@
+### load2: loops=16 start 18:48:11
+reboot returned 18:50:38: {"ok": true, "id": "aemu-fold-1", "state": "stopped"}
+{"ok": true, "id": "aemu-fold-1", "state": "booted", "bootSecs": 97, "noAudio": true}
+boot_completed 18:50:39
+33.74 10.49 3.68 56/1113 1861
+4
+--- +25 s after boot_completed: pid, fgs log, load
+1962
+48.62 16.22 5.80 79/1104 2035
+--- start-app (window) 18:51:12
+{"ok": true, "appPid": 1962, "display": "0"}
+--- +40 s after start-app
+1962
+55.40 22.83 8.59 64/1444 2664
+11-27 18:50:14.639   713  1341 E ActivityManager: ANR in com.android.systemui
+11-27 18:50:17.237   713  1341 E ActivityManager: ANR in com.android.phone
+11-27 18:50:59.594   713  1895 E ActivityManager: ANR in com.google.android.inputmethod.latin
+11-27 18:51:02.472   713  1895 E ActivityManager: ANR in com.google.android.gms.persistent
+11-27 18:51:06.457   713  1895 E ActivityManager: ANR in com.google.android.as
+11-27 18:51:14.131   713  1895 E ActivityManager: ANR in com.android.phone
+11-27 18:51:16.713   713  1895 E ActivityManager: ANR in com.google.android.googlequicksearchbox:interactor
+11-27 18:51:21.368   713  1895 E ActivityManager: ANR in com.google.android.permissioncontroller
+11-27 18:51:39.621   713  1895 E ActivityManager: ANR in system
+11-27 18:51:47.413   713  1895 E ActivityManager: ANR in com.google.android.calendar
+11-27 18:52:02.287  1962  1962 I DreamScapeFGS: startForegroundService asked by the window, after its launch message
+11-27 18:52:03.786  1962  1962 I DreamScapeFGS: startForeground at create, type 1073741824, 61367 ms after the process started
+11-27 18:52:04.877   713  1895 E ActivityManager: ANR in jp.net.seventhreeseven.dreamscape
+--- crash buffer
+--- services
+  * ServiceRecord{68b3d7d u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+    isForeground=true foregroundId=1 types=0x40000000 foregroundNoti=Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC)
+  * ServiceRecord{2e4bff8 u0 jp.net.seventhreeseven.dreamscape/.MelatonBarService c:android}
+--- notification
+    NotificationRecord(0x0ee91681: pkg=jp.net.seventhreeseven.dreamscape user=UserHandle{0} id=1 tag=null importance=2 key=0|jp.net.seventhreeseven.dreamscape|1|null|10234: Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC))
+      uid=10234 userId=0
+      opPkg=jp.net.seventhreeseven.dreamscape
+      icon=Icon(typ=RESOURCE pkg=jp.net.seventhreeseven.dreamscape id=0x7f0800c0)
+      flags=ONGOING_EVENT|ONLY_ALERT_ONCE|FOREGROUND_SERVICE
+      originalFlags=ONGOING_EVENT|ONLY_ALERT_ONCE|FOREGROUND_SERVICE
+      pri=0
+--
+--- process start
+ps: bad -o 'PID,START,NAME'
+                ^
+[{"key": "0|jp.net.seventhreeseven.dreamscape|1|null|10234", "importance": 2, "id": 1, "channel": "dreamscape_persistent", "title": "DreamScape", "text": "Default \u00b7 92 \u00b7 6633 + 22825 anlas", "channelSound": "null", "when": 1795823525476}]
+### done 18:52:22

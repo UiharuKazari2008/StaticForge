@@ -1,0 +1,17 @@
+# item 3, A53: same test (Output panel, closed by a tap, opened again by the bridge)
+trial | close(log) -> reopen start(router started) ms | reopen: start -> ask (draw - N - start) ms | N ask->got | other panel push lines of the re-open
+itv4-1-X3.5 | 3783 | ask at +39 (ask delayed by 5 beyond the 34 ms plan) | 36 | 
+itv4-2-X0.9 | 7608 | ask at +38 (ask delayed by 4 beyond the 34 ms plan) | 30 | 
+itv4-3-X0.8 | 1008 | ask at +39 (ask delayed by 5 beyond the 34 ms plan) | 29 | 
+itv4-4-X0.7 | 1043 | ask at +41 (ask delayed by 7 beyond the 34 ms plan) | 28 | 
+itv4-5-X0.6 | NO RE-OPEN (router started 0 times)
+itv4-6-X0.5 | NO RE-OPEN (router started 0 times)
+itv4-7-X0.4 | NO RE-OPEN (router started 0 times)
+
+trial | close(log) -> reopen start(router started) ms | reopen: start -> ask (draw - N - start) ms | N ask->got | other panel push lines of the re-open
+itv6-1-X0.75 | 960 | ask at +39 (ask delayed by 5 beyond the 34 ms plan) | 35 | 
+itv6-2-X0.7 | 1001 | ask at +37 (ask delayed by 3 beyond the 34 ms plan) | 21 | 
+itv6-3-X0.7 | 1033 | ask at +39 (ask delayed by 5 beyond the 34 ms plan) | 36 | 
+itv6-4-X0.65 | NO RE-OPEN (router started 0 times)
+itv6-5-X0.8 | NO RE-OPEN (router started 1 times)
+itv6-6-X0.75 | 998 | ask at +38 (ask delayed by 4 beyond the 34 ms plan) | 33 | 

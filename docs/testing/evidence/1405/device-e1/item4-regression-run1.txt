@@ -1,0 +1,14 @@
+back-key-wide | differs open-vs-before: 1.41308e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.SubSettings
+soft-back-wide | differs open-vs-before: 1.41308e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.SubSettings
+edge-left-wide | differs open-vs-before: 1.41308e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.SubSettings
+edge-right-wide | differs open-vs-before: 1.4132e+06 px | differs after-close-vs-before: 133 px | top: com.android.settings/.SubSettings
+outside-wide | differs open-vs-before: 1.41308e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.SubSettings
+swipe-up-wide | differs open-vs-before: 1.41308e+06 px | differs after-close-vs-before: 4.26564e+06 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+screen-off-on-wide | differs open-vs-before: 1.7383e+06 px | differs after-close-vs-before: 979 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+back-key-out | differs open-vs-before: 1.75765e+06 px | differs after-close-vs-before: 30684 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+soft-back-out | differs open-vs-before: 1.73912e+06 px | differs after-close-vs-before: 238 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+edge-left-out | differs open-vs-before: 1.73888e+06 px | differs after-close-vs-before: 0 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+edge-right-out | differs open-vs-before: 0 px | differs after-close-vs-before: 0 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+outside-out | differs open-vs-before: 0 px | differs after-close-vs-before: 4462 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+swipe-up-out | differs open-vs-before: 1.73901e+06 px | differs after-close-vs-before: 134 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+screen-off-on-out | differs open-vs-before: 1.91047e+06 px | differs after-close-vs-before: 292247 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity

@@ -1,0 +1,7 @@
+Performing Streamed Install
+Success
+    versionCode=3632992 minSdk=31 targetSdk=36
+    versionName=1.0.3632992
+    lastUpdateTime=2026-11-27 18:36:31
+9895
+route: adb over Wi-Fi 192.168.100.233:5555 (server adb), once

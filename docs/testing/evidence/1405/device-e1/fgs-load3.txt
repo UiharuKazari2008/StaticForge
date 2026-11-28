@@ -1,0 +1,35 @@
+### load3: loops=20 start 18:52:30
+reboot returned 18:56:46: {"ok": true, "id": "aemu-fold-1", "state": "stopped"}
+{"ok": false, "error": "Ruiko's CPU is at 89 % (mean over 10 s), above 85 %: starting another instance would slow every running one (page downloads crawl, adb times out). Wait, or stop an instance you do not need (lane.sh <id> down)"}
+{"ok": fals
+boot_completed 18:56:46
+47.03 16.90 6.15 83/1138 1984
+4
+--- +25 s after boot_completed: pid, fgs log, load
+2050
+54.60 21.11 7.83 60/1245 2165
+--- start-app (window) 18:57:21
+{"ok": true, "appPid": 2050, "display": "0"}
+--- +40 s after start-app
+2050
+65.84 29.95 11.62 54/1482 2879
+11-27 18:55:47.607   713  1314 E ActivityManager: ANR in com.android.systemui
+11-27 18:56:20.149   713  1496 E ActivityManager: ANR in com.android.phone
+11-27 18:57:07.791   713  2019 E ActivityManager: ANR in com.google.android.as
+11-27 18:57:13.981   713  2019 E ActivityManager: ANR in com.google.android.gms.persistent
+11-27 18:57:19.768   713  2019 E ActivityManager: ANR in com.google.android.googlequicksearchbox:interactor
+11-27 18:57:24.226   713  2019 E ActivityManager: ANR in com.android.phone
+11-27 18:57:56.827   713  2728 E ActivityManager: ANR in com.google.android.calendar
+11-27 18:58:17.523   713  2908 E ActivityManager: ANR in com.android.phone
+11-27 18:58:20.891  2050  2050 I DreamScapeFGS: startForeground at create, type 1073741824, 80730 ms after the process started
+--- crash buffer
+--- services
+  * ServiceRecord{5464129 u0 jp.net.seventhreeseven.dreamscape/.MelatonBarService c:android}
+  * Destroy ServiceRecord{eec316 u0 jp.net.seventhreeseven.dreamscape/.MelatonBarService c:android}
+  * Destroy ServiceRecord{1e163ac u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+--- notification
+--- process start
+ps: bad -o 'PID,START,NAME'
+                ^
+[{"key": "0|jp.net.seventhreeseven.dreamscape|1|null|10234", "importance": 2, "id": 1, "channel": "dreamscape_persistent", "title": "DreamScape", "text": "Default \u00b7 92 \u00b7 6633 + 22825 anlas", "channelSound": "null", "when": 1795823907074}]
+### done 18:58:38

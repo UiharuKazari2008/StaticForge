@@ -1,0 +1,57 @@
+# item 2: opens under load (aemu-fold-1, wide panel over Android Settings; load = busy loops 'b' and screencap loops 'c' in the guest)
+# tag<TAB>pixel verdict (after-shot taken 4-7 s after the swipe)<TAB>ask->got ms if in time<TAB>panel push lines
+ld-wide-qa-1	unmoved	None	panel push: limit passed, still out for 21 ms (limit 400 ms, 578 ms since the open) | panel push: late push asks for the program's window picture (try 1, 1814 ms after the open) | panel push: late still 1303 ms after the ask, 1460 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 2132 ms, screen pushed aside (3960 ms after the open)
+ld-wide-qa-2	unmoved	None	panel push: limit passed, still out for 24 ms (limit 400 ms, 691 ms since the open) | panel push: late push asks for the program's window picture (try 1, 1604 ms after the open) | panel push: late still 1004 ms after the ask, 1271 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 2132 ms, screen pushed aside (3742 ms after the open)
+ld-late-1	None	None	panel push: limit passed, still out for 13 ms (limit 400 ms, 673 ms since the open) | panel push: late push asks for the program's window picture (try 1, 1222 ms after the open) | panel push: late still 694 ms after the ask, 954 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 1672 ms, screen pushed aside (2894 ms after the open)
+ld12-wide-qa-1	pushed	None	panel push: limit passed, still out for 24 ms (limit 400 ms, 630 ms since the open) | panel push: late push asks for the program's window picture (try 1, 1729 ms after the open) | panel push: late still 1170 ms after the ask, 1376 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 2289 ms, screen pushed aside (4088 ms after the open)
+ld12-wide-qa-2	pushed	78	panel push: still in time, ask -> got 78 ms
+ld12-wide-qa-3	pushed	60	panel push: still in time, ask -> got 60 ms
+ld12-wide-qa-4	pushed	None	panel push: limit passed, still out for 67 ms (limit 400 ms, 628 ms since the open) | panel push: late push asks for the program's window picture (try 1, 2064 ms after the open) | panel push: late still 1568 ms after the ask, 1729 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 1885 ms, screen pushed aside (3949 ms after the open)
+ld12-wide-qa-5	pushed	51	panel push: still in time, ask -> got 51 ms
+ld12-wide-qa-6	pushed	50	panel push: still in time, ask -> got 50 ms
+ld12-wide-out-1	pushed	47	panel push: still in time, ask -> got 47 ms
+ld12-wide-out-2	pushed	82	panel push: still in time, ask -> got 82 ms
+ld12-wide-out-3	pushed	46	panel push: still in time, ask -> got 46 ms
+ld12-wide-out-4	unmoved	79	panel push: still in time, ask -> got 79 ms
+ld12-wide-out-5	pushed	114	panel push: still in time, ask -> got 114 ms
+ld12-wide-out-6	pushed	64	panel push: still in time, ask -> got 64 ms
+lv2b0c-wide-qa-1	pushed	113	panel push: still in time, ask -> got 113 ms
+lv2b0c-wide-out-1	pushed	35	panel push: still in time, ask -> got 35 ms
+lv2b0c-wide-qa-2	pushed	92	panel push: still in time, ask -> got 92 ms
+lv2b0c-wide-out-2	pushed	38	panel push: still in time, ask -> got 38 ms
+lv2b0c-wide-qa-3	pushed	170	panel push: still in time, ask -> got 170 ms
+lv2b0c-wide-out-3	unmoved	None	
+lv2b0c-wide-qa-4	pushed	194	panel push: still in time, ask -> got 194 ms
+lv2b0c-wide-out-4	pushed	84	panel push: still in time, ask -> got 84 ms
+lv4b0c-wide-qa-1	pushed	None	panel push: limit passed, still out for 139 ms (limit 400 ms, 401 ms since the open) | panel push: late push asks for the program's window picture (try 1, 751 ms after the open) | panel push: late still 850 ms after the ask, 712 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 1028 ms, screen pushed aside (1779 ms after the open)
+lv4b0c-wide-out-1	pushed	103	panel push: still in time, ask -> got 103 ms
+lv4b0c-wide-qa-2	pushed	None	panel push: limit passed, still out for 201 ms (limit 400 ms, 457 ms since the open) | panel push: late push asks for the program's window picture (try 1, 625 ms after the open) | panel push: late still 909 ms after the ask, 765 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 875 ms, screen pushed aside (1504 ms after the open)
+lv4b0c-wide-out-2	pushed	53	panel push: still in time, ask -> got 53 ms
+lv4b0c-wide-qa-3	pushed	192	panel push: still in time, ask -> got 192 ms
+lv4b0c-wide-out-3	pushed	42	panel push: still in time, ask -> got 42 ms
+lv4b0c-wide-qa-4	pushed	159	panel push: still in time, ask -> got 159 ms
+lv4b0c-wide-out-4	pushed	49	panel push: still in time, ask -> got 49 ms
+lv0b2c-wide-qa-1	pushed	234	panel push: still in time, ask -> got 234 ms
+lv0b2c-wide-out-1	pushed	124	panel push: still in time, ask -> got 124 ms
+lv0b2c-wide-qa-2	pushed	259	panel push: still in time, ask -> got 259 ms
+lv0b2c-wide-out-2	pushed	139	panel push: still in time, ask -> got 139 ms
+lv0b2c-wide-qa-3	pushed	None	panel push: limit passed, still out for 169 ms (limit 400 ms, 401 ms since the open) | panel push: late push waits 87 ms for Android's interval between screenshots | panel push: late still 716 ms after the ask, 548 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push asks for the program's window picture (try 1, 1186 ms after the open) | panel push: late push: window picture in 239 ms, screen pushed aside (1426 ms after the open)
+lv0b2c-wide-out-3	pushed	143	panel push: still in time, ask -> got 143 ms
+lv0b2c-wide-qa-4	pushed	244	panel push: still in time, ask -> got 244 ms
+lv0b2c-wide-out-4	pushed	111	panel push: still in time, ask -> got 111 ms
+lv6b2c-wide-qa-1	pushed	None	panel push: limit passed, still out for 164 ms (limit 400 ms, 459 ms since the open) | panel push: late push asks for the program's window picture (try 1, 678 ms after the open) | panel push: late still 1222 ms after the ask, 1117 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 840 ms, screen pushed aside (1518 ms after the open)
+lv6b2c-wide-out-1	pushed	55	panel push: still in time, ask -> got 55 ms
+lv6b2c-wide-qa-2	pushed	None	panel push: limit passed, still out for 42 ms (limit 400 ms, 461 ms since the open) | panel push: late push asks for the program's window picture (try 1, 773 ms after the open) | panel push: late push: window picture in 956 ms, screen pushed aside (1730 ms after the open) | panel push: late still 1361 ms after the ask, 1380 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+lv6b2c-wide-out-2	pushed	104	panel push: still in time, ask -> got 104 ms
+lv6b2c-wide-qa-3	unmoved	172	panel push: still in time, ask -> got 172 ms
+lv6b2c-wide-out-3	pushed	116	panel push: still in time, ask -> got 116 ms
+lv6b2c-wide-qa-4	pushed	None	panel push: limit passed, still out for 348 ms (limit 400 ms, 546 ms since the open) | panel push: late push asks for the program's window picture (try 1, 1044 ms after the open) | panel push: late still 891 ms after the ask, 689 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 1185 ms, screen pushed aside (2230 ms after the open)
+lv6b2c-wide-out-4	pushed	118	panel push: still in time, ask -> got 118 ms
+lv8b0c-wide-qa-1	pushed	None	panel push: limit passed, still out for 116 ms (limit 400 ms, 401 ms since the open) | panel push: late push asks for the program's window picture (try 1, 972 ms after the open) | panel push: late still 1300 ms after the ask, 1185 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 1342 ms, screen pushed aside (2314 ms after the open)
+lv8b0c-wide-out-1	pushed	152	panel push: still in time, ask -> got 152 ms
+lv8b0c-wide-qa-2	pushed	None	panel push: limit passed, still out for 32 ms (limit 400 ms, 401 ms since the open) | panel push: late push asks for the program's window picture (try 1, 808 ms after the open) | panel push: late still 460 ms after the ask, 429 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 1450 ms, screen pushed aside (2288 ms after the open)
+lv8b0c-wide-out-2	pushed	61	panel push: still in time, ask -> got 61 ms
+lv8b0c-wide-qa-3	pushed	None	panel push: limit passed, still out for 145 ms (limit 400 ms, 423 ms since the open) | panel push: late push asks for the program's window picture (try 1, 975 ms after the open) | panel push: late still 715 ms after the ask, 593 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 1604 ms, screen pushed aside (2580 ms after the open)
+lv8b0c-wide-out-3	pushed	113	panel push: still in time, ask -> got 113 ms
+lv8b0c-wide-qa-4	pushed	None	panel push: limit passed, still out for 73 ms (limit 400 ms, 670 ms since the open) | panel push: late push asks for the program's window picture (try 1, 1202 ms after the open) | panel push: late still 616 ms after the ask, 813 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel) | panel push: late push: window picture in 1421 ms, screen pushed aside (2623 ms after the open)
+lv8b0c-wide-out-4	pushed	75	panel push: still in time, ask -> got 75 ms

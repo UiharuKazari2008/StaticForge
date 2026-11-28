@@ -1,0 +1,229 @@
+### kill 1 at 19:14:27.703, old pid 1734, loadavg 67.94 52.31 24.15 38/2028 4601
+{"ok": true, "killedPid": 1734, "appPid": 0}
+new pid '4639' after ~2 s at 19:14:30
+11-27 19:14:22.864  1734  1734 I DreamScapeFGS: startForegroundService asked by the window, after its launch message
+11-27 19:14:23.185  1734  1734 I DreamScapeFGS: startForeground at start, type 1073741824, 289015 ms after the process started
+11-27 19:14:31.324  4639  4639 I DreamScapeFGS: startForeground at create, type 1073741824, 838 ms after the process started
+11-27 19:14:55.796   539   539 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d | grep -E 'DreamScapeFGS' | tail -4; echo '--- crash buffer:'; logcat -b crash -d | grep -v adbd; echo '--- service:'; dumpsys activity services jp.net.seventhreeseven.dreamscape | grep -E 'ServiceRecord.*DreamScapeForegroundService|isForeground'; echo '--- notification flags:'; dumpsys notification --noredact | grep -m1 -A0 'flags=ONGOING' ; ps -A | grep -c sandboxed'
+--- crash buffer:
+--------- beginning of crash
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: Process: com.android.systemui, PID: 1009
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: java.lang.RuntimeException: Unable to create service com.android.systemui.SystemUIService
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5655)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleCreateService(ActivityThread.java:0)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2804)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:296)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:397)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: Caused by: java.lang.IllegalStateException: Timed out waiting for 10000 ms
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3400)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.createException(Parcel.java:3376)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3359)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3301)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.IBluetoothManager$Stub$Proxy.registerAdapter(IBluetoothManager.java:415)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.registerOrUnregisterAdapterLocked(BluetoothAdapter.java:3667)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.registerBluetoothManagerCallback(BluetoothAdapter.java:3597)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.<init>(BluetoothAdapter.java:1028)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.<init>(BluetoothAdapter.java:997)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.createAdapter(BluetoothAdapter.java:993)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothManager.<init>(BluetoothManager.java:68)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothFrameworkInitializer.lambda$registerServiceWrappers$0(BluetoothFrameworkInitializer.java:102)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothFrameworkInitializer$$ExternalSyntheticLambda0.createService(D8$$SyntheticClass:0)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.SystemServiceRegistry$170.createService(SystemServiceRegistry.java:2679)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.SystemServiceRegistry$CachedServiceFetcher.getService(SystemServiceRegistry.java:2784)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.SystemServiceRegistry.getSystemService(SystemServiceRegistry.java:2297)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ContextImpl.getSystemService(ContextImpl.java:2450)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.content.Context.getSystemService(Context.java:4916)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.settingslib.bluetooth.LocalBluetoothAdapter$$ExternalSyntheticLambda0.apply(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at java.util.HashMap.computeIfAbsent(HashMap.java:1231)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.settingslib.bluetooth.LocalBluetoothAdapter.getInstance(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:19)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.dagger.SettingsLibraryModule_ProvideLocalBluetoothControllerFactory.provideLocalBluetoothController(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:2)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get3(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1644)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4566)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get9(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1949)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4536)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get20(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1475)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4481)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl$$ExternalSyntheticLambda1.run(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:46)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.timeInitialization(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:27)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.startServicesIfNeeded(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:232)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.startSystemUserServicesIfNeeded(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:69)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.SystemUIService.onCreate(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:9)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5644)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	... 10 more
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: Caused by: android.os.RemoteException: Remote stack trace:
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.TimeoutKt.TimeoutCancellationException(Timeout.kt:189)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.TimeoutCoroutine.run(Timeout.kt:157)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.EventLoopImplBase$DelayedRunnableTask.run(EventLoop.common.kt:505)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.DefaultExecutor.run(DefaultExecutor.kt:105)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 
+--- service:
+  * ServiceRecord{38e41ab u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+    isForeground=true foregroundId=1 types=0x40000000 foregroundNoti=Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC)
+--- notification flags:
+    NotificationRecord(0x079cdd69: pkg=android user=UserHandle{0} id=0 tag=com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape importance=1 key=0|android|0|com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape|1000: Notification(channel=com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|LOCAL_ONLY|CAN_COLORIZE color=0x00000000 vis=PRIVATE))
+Failed to write while dumping service notification: Broken pipe
+1
+### kill 2 at 19:15:16.304, old pid 4639, loadavg 35.82 46.22 23.44 5/2467 5525
+{"ok": true, "killedPid": 4639, "appPid": 0}
+new pid '5538' after ~4 s at 19:15:21
+11-27 19:14:31.324  4639  4639 I DreamScapeFGS: startForeground at create, type 1073741824, 838 ms after the process started
+11-27 19:14:55.796   539   539 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d | grep -E 'DreamScapeFGS' | tail -4; echo '--- crash buffer:'; logcat -b crash -d | grep -v adbd; echo '--- service:'; dumpsys activity services jp.net.seventhreeseven.dreamscape | grep -E 'ServiceRecord.*DreamScapeForegroundService|isForeground'; echo '--- notification flags:'; dumpsys notification --noredact | grep -m1 -A0 'flags=ONGOING' ; ps -A | grep -c sandboxed'
+11-27 19:15:20.964  5538  5538 I DreamScapeFGS: startForeground at create, type 1073741824, 113 ms after the process started
+11-27 19:15:46.424   539   539 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d | grep -E 'DreamScapeFGS' | tail -4; echo '--- crash buffer:'; logcat -b crash -d | grep -v adbd; echo '--- service:'; dumpsys activity services jp.net.seventhreeseven.dreamscape | grep -E 'ServiceRecord.*DreamScapeForegroundService|isForeground'; echo '--- notification flags:'; dumpsys notification --noredact | grep -m1 -A0 'flags=ONGOING' ; ps -A | grep -c sandboxed'
+--- crash buffer:
+--------- beginning of crash
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: Process: com.android.systemui, PID: 1009
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: java.lang.RuntimeException: Unable to create service com.android.systemui.SystemUIService
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5655)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleCreateService(ActivityThread.java:0)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2804)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:296)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:397)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: Caused by: java.lang.IllegalStateException: Timed out waiting for 10000 ms
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3400)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.createException(Parcel.java:3376)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3359)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3301)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.IBluetoothManager$Stub$Proxy.registerAdapter(IBluetoothManager.java:415)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.registerOrUnregisterAdapterLocked(BluetoothAdapter.java:3667)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.registerBluetoothManagerCallback(BluetoothAdapter.java:3597)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.<init>(BluetoothAdapter.java:1028)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.<init>(BluetoothAdapter.java:997)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.createAdapter(BluetoothAdapter.java:993)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothManager.<init>(BluetoothManager.java:68)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothFrameworkInitializer.lambda$registerServiceWrappers$0(BluetoothFrameworkInitializer.java:102)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothFrameworkInitializer$$ExternalSyntheticLambda0.createService(D8$$SyntheticClass:0)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.SystemServiceRegistry$170.createService(SystemServiceRegistry.java:2679)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.SystemServiceRegistry$CachedServiceFetcher.getService(SystemServiceRegistry.java:2784)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.SystemServiceRegistry.getSystemService(SystemServiceRegistry.java:2297)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ContextImpl.getSystemService(ContextImpl.java:2450)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.content.Context.getSystemService(Context.java:4916)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.settingslib.bluetooth.LocalBluetoothAdapter$$ExternalSyntheticLambda0.apply(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at java.util.HashMap.computeIfAbsent(HashMap.java:1231)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.settingslib.bluetooth.LocalBluetoothAdapter.getInstance(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:19)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.dagger.SettingsLibraryModule_ProvideLocalBluetoothControllerFactory.provideLocalBluetoothController(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:2)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get3(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1644)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4566)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get9(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1949)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4536)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get20(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1475)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4481)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl$$ExternalSyntheticLambda1.run(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:46)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.timeInitialization(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:27)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.startServicesIfNeeded(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:232)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.startSystemUserServicesIfNeeded(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:69)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.SystemUIService.onCreate(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:9)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5644)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	... 10 more
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: Caused by: android.os.RemoteException: Remote stack trace:
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.TimeoutKt.TimeoutCancellationException(Timeout.kt:189)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.TimeoutCoroutine.run(Timeout.kt:157)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.EventLoopImplBase$DelayedRunnableTask.run(EventLoop.common.kt:505)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.DefaultExecutor.run(DefaultExecutor.kt:105)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 
+--- service:
+  * ServiceRecord{38e41ab u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+    isForeground=true foregroundId=1 types=0x40000000 foregroundNoti=Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC)
+--- notification flags:
+    NotificationRecord(0x0433e896: pkg=android user=UserHandle{0} id=0 tag=com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape importance=1 key=0|android|0|com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape|1000: Notification(channel=com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|LOCAL_ONLY|CAN_COLORIZE color=0x00000000 vis=PRIVATE))
+Failed to write while dumping service notification: Broken pipe
+1
+### kill 3 at 19:16:07.040, old pid 5538, loadavg 15.15 38.76 22.20 1/2378 5752
+{"ok": true, "killedPid": 5538, "appPid": 0}
+new pid '5794' after ~15 s at 19:16:24
+11-27 19:15:20.964  5538  5538 I DreamScapeFGS: startForeground at create, type 1073741824, 113 ms after the process started
+11-27 19:15:46.424   539   539 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d | grep -E 'DreamScapeFGS' | tail -4; echo '--- crash buffer:'; logcat -b crash -d | grep -v adbd; echo '--- service:'; dumpsys activity services jp.net.seventhreeseven.dreamscape | grep -E 'ServiceRecord.*DreamScapeForegroundService|isForeground'; echo '--- notification flags:'; dumpsys notification --noredact | grep -m1 -A0 'flags=ONGOING' ; ps -A | grep -c sandboxed'
+11-27 19:16:23.789  5794  5794 I DreamScapeFGS: startForeground at create, type 1073741824, 129 ms after the process started
+11-27 19:16:49.461   539   539 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d | grep -E 'DreamScapeFGS' | tail -4; echo '--- crash buffer:'; logcat -b crash -d | grep -v adbd; echo '--- service:'; dumpsys activity services jp.net.seventhreeseven.dreamscape | grep -E 'ServiceRecord.*DreamScapeForegroundService|isForeground'; echo '--- notification flags:'; dumpsys notification --noredact | grep -m1 -A0 'flags=ONGOING' ; ps -A | grep -c sandboxed'
+--- crash buffer:
+--------- beginning of crash
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: Process: com.android.systemui, PID: 1009
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: java.lang.RuntimeException: Unable to create service com.android.systemui.SystemUIService
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5655)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleCreateService(ActivityThread.java:0)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2804)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:296)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:397)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: Caused by: java.lang.IllegalStateException: Timed out waiting for 10000 ms
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3400)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.createException(Parcel.java:3376)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3359)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3301)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.IBluetoothManager$Stub$Proxy.registerAdapter(IBluetoothManager.java:415)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.registerOrUnregisterAdapterLocked(BluetoothAdapter.java:3667)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.registerBluetoothManagerCallback(BluetoothAdapter.java:3597)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.<init>(BluetoothAdapter.java:1028)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.<init>(BluetoothAdapter.java:997)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.createAdapter(BluetoothAdapter.java:993)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothManager.<init>(BluetoothManager.java:68)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothFrameworkInitializer.lambda$registerServiceWrappers$0(BluetoothFrameworkInitializer.java:102)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.bluetooth.BluetoothFrameworkInitializer$$ExternalSyntheticLambda0.createService(D8$$SyntheticClass:0)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.SystemServiceRegistry$170.createService(SystemServiceRegistry.java:2679)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.SystemServiceRegistry$CachedServiceFetcher.getService(SystemServiceRegistry.java:2784)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.SystemServiceRegistry.getSystemService(SystemServiceRegistry.java:2297)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ContextImpl.getSystemService(ContextImpl.java:2450)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.content.Context.getSystemService(Context.java:4916)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.settingslib.bluetooth.LocalBluetoothAdapter$$ExternalSyntheticLambda0.apply(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at java.util.HashMap.computeIfAbsent(HashMap.java:1231)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.settingslib.bluetooth.LocalBluetoothAdapter.getInstance(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:19)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.dagger.SettingsLibraryModule_ProvideLocalBluetoothControllerFactory.provideLocalBluetoothController(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:2)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get3(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1644)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4566)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get9(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1949)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4536)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get20(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1475)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4481)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl$$ExternalSyntheticLambda1.run(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:46)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.timeInitialization(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:27)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.startServicesIfNeeded(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:232)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.startSystemUserServicesIfNeeded(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:69)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.systemui.SystemUIService.onCreate(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:9)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5644)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	... 10 more
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: Caused by: android.os.RemoteException: Remote stack trace:
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.TimeoutKt.TimeoutCancellationException(Timeout.kt:189)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.TimeoutCoroutine.run(Timeout.kt:157)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.EventLoopImplBase$DelayedRunnableTask.run(EventLoop.common.kt:505)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.DefaultExecutor.run(DefaultExecutor.kt:105)
+11-27 19:09:17.907  1009  1009 E AndroidRuntime: 
+--- service:
+  * ServiceRecord{38e41ab u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+    isForeground=true foregroundId=1 types=0x40000000 foregroundNoti=Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC)
+--- notification flags:
+    NotificationRecord(0x0a8cf40b: pkg=android user=UserHandle{0} id=0 tag=com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape importance=1 key=0|android|0|com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape|1000: Notification(channel=com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|LOCAL_ONLY|CAN_COLORIZE color=0x00000000 vis=PRIVATE))
+Failed to write while dumping service notification: Broken pipe
+1
+KILL-DONE

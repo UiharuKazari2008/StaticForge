@@ -1,0 +1,32 @@
+11-27 18:23:14.158 21535 21535 I E1      : open quick10
+11-27 18:23:17.202  4208  4208 I MelatonBars: panel push: limit passed, still out for 69 ms (limit 400 ms, 405 ms since the open)
+11-27 18:23:17.361  4208  4208 I MelatonBars: bubble quickaccess drawn here
+11-27 18:23:17.361  4208  4208 I MelatonBars: panel push: late push waits 124 ms for Android's interval between screenshots
+11-27 18:23:18.317  4208  4208 I MelatonBars: panel push: late push asks for the program's window picture (try 1, 1520 ms after the open)
+11-27 18:23:18.771  4208  4208 I MelatonBars: panel push: late still 1639 ms after the ask, 1575 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+11-27 18:23:19.445  4208  4208 I MelatonBars: panel push: late push: window picture in 1128 ms, screen pushed aside (2648 ms after the open)
+11-27 18:23:20.100  4208  4208 I MelatonBars: popup tap 301,1950: outside: closed
+11-27 18:23:23.639  4208  4208 I MelatonBars: panel push: limit passed, still out for 282 ms (limit 400 ms, 401 ms since the open)
+11-27 18:23:23.721  4208  4208 I MelatonBars: bubble quickaccess drawn here
+11-27 18:23:23.724  4208  4208 I MelatonBars: panel push: late push asks for the program's window picture (try 1, 487 ms after the open)
+11-27 18:23:24.693  4208  4208 I MelatonBars: panel push: late still 1336 ms after the ask, 1055 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+11-27 18:23:24.981  4208  4208 I MelatonBars: panel push: late push: window picture in 1254 ms, screen pushed aside (1743 ms after the open)
+11-27 18:23:25.592  4208  4208 I MelatonBars: edge swipe on the popup: Back
+11-27 18:23:25.595  4208  4208 I MelatonBars: Back (edge swipe): closes quickaccess
+11-27 18:23:28.904  4208  4208 I MelatonBars: panel push: limit passed, still out for 8 ms (limit 400 ms, 422 ms since the open)
+11-27 18:23:29.024  4208  4208 I MelatonBars: bubble quickaccess drawn here
+11-27 18:23:29.026  4208  4208 I MelatonBars: panel push: late push waits 223 ms for Android's interval between screenshots
+11-27 18:23:30.714  4208  4208 I MelatonBars: panel push: late push asks for the program's window picture (try 1, 2232 ms after the open)
+11-27 18:23:30.719  4208  4208 I MelatonBars: panel push: late still 1824 ms after the ask, 1838 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+11-27 18:23:31.303  4208  4208 I MelatonBars: panel push: late push: window picture in 586 ms, screen pushed aside (2821 ms after the open)
+11-27 18:23:31.580  4208  4208 I MelatonBars: popup tap 301,1950: outside: closed
+11-27 18:23:35.829  4208  4208 I MelatonBars: panel push: limit passed, still out for 4 ms (limit 400 ms, 434 ms since the open)
+11-27 18:23:35.972  4208  4208 I MelatonBars: bubble quickaccess drawn here
+11-27 18:23:35.974  4208  4208 I MelatonBars: panel push: late push waits 204 ms for Android's interval between screenshots
+11-27 18:23:37.370  4208  4208 I MelatonBars: panel push: late push asks for the program's window picture (try 1, 1975 ms after the open)
+11-27 18:23:37.375  4208  4208 I MelatonBars: panel push: late still 1551 ms after the ask, 1581 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+11-27 18:23:37.578  4208  4208 I MelatonBars: edge swipe on the popup: Back
+11-27 18:23:37.581  4208  4208 I MelatonBars: Back (edge swipe): closes quickaccess
+11-27 18:23:38.822  4208  4208 I MelatonBars: panel push: late push: window picture came after 1451 ms, recycled (another open or a cancel took the panel's place)
+11-27 18:23:39.669 21875 21875 I E1      : quick-loop-end
+11-27 18:23:46.597 21894 21894 I E1      : opened quick10

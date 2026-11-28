@@ -1,0 +1,83 @@
+11-27 18:55:38.824     0     0 I init    : Untracked process (pid: 1293 name: (crash_dump64) ppid: 1 pgrp: 1292 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:55:38.829     0     0 I init    : Untracked process (pid: 1295 name: (android.hardwar) ppid: 1 pgrp: 1295 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:55:39.367     0     0 I init    : Untracked process (pid: 1301 name: (crash_dump64) ppid: 1 pgrp: 1300 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:55:39.390     0     0 I init    : Untracked process (pid: 1303 name: (android.hardwar) ppid: 1 pgrp: 1303 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:55:39.783     0     0 I init    : Untracked process (pid: 1312 name: (binder:327_2) ppid: 1 pgrp: 1312 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:55:39.786     0     0 I init    : Untracked process (pid: 1309 name: (crash_dump64) ppid: 1 pgrp: 1308 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:55:52.943   713   713 D AutofillManagerService: Restriction did not change for user 0
+11-27 18:56:08.452     0     0 I init    : Untracked process (pid: 1288 name: (crash_dump64) ppid: 1 pgrp: 1286 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:56:09.105     0     0 I init    : Untracked process (pid: 1380 name: (system_server) ppid: 1 pgrp: 1380 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:56:20.660   713   748 I CredentialManager: CredentialManagerServiceImpl constructed for: com.google.android.gms/com.google.android.gms.auth.api.credentials.credman.service.RemoteService
+11-27 18:56:22.067   713   925 W system_server: Long monitor contention with owner android.fg (739) at android.util.Pair com.android.server.am.ProcessList.getNumForegroundServices()(ProcessList.java:5929) waiters=2 in android.content.Intent com.android.server.am.BroadcastController.registerReceiverWithFeatureTraced(android.app.I
+11-27 18:56:22.081   713   824 W system_server: Long monitor contention with owner android.fg (739) at android.util.Pair com.android.server.am.ProcessList.getNumForegroundServices()(ProcessList.java:5929) waiters=2 in void com.android.server.am.ProcessRecord.onProcessFrozen() for 746ms
+11-27 18:56:22.204   713   748 W system_server: Long monitor contention with owner android.fg (739) at android.util.Pair com.android.server.am.ProcessList.getNumForegroundServices()(ProcessList.java:5929) waiters=3 in int com.android.server.am.ActivityManagerService.bindServiceInstance(android.app.IApplicationThread, android.os.
+11-27 18:56:22.211   713   991 W system_server: Long monitor contention with owner android.fg (739) at android.util.Pair com.android.server.am.ProcessList.getNumForegroundServices()(ProcessList.java:5929) waiters=5 in void com.android.server.am.ActivityManagerService.serviceDoneExecuting(android.os.IBinder, int, int, int) for 64
+11-27 18:56:22.245   713  1368 W system_server: Long monitor contention with owner android.fg (739) at android.util.Pair com.android.server.am.ProcessList.getNumForegroundServices()(ProcessList.java:5929) waiters=6 in void com.android.server.am.ActivityManagerService.publishService(android.os.IBinder, android.os.IBinder, android
+11-27 18:56:23.197   713   777 W system_server: Long monitor contention with owner android.fg (739) at android.util.Pair com.android.server.am.ProcessList.getNumForegroundServices()(ProcessList.java:5929) waiters=4 in int com.android.server.am.ActivityManagerService$LocalService.broadcastIntent(android.content.Intent, android.co
+11-27 18:56:31.928  1111  1111 I bt_stack_manager: system/btif/src/stack_manager.cc:215 stack_disable: Bringing down the stack
+11-27 18:56:48.120     0     0 I init    : Untracked process (pid: 1674 name: (crash_dump64) ppid: 1 pgrp: 1667 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:56:48.375     0     0 I init    : Untracked process (pid: 1819 name: (ndroid.systemui) ppid: 1 pgrp: 1819 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:57:03.034   713  1999 W system_server: Long monitor contention with owner android.fg (739) at android.util.Pair com.android.server.am.ProcessList.getNumForegroundServices()(ProcessList.java:5929) waiters=3 in void com.android.server.am.BroadcastController.finishReceiver(android.os.IBinder, int, java.lang.String, android
+11-27 18:57:10.071     0     0 I init    : Untracked process (pid: 2130 name: (crash_dump64) ppid: 1 pgrp: 2111 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:57:20.999     0     0 I init    : Untracked process (pid: 2111 name: (crash_dump64) ppid: 1 pgrp: 2111 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:57:35.462   713  1834 I ActivityManager: Background started FGS: Allowed [callingPackage: jp.net.seventhreeseven.dreamscape; callingUid: 10234; uidState: TOP ; uidBFSL: [BFSL]; BFGS denied: false; intent: Intent { xflg=0x4 cmp=jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService (has extras) }; code:PROC_STATE
+11-27 18:57:40.628  2050  2221 W CafeTasks: engine did not start: no sandbox
+11-27 18:57:42.642  2050  2221 W CafeTasks: engine did not start: no sandbox
+11-27 18:57:44.650  2050  2221 W CafeTasks: engine did not start: no sandbox
+11-27 18:57:46.662  2050  2221 W CafeTasks: engine did not start: no sandbox
+11-27 18:57:48.314  1938  1938 I bt_stack_manager: system/btif/src/stack_manager.cc:215 stack_disable: Bringing down the stack
+11-27 18:57:50.501  2050  2221 W CafeTasks: engine did not start: no sandbox
+11-27 18:57:52.502  2050  2221 W CafeTasks: engine did not start: no sandbox
+11-27 18:58:11.442   713   748 W ActivityManager: Bringing down service while still waiting for start foreground: ServiceRecord{1e163ac u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+11-27 18:58:15.519     0     0 I init    : Untracked process (pid: 2657 name: (crash_dump64) ppid: 1 pgrp: 2633 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:16.271     0     0 I init    : Untracked process (pid: 2878 name: (ndroid.systemui) ppid: 1 pgrp: 2878 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:20.891  2050  2050 I DreamScapeFGS: startForeground at create, type 1073741824, 80730 ms after the process started
+11-27 18:58:26.403  2050  2050 I DreamScapeFGS: foreground from boot / update: the ActiveSync link starts
+11-27 18:58:31.741   713   733 I ActivityManager: Background started FGS: Allowed [callingPackage: jp.net.seventhreeseven.dreamscape; callingUid: 10234; uidState: TOP ; uidBFSL: [BFSL]; BFGS denied: false; intent: Intent { xflg=0x4 cmp=jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService }; code:PROC_STATE_TOP; tempAll
+11-27 18:58:31.815  2050  2050 I DreamScapeFGS: startForegroundService asked by the window, after its launch message
+11-27 18:58:33.239  2050  2221 W CafeTasks: engine did not start: no sandbox
+11-27 18:58:34.452     0     0 I init    : Untracked process (pid: 3055 name: (crash_dump64) ppid: 1 pgrp: 3044 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:35.240  2050  2221 W CafeTasks: engine did not start: no sandbox
+11-27 18:58:37.241  2050  2221 W CafeTasks: engine did not start: no sandbox
+11-27 18:58:37.285     0     0 I init    : Untracked process (pid: 652 name: (sh) ppid: 1 pgrp: 652 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.289     0     0 I init    : Untracked process (pid: 653 name: (sh) ppid: 1 pgrp: 653 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.292     0     0 I init    : Untracked process (pid: 654 name: (sh) ppid: 1 pgrp: 654 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.295     0     0 I init    : Untracked process (pid: 655 name: (sh) ppid: 1 pgrp: 655 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.297     0     0 I init    : Untracked process (pid: 656 name: (sh) ppid: 1 pgrp: 656 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.300     0     0 I init    : Untracked process (pid: 657 name: (sh) ppid: 1 pgrp: 657 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.304     0     0 I init    : Untracked process (pid: 658 name: (sh) ppid: 1 pgrp: 658 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.307     0     0 I init    : Untracked process (pid: 659 name: (sh) ppid: 1 pgrp: 659 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.310     0     0 I init    : Untracked process (pid: 660 name: (sh) ppid: 1 pgrp: 660 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.312     0     0 I init    : Untracked process (pid: 661 name: (sh) ppid: 1 pgrp: 661 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.317     0     0 I init    : Untracked process (pid: 662 name: (sh) ppid: 1 pgrp: 662 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.321     0     0 I init    : Untracked process (pid: 663 name: (sh) ppid: 1 pgrp: 663 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.324     0     0 I init    : Untracked process (pid: 664 name: (sh) ppid: 1 pgrp: 664 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.332     0     0 I init    : Untracked process (pid: 665 name: (sh) ppid: 1 pgrp: 665 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.336     0     0 I init    : Untracked process (pid: 666 name: (sh) ppid: 1 pgrp: 666 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.340     0     0 I init    : Untracked process (pid: 667 name: (sh) ppid: 1 pgrp: 667 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.346     0     0 I init    : Untracked process (pid: 668 name: (sh) ppid: 1 pgrp: 668 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.349     0     0 I init    : Untracked process (pid: 669 name: (sh) ppid: 1 pgrp: 669 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.352     0     0 I init    : Untracked process (pid: 670 name: (sh) ppid: 1 pgrp: 670 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.355     0     0 I init    : Untracked process (pid: 671 name: (sh) ppid: 1 pgrp: 671 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:37.691     0     0 I init    : Untracked process (pid: 3044 name: (crash_dump64) ppid: 1 pgrp: 3044 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:38.951   713  2908 E ActivityManager: Reason: Context.startForegroundService() did not then call Service.startForeground(): ServiceRecord{1e163ac u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+11-27 18:58:39.242  2050  2221 W CafeTasks: engine did not start: no sandbox
+11-27 18:58:39.525     0     0 I init    : Untracked process (pid: 3173 name: (crash_dump64) ppid: 1 pgrp: 3147 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:39.613     0     0 I init    : Untracked process (pid: 3203 name: (system_server) ppid: 1 pgrp: 3203 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:39.690  2050  2050 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 18:58:39.690  2050  2050 E AndroidRuntime: android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException: Context.startForegroundService() did not then call Service.startForeground(): ServiceRecord{1e163ac u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape
+11-27 18:58:39.690  2050  2050 E AndroidRuntime: 	at android.app.ActivityThread.generateForegroundServiceDidNotStartInTimeException(ActivityThread.java:2598)
+11-27 18:58:39.690  2050  2050 E AndroidRuntime: 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2563)
+11-27 18:58:39.690  2050  2050 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(ActivityThread.java:0)
+11-27 18:58:39.994   713  1834 W ActivityManager: Scheduling restart of crashed service jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService in 21000ms for start-requested
+11-27 18:58:40.650     0     0 I init    : Untracked process (pid: 3005 name: (ThreadPoolForeg) ppid: 1 pgrp: 473 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:44.407   713  1877 I ActivityManager: Background started FGS: Allowed [callingPackage: jp.net.seventhreeseven.dreamscape; callingUid: 10234; uidState: FGS ; uidBFSL: [BFSL]; BFGS denied: false; intent: Intent { cmp=jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService }; code:ACTIVITY_STARTER; tempAllowListR
+11-27 18:58:44.415   713  1877 W ForegroundServiceTypeLoggerModule: Foreground service start for UID: 10234 does not have any types
+11-27 18:58:44.478  3347  3347 I DreamScapeFGS: startForeground at create, type 1073741824, 2914 ms after the process started
+11-27 18:58:47.209     0     0 I init    : Untracked process (pid: 3633 name: (shizuku_server) ppid: 1 pgrp: 3633 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:49.673     0     0 I init    : Untracked process (pid: 2353 name: (main) ppid: 1 pgrp: 2353 state: Z) did not have an associated service entry and will not be reaped
+11-27 18:58:49.847  3347  3347 I DreamScapeFGS: startForeground at start, type 1073741824, 8284 ms after the process started
+11-27 18:58:49.849  3347  3347 I DreamScapeFGS: foreground from boot / update: the ActiveSync link starts
+11-27 18:59:00.420  1385  1385 D CellBroadcastReceiver: Default interval 2 did not change.
+11-27 18:59:09.946  2765  4094 W GLSUser : Caused by: iqet: Protocol message end-group tag did not match expected tag.
+11-27 18:59:13.203  4039  4348 I AiAiCaptions: Would enable com.google.android.apps.miphone.aiai.captions.CaptionsForegroundService but already enabled

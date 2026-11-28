@@ -1,0 +1,46 @@
+## AOSP source (android.googlesource.com, frameworks/base, services/accessibility/java/com/android/server/accessibility/AbstractAccessibilityServiceConnection.java), branches main and android16-release
+main: 19:import static android.accessibilityservice.AccessibilityService.ACCESSIBILITY_TAKE_SCREENSHOT_REQUEST_INTERVAL_TIMES_MS;
+main: 245:    private long mRequestTakeScreenshotTimestampMs;
+main: 250:    private SparseArray<Long> mRequestTakeScreenshotOfWindowTimestampMs = new SparseArray<>();
+main: 1421:                - mRequestTakeScreenshotOfWindowTimestampMs.get(accessibilityWindowId, 0L))
+main: 1422:                <= ACCESSIBILITY_TAKE_SCREENSHOT_REQUEST_INTERVAL_TIMES_MS) {
+main: 1427:        mRequestTakeScreenshotOfWindowTimestampMs.put(accessibilityWindowId, currentTimestamp);
+main: 1472:        if (mRequestTakeScreenshotTimestampMs != 0
+main: 1473:                && (currentTimestamp - mRequestTakeScreenshotTimestampMs)
+main: 1474:                <= AccessibilityService.ACCESSIBILITY_TAKE_SCREENSHOT_REQUEST_INTERVAL_TIMES_MS) {
+main: 1479:        mRequestTakeScreenshotTimestampMs = currentTimestamp;
+main:     @Override
+main:     public void takeScreenshotOfWindow(int accessibilityWindowId, int interactionId,
+main:             ScreenCapture.ScreenCaptureListener listener,
+main:             IAccessibilityInteractionConnectionCallback callback) throws RemoteException {
+main:         final long currentTimestamp = SystemClock.uptimeMillis();
+main:         if ((currentTimestamp
+main:                 - mRequestTakeScreenshotOfWindowTimestampMs.get(accessibilityWindowId, 0L))
+main:                 <= ACCESSIBILITY_TAKE_SCREENSHOT_REQUEST_INTERVAL_TIMES_MS) {
+main:             callback.sendTakeScreenshotOfWindowError(
+main:                     AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT, interactionId);
+main:             return;
+main:         }
+main:         mRequestTakeScreenshotOfWindowTimestampMs.put(accessibilityWindowId, currentTimestamp);
+main:         }
+main:         final long currentTimestamp = SystemClock.uptimeMillis();
+main:         if (mRequestTakeScreenshotTimestampMs != 0
+main:                 && (currentTimestamp - mRequestTakeScreenshotTimestampMs)
+main:                 <= AccessibilityService.ACCESSIBILITY_TAKE_SCREENSHOT_REQUEST_INTERVAL_TIMES_MS) {
+main:             sendScreenshotFailure(AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT,
+main:                     callback);
+main:             return;
+main:         }
+main:         mRequestTakeScreenshotTimestampMs = currentTimestamp;
+main: 
+android16-release: 247:    private long mRequestTakeScreenshotTimestampMs;
+android16-release: 252:    private SparseArray<Long> mRequestTakeScreenshotOfWindowTimestampMs = new SparseArray<>();
+android16-release: 1423:                - mRequestTakeScreenshotOfWindowTimestampMs.get(accessibilityWindowId, 0L))
+android16-release: 1429:        mRequestTakeScreenshotOfWindowTimestampMs.put(accessibilityWindowId, currentTimestamp);
+android16-release: 1512:        if (mRequestTakeScreenshotTimestampMs != 0
+android16-release: 1513:                && (currentTimestamp - mRequestTakeScreenshotTimestampMs)
+android16-release: 1519:        mRequestTakeScreenshotTimestampMs = currentTimestamp;
+
+## the emulator image (Android 17, API 37) /system/framework/services.jar classes.dex, strings:
+)mRequestTakeScreenshotOfWindowTimestampMs
+!mRequestTakeScreenshotTimestampMs
