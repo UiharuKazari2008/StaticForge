@@ -1633,6 +1633,15 @@ async function handleDirectorDeleteSession(handler, ws, message) {
     sendOk(handler, ws, 'director_delete_session_response', message.requestId, {});
 }
 
+/**
+ * director_get_messages_response data. The running turn's draft goes with the reply (#1319, as Wren's does): a page
+ * that opens a running chat has the reply so far at once, and the live stream keeps filling it. sinceId: only what
+ * came after (#890); the draft is no anchor for it (director.messagesSince).
+ */
+function getMessagesReply(chat, sinceId, live) {
+    return director.messagesReply(chat, chat.messages || [], sinceId, live && live.draftId ? live.draftId : null, 'Yozora');
+}
+
 async function handleDirectorGetMessages(handler, ws, message) {
     if (!assertEnabled(handler, ws, message.requestId)) return;
     const chat = peekIndex().chats.find((item) => item.id === message.sessionId);
@@ -1640,11 +1649,8 @@ async function handleDirectorGetMessages(handler, ws, message) {
         handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
         return;
     }
-    const live = runs.get(chat.id);
-    // the running turn's draft is left out (its live stream follows); sinceId: only what came after (#890)
-    const messages = (chat.messages || []).filter((item) => !live || item.id !== live.draftId);
     sendOk(handler, ws, 'director_get_messages_response', message.requestId,
-        director.messagesReply(chat, messages, message.sinceId, null, 'Yozora'));
+        getMessagesReply(chat, message.sinceId, runs.get(chat.id)));
     const run = runs.get(message.sessionId);
     if (run) publish(run);
 }
@@ -2192,7 +2198,7 @@ module.exports = {
         layout, readIndex, writeIndex, peekIndex, readProjectCursorRules,
         sanitizeRuntime, assertRuntimeUnchanged, publicXiSession, consumeClaudeStreamLine,
         claudeProjectPrompt, writeProjectPromptFile, claudeMcpConfigArg, claudeCliArgs, writeTurnGate, sanitizeClaudeEffort,
-        usesClaudeCli, xiIdentityLine, sweepAbortedRuns, reattachAll, XI_TOKENROUTER_DEFAULT_MODEL,
+        getMessagesReply, usesClaudeCli, xiIdentityLine, sweepAbortedRuns, reattachAll, XI_TOKENROUTER_DEFAULT_MODEL,
         startTail, pidAlive, TURN_END_GRACE_MS, setBoundGr: (gr) => { boundGr = gr; }
     }
 };
