@@ -710,9 +710,16 @@
 }
 
 #mmcConsole_claudedesk .cd-sup-form input[type="text"],
-#mmcConsole_claudedesk .cd-sup-form select {
+#mmcConsole_claudedesk .cd-sup-form select,
+#mmcConsole_claudedesk .cd-sup-form textarea {
     flex: 0 1 320px;
     min-width: 0;
+}
+
+/* a textarea row (Yozora repositories) lines up with the fields above instead of shrinking to its content */
+#mmcConsole_claudedesk .cd-sup-form textarea {
+    box-sizing: border-box;
+    resize: vertical;
 }
 
 #mmcConsole_claudedesk .cd-sup-actions {

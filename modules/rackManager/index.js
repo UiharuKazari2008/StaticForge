@@ -753,6 +753,7 @@ function onIloEvent(ev) {
     const p = rtOf(name).power;
     if (ev.on === true || ev.on === false) dispatch(name, { role: 'ilo', kind: 'power', data: { on: ev.on, t: ev.t } });
     if (ev.health) dispatch(name, { role: 'ilo', kind: 'health', data: ev.health });
+    if (ev.sample) { dispatch(name, { role: 'ilo', kind: 'sample', data: ev.sample }); return; }
     if (ev.on === false) { p.hostOn = false; if (p.state !== 'off') setPower(name, 'off', { hostOn: false }); return; }
     if (ev.on === true) {
         p.hostOn = true;

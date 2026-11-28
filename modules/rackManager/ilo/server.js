@@ -336,7 +336,11 @@ Monitor.prototype.memory = async function () {
 // ---- power events for Rack Manager (SSE on the unix socket only): the host's power state when it changes, and POST progress ----
 const hubClients = new Set(), hubOn = {};
 function hubEmit(obj) { const line = `data: ${JSON.stringify(obj)}\n\n`; for (const r of hubClients) { try { r.write(line); } catch (_) { hubClients.delete(r); } } }
-function hubSample(name, sample) { if (hubOn[name] !== sample.on) { hubOn[name] = sample.on; hubEmit({ server: name, on: sample.on, t: sample.t }); } }
+function hubSample(name, sample) {
+  if (hubOn[name] !== sample.on) { hubOn[name] = sample.on; hubEmit({ server: name, on: sample.on, t: sample.t }); }
+  // every sample too, so an open Load History extends its temperature / fan / power strips live (local socket, one line per 5 s)
+  hubEmit({ server: name, sample: { t: sample.t, on: !!sample.on, w: sample.w, temp: sample.temp, fan: sample.fan } });
+}
 // a console session held (silently) through a power-on so the POST codes keep coming; released 30 s after POST completes, at most 8 min
 function watchBoot(name) {
   const s = session(name), v = { ws: { sendText() {}, sendBinary() {} } };

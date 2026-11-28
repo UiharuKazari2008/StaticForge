@@ -66,6 +66,28 @@
         return false;
     });
 
+    // a pushed iLO sample (every 5 s while a page of the server is open) extends the iLO strips: power, temperatures, fans, on/off
+    // (they were read once on entry and stopped there while the host strips kept moving)
+    let paintT = null;
+    R.hooks.event.push((c, ev) => {
+        if (ev.role !== 'ilo' || ev.kind !== 'sample' || !ev.data) return false;
+        const st = R.ss(ev.server);
+        const h = st.ilo && st.ilo.hist && st.ilo.hist['3h'];
+        if (!h) return true;
+        const sm = ev.data;
+        const t = Number(sm.t) || Date.now();
+        const cut = t - 3 * 3600e3;
+        const trim = (a) => { while (a.length > 2 && a[0][0] < cut) a.shift(); };
+        if (sm.w != null) { h.power = h.power || []; h.power.push([t, sm.w, sm.w, sm.w]); trim(h.power); }
+        ['temp', 'fan'].forEach((k) => { if (!sm[k]) return; h[k] = h[k] || {}; Object.keys(sm[k]).forEach((lab) => { const a = h[k][lab] || (h[k][lab] = []); a.push([t, sm[k][lab]]); trim(a); }); });
+        if (Array.isArray(h.on)) { h.on.push([t, sm.on ? 1 : 0]); trim(h.on); }
+        h.to = Math.max(Number(h.to) || 0, t);
+        // one repaint per 10 s at most, and only while this server's page shows
+        if (!paintT) paintT = setTimeout(() => { paintT = null; const n = R.here(c); if (n && n.server === ev.server && n.kind === 'server') R.repaint(c); }, 10000);
+        return true;
+    });
+    R.hooks.close.push(() => { clearTimeout(paintT); paintT = null; });
+
     // ---- the strips -------------------------------------------------------------------------------------------------
 
     /** per-timestamp aggregate of several [t, v] series (a hottest or an average line) */
@@ -233,7 +255,8 @@
         const pane = c.el('.mmc-result');
         pane.addEventListener('mousemove', (ev) => {
             const svg = ev.target.closest && ev.target.closest('[data-rm-stack]');
-            if (!svg || !LD.tip) return;
+            // off the graph (but still in the pane: the scrollbar, the legend, another section): no cursor or tip is left behind
+            if (!svg || !LD.tip) { pane.querySelectorAll('.rm-stack ~ .rm-tip').forEach((e) => { e.hidden = true; }); pane.querySelectorAll('.rm-stack .rm-ccur').forEach((e) => e.setAttribute('hidden', '')); return; }
             const t0 = LD.tip;
             const wrap = svg.parentElement;
             const tipEl = wrap.querySelector('.rm-tip');
