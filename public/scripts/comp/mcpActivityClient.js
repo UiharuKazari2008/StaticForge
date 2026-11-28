@@ -197,6 +197,7 @@ function showAgentSessionTrayNotice(action, messageOrData) {
     // the popover writes its body as HTML: actor names and Fleet titles (a work item's title can come from a Yozora
     // issue) go in as text
     const safeMessage = String(message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // notice: remote-access
     showPopover(anchor, 'info', 'Remote Access', safeMessage, false, 8000, icon, null, {
         position: 'top',
         arrowPosition: 'bottom-right',

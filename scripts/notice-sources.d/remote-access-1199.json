@@ -1,0 +1,12 @@
+{
+  "sources": {
+    "remote-access": {
+      "area": "public/scripts/comp/mcpActivityClient.js showAgentSessionTrayNotice: the Remote Access tray balloon on #mcpActivityIndicator when an agent's MCP key reads, opens or updates this client's session, or reads its location",
+      "trigger": "server-push",
+      "action": "a click on the balloon opens the Remote Access log in Periscope (openMcpActivityInPeriscope); right-click on the tray icon unbinds the agent",
+      "sound": false,
+      "switch": "Taskbar and Start Menu Properties > Notification Area > Customize Notifications > Remote Access (trayRegistry popup 'remote-access', trayPopupHidden)",
+      "note": "N1 ok: data she asked for (Yukimi, #1199): who has the machine, by name; a Fleet agent reads Fleet access \"<session>\" or Fleet access, work item #<id> \"<item>\", other keys their own name. N3/N9: one balloon per actor and kind, a burst from the same actor within 2 s coalesces (MCP_NOTICE_COALESCE_MS), popupId remote-access replaces the last one. N7: silent (popoverManager plays no sound). Registered in #1199; text only changed there, no new emit site."
+    }
+  }
+}

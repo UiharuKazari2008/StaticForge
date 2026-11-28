@@ -3,7 +3,7 @@
  "totals": {
   "message": 469,
   "toast": 948,
-  "balloon": 14,
+  "balloon": 13,
   "sound": 1
  },
  "files": {
@@ -215,9 +215,6 @@
   },
   "public/scripts/comp/manualUploadHandlers.js": {
    "toast": 1
-  },
-  "public/scripts/comp/mcpActivityClient.js": {
-   "balloon": 1
   },
   "public/scripts/comp/melatonAppUpdate.js": {
    "message": 2
