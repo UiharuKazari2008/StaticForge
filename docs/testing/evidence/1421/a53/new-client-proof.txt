@@ -1,0 +1,4 @@
+A53 (R5CT71TSEMZ, 192.168.100.233:5555) page https://staticforge.737.jp.net/app, evaluated over the app's WebView CDP, Nov 27 2026 19:4x EST
+BEFORE app restart (old client in memory, cache already held the fixed file): firstHot:true  {firstClass:'wm-popup-item is-hot'}
+AFTER app restart (am force-stop, app restarted itself):
+{"result":{"type":"string","value":"{\"firstClass\":\"wm-popup-item\",\"secondClass\":\"wm-popup-item\",\"firstHot\":false,\"n\":2,\"look\":{\"ver\":\"6.5\"},\"hasClose\":\"function\"}"}}
