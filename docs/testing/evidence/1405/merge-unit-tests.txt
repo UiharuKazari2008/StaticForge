@@ -1,0 +1,58 @@
+#1405 - unit tests of the merge of the three #1405 branches into DSApp main, before it was pushed
+merge      b66001cdd50194e1de8cb5c94f836a628a0237f4
+parents    first  b9348af2338f219d4dc0bd0c0725f5bae9cb3d7f (merge of fix/1405-fgs-start into the merge of fix/1405-drawer-still into origin/main 3150722f)
+           second 08308aaf791d27842520fc3defbc5105f01fa7f5 (origin/fix/1405-tile-text, part B)
+chain      3150722f -> 89aa91ac (fix/1405-drawer-still 6a542201, part A) -> b9348af2 (fix/1405-fgs-start 0b167e3b, part D) -> b66001cd (fix/1405-tile-text 08308aaf, part B); no conflicts
+What       gradlew.bat --no-daemon -Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx3500m testDebugUnitTest on Ruiko, fresh folder claude-build\dsapp-ut-1405merge from git archive of the merge commit
+Build gate #363 (dsapp-unit-tests), Nov 27 2026; no APK built, nothing installed on any device
+Checks     check-perf-rules --dsapp ok (189 files); origin/main was still 3150722f when checked again after the tests
+
+GRADLE EXIT=0
+
+BUILD SUCCESSFUL in 1m 55s
+27 actionable tasks: 27 executed
+
+
+--- tests ---
+jp.net.seventhreeseven.dreamscape.activesync.AdbKeyFilesTest: tests=20 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.LocalAdbPolicyTest: tests=9 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.NoticeDeliveryTest: tests=34 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ApkInstallPlanTest: tests=16 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ApkInstallRetryTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.BackgroundValueTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.BarsHealPolicyTest: tests=62 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.BarsLookTest: tests=25 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.DrawerStillTest: tests=32 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ForegroundStartPolicyTest: tests=31 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NavRoomPolicyTest: tests=53 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NoteRepeaterTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NoteSoundArbiterTest: tests=37 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NoteSoundChoiceTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.OutFitTest: tests=25 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.PopupRulesTest: tests=38 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.QaTileFitTest: tests=18 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.RadioCoreTest: tests=64 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.RadioModeRulesTest: tests=32 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.RadioWordsTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.SandboxConnectTest: tests=15 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ShizukuQueuePolicyTest: tests=7 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.SoftKeyProbeTest: tests=32 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TaskCatchUpTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TaskDeliveryTest: tests=9 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.WindowReadsTest: tests=35 failures=0 errors=0 skipped=0
+TOTAL classes=39 tests=872 failures=0 errors=0 skipped=0
+--- warnings in the files this change edited or added ---
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405merge/app/src/main/java/jp/net/seventhreeseven/dreamscape/MelatonBars.kt:5026:86 'static field MODE_BACKGROUND_ACTIVITY_START_ALLOWED: Int' is deprecated. Deprecated in Java.
