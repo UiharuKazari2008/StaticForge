@@ -658,6 +658,7 @@ module.exports = {
 
     // Machinery: never shown in the ticker (a name cannot be written for it)
     quiet: [
+        'admin_pin_confirm',
         'admin_terminal_ack',
         'admin_terminal_close',
         'admin_terminal_input',

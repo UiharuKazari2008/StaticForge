@@ -8,7 +8,8 @@ Server: `modules/rackManager/index.js`, packets in `modules/ws/handlers/322-rack
 
 Every packet is refused with `error` (`details: INSUFFICIENT_PERMISSIONS`) unless the connection is an **administrator with
 a full sign-in** (same guard as the Administrator Terminal, `docs/client-api/ws/adminTerminal.md`: no application key,
-no approved-IP or client-certificate session). Writes (`rack_action`, `rack_ilo_action`, `rack_job`) read the stored session
+no approved-IP session; a client-certificate session, CaféReady's, is answered `ADMIN_PIN_REQUIRED` until the administrator
+PIN is sent with `admin_pin_confirm` - the console asks for it in a dialog once per sign-in and retries). Writes (`rack_action`, `rack_ilo_action`, `rack_job`) read the stored session
 fresh; reads accept a verdict up to 10 s old. These packets run commands as root on the rack hosts.
 
 ## Answers

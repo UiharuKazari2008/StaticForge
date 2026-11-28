@@ -16,7 +16,7 @@
  * approved-IP sign-in); the stored session is read again at open and at most every GUARD_TTL_MS after.
  * Anyone else is refused and nothing is spawned. Nothing typed is ever logged.
  * A CaféReady certificate session is refused with ADMIN_PIN_REQUIRED until the administrator PIN is typed in the
- * terminal (admin_terminal_pin {pin} -> admin_terminal_pin_response {success}); 5 wrong PINs lock it for 15 minutes.
+ * terminal (admin_terminal_pin / admin_pin_confirm {pin} -> <type>_response {success}); 5 wrong PINs lock it for 15 minutes.
  */
 
 const wsPacketRegistry = require('../wsPacketRegistry');
@@ -87,8 +87,9 @@ function registerPackets() {
         if (command) info.title = command.title;
         ctx.wsServer.sendToClient(ctx.ws, { type: 'admin_terminal_open_response', requestId: m.requestId, data: Object.assign({ success: true }, info), timestamp: new Date().toISOString() });
     });
-    // the administrator PIN on a certificate session (CaféReady): stored on the session, so it is asked once per sign-in
-    wsPacketRegistry.registerWsPacket('admin_terminal_pin', async (ctx) => {
+    // the administrator PIN on a certificate session (CaféReady): stored on the session, so it is asked once per sign-in.
+    // admin_pin_confirm is the general name (Rack Manager); admin_terminal_pin the terminal's own
+    const pinPacket = (type) => wsPacketRegistry.registerWsPacket(type, async (ctx) => {
         const { ws, message, clientInfo, handlers } = ctx;
         const m = message || {};
         const sid = clientInfo && clientInfo.sessionId;
@@ -120,8 +121,10 @@ function registerPackets() {
             return;
         }
         verdicts.delete(ws);
-        ctx.wsServer.sendToClient(ws, { type: 'admin_terminal_pin_response', requestId: m.requestId, data: { success: true }, timestamp: new Date().toISOString() });
+        ctx.wsServer.sendToClient(ws, { type: `${type}_response`, requestId: m.requestId, data: { success: true }, timestamp: new Date().toISOString() });
     }, { owner: 'adminTerminal', destructive: true, dispatch: 'fifo' });
+    pinPacket('admin_pin_confirm');
+    pinPacket('admin_terminal_pin');
 
     reg('admin_terminal_input', false, (ctx, m) => { terminal.write(ctx.ws, m.id, m.data); });
     reg('admin_terminal_resize', false, (ctx, m) => { terminal.resize(ctx.ws, m.id, m.cols, m.rows); });
@@ -129,4 +132,9 @@ function registerPackets() {
     reg('admin_terminal_close', false, (ctx, m) => { terminal.close(ctx.ws, m.id); });
 }
 
-module.exports = { registerPackets, _test: { allowed } };
+/** For another full-sign-in guard (Rack Manager, 322): true when the refusal is only the missing administrator PIN. */
+async function needsPin(handlersCtx, clientInfo) {
+    return terminal.fullAdminClient(clientInfo) && terminal.sessionNeedsPin(await readSession(handlersCtx, clientInfo && clientInfo.sessionId));
+}
+
+module.exports = { registerPackets, needsPin, _test: { allowed } };

@@ -777,6 +777,7 @@ class BannerManager {
         'softkeys_generate': 'Generate Soft Keys',
     });
     static TICKER_OFF_TYPES = new Set([
+        'admin_pin_confirm',
         'admin_terminal_ack',
         'admin_terminal_close',
         'admin_terminal_input',

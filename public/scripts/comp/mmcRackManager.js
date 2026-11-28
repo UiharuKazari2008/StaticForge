@@ -122,10 +122,50 @@
         return x;
     }
 
-    async function send(type, data) {
+    /** One request; its error is this console's to show (no "Unhandled exception" box). */
+    function wsSend(type, data) {
         const client = root.wsClient;
-        if (!client || typeof client.sendMessage !== 'function') throw new Error('Melaton is not connected to the server.');
-        return body(await client.sendMessage(type, data || {}, false));
+        if (!client || typeof client.sendMessage !== 'function') return Promise.reject(new Error('Melaton is not connected to the server.'));
+        const go = () => client.sendMessage(type, data || {}, false);
+        return typeof client.handlesErrors === 'function' ? client.handlesErrors(go) : go();
+    }
+
+    // CaféReady's certificate sign-in: the server asks for the administrator PIN once per sign-in (ADMIN_PIN_REQUIRED).
+    // Every request refused meanwhile waits on the one dialog, then is sent again.
+    let pinAsk = null;
+    function askPin() {
+        if (pinAsk) return pinAsk;
+        const c = S.console;
+        if (!c || !c.modal || !c.modal.isConnected) return Promise.resolve(false);
+        pinAsk = new Promise((resolve) => {
+            const end = (v) => { if (pinAsk) { pinAsk = null; resolve(v); } };
+            const ctx = dialog(c, {
+                id: 'adminPin',
+                title: 'Rack Manager',
+                w: 330,
+                h: 150,
+                html: `<p>Type the administrator PIN to manage the rack from this device.</p>${field('Administrator PIN:', '<input type="password" data-rm="pin" autocomplete="off" maxlength="64">')}`,
+                ok: async (dctx) => {
+                    const pin = val(dctx, 'pin') || '';
+                    if (!pin) { err(dctx, 'Type the PIN.'); return false; }
+                    await wsSend('admin_pin_confirm', { pin }); // a wrong PIN throws: shown in the dialog, which stays
+                    end(true);
+                    return true;
+                },
+                cancel: () => end(false)
+            });
+            if (!ctx) end(false);
+        });
+        return pinAsk;
+    }
+
+    async function send(type, data) {
+        try {
+            return body(await wsSend(type, data));
+        } catch (e) {
+            if (e && e.details === 'ADMIN_PIN_REQUIRED' && await askPin()) return body(await wsSend(type, data));
+            throw e;
+        }
     }
     R.send = send;
 
@@ -194,6 +234,7 @@
             title: o.title,
             owner: c.modal,
             focusFirst: true,
+            cancel: o.cancel,
             init: (ctx) => {
                 ctx.html(100, `<div class="rm-form">${o.html}<div class="rm-err" hidden></div></div>`);
                 if (typeof o.init === 'function') o.init(ctx);
@@ -553,15 +594,14 @@
         if (!S.loaded) return plain(c, TITLE, 'Reading data, please wait...', '<p>Reading data, please wait...</p>');
         if (S.error) return plain(c, TITLE, '', `<p>${c.state(false, `The server list could not be read. ${S.error}`)}</p><div class="mmc-buttons">${btnHtml('refresh', 'Try Again')}</div>`);
         const cols = [
-            { t: 'Name', w: 120, key: 'name', text: (x) => x.s.label },
-            { t: 'Model', w: 130, key: 'model', text: (x) => x.s.model },
-            { t: 'Power', w: 80, key: 'power', text: (x) => hostText(x.s, x.st) },
-            { t: 'Watts', w: 56, num: true, key: 'watts', value: (x) => wattsOf(x.st) || 0, text: (x) => (wattsOf(x.st) ? `${wattsOf(x.st)} W` : '') },
-            { t: 'rackd', w: 90, key: 'rackd', text: (x) => rackdText(x.s) },
-            { t: 'Roles', w: 260, key: 'roles', text: (x) => rolesSummaryText(x.st) }
+            { t: 'Name', w: 96, key: 'name', text: (x) => x.s.label },
+            { t: 'Power', w: 74, key: 'power', text: (x) => hostText(x.s, x.st) },
+            { t: 'Watts', w: 52, num: true, key: 'watts', value: (x) => wattsOf(x.st) || 0, text: (x) => (wattsOf(x.st) ? `${wattsOf(x.st)} W` : '') },
+            { t: 'rackd', w: 80, key: 'rackd', text: (x) => rackdText(x.s) },
+            { t: 'Roles', w: 150, key: 'roles', text: (x) => rolesSummaryText(x.st) }
         ];
         const rows = S.servers.map((s) => ({ key: s.name, icon: SRV16, open: `nav:s:${s.name}`, data: { s, st: ss(s.name) } }));
-        const list = c.listView(cols, rows, { sortId: 'rm-servers', empty: 'No servers are configured.', fit: true });
+        const list = c.listView(cols, rows, { sortId: 'rm-servers2', empty: 'No servers are configured.', fit: true });
         return c.page(TITLE, `${S.servers.length} server${S.servers.length === 1 ? '' : 's'}`, [
             { id: 'rm-intro', title: 'Overview', body: c.overview(SRV32, ['Rack Manager runs the rack servers: their iLO (console, hardware, power) and the roles Dreamscape moves onto them (virtual machines, Android devices, sandboxes, containers, builds and more).', 'Select a server in the console tree, or open one below.']) },
             { id: 'rm-servers', title: 'Servers', body: list }
@@ -576,7 +616,7 @@
         const info = st.info;
         const rows = [
             ['Server', esc(`${m.label} (${m.model})`)],
-            ['iLO', m.ilo && m.ilo.connected ? 'Connected' : c.state(false, 'Not connected', true)],
+            ['iLO', m.ilo && m.ilo.connected ? 'Console session open' : m.ilo && m.ilo.power != null ? 'Available' : c.state(false, 'Not answering', true)],
             ['Power', esc(hostText(m, st))],
             ['rackd', m.rackd && m.rackd.state === 'up' ? 'Running' : c.state(false, rackdText(m) + (m.rackd && m.rackd.error ? `: ${m.rackd.error}` : ''), m.rackd && m.rackd.state === 'connecting')]
         ];

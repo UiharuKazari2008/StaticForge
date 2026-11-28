@@ -55,6 +55,11 @@ function registerPackets() {
             const m = message || {};
             // writes read the stored session fresh; reads may use a verdict up to GUARD_TTL_MS old
             if (!(await allowed(handlers, ws, clientInfo, !!(meta && meta.write)))) {
+                // CaféReady's certificate sign-in: the client asks for the administrator PIN (admin_pin_confirm, 320) and retries
+                if (await require('./320-adminTerminalHandler').needsPin(handlers, clientInfo)) {
+                    handlers.sendError(ws, 'Type the administrator PIN to use Rack Manager', 'ADMIN_PIN_REQUIRED', m.requestId);
+                    return;
+                }
                 handlers.sendError(ws, 'Rack Manager needs an administrator signed in with a full sign-in', 'INSUFFICIENT_PERMISSIONS', m.requestId);
                 return;
             }
