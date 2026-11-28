@@ -1591,7 +1591,7 @@
         if (tiltRaf) { cancelAnimationFrame(tiltRaf); tiltRaf = 0; }
         tiltNow.x = 0;
         tiltNow.y = 0;
-        shineLean = 0;
+        shineLean = 0; shineAt = 0;
         wallVar('--wm-ti-tx', '0%');
         wallVar('--wm-ti-ty', '0%');
         shineVar('--wm-ti-sx', '0px');
@@ -1636,12 +1636,14 @@
     const TILT_IDLE_MS = 30000;
     const TILT_PEEK_MS = 1000;
     // the glass light (#1413) follows the lean through its own slow low-pass, well behind the picture (Yukimi, Nov 27:
-    // "too reactive to gyro, should be damped more"): 4 % of the way a frame (about 0.4 s), and at full lean it
-    // slides 6 % of the picture's width and its slant tips 3 degrees
-    const SHINE_EASE = 0.04;
+    // "too reactive to gyro, should be damped more"): a time constant of 0.55 s, counted in time and not in frames, so
+    // a 120 Hz screen is damped as much as a 60 Hz one; at full lean it slides 6 % of the picture's width and its
+    // slant tips 3 degrees
+    const SHINE_TAU = 550;
     const SHINE_SLIDE = 6;
     const SHINE_SKEW = 3;
     let shineLean = 0;
+    let shineAt = 0;
     let tiltOn = false;
     let tiltBase = null;
     let tiltRaw = null;
@@ -1681,7 +1683,7 @@
         tiltBase = null;
         tiltRaw = null;
         tiltNow.x = 0; tiltNow.y = 0;
-        shineLean = 0;
+        shineLean = 0; shineAt = 0;
         cancelAnimationFrame(tiltRaf); tiltRaf = 0;
         wallVar('--wm-ti-tx', '0%');
         wallVar('--wm-ti-ty', '0%');
@@ -1751,9 +1753,9 @@
         tiltRaw = raw;
         if (!tiltRaf) tiltRaf = requestAnimationFrame(tiltFrame);
     }
-    function tiltFrame() {
+    function tiltFrame(ts) {
         tiltRaf = 0;
-        if (wallFrozen || !tiltOn || !tiltRaw || !ensureWall()) return;
+        if (wallFrozen || !tiltOn || !tiltRaw || !ensureWall()) { shineAt = 0; return; }
         if (!tiltPx) tiltMeasure();
         const k = tiltK();
         // just after a home swipe's entrance the lean comes in slowly from the resting pose (#1013)
@@ -1768,13 +1770,16 @@
         const qy = Math.round((-tiltNow.y * k) / tiltPx.y) * tiltPx.y;
         wallVar('--wm-ti-tx', `${(qx || 0).toFixed(4)}%`);
         wallVar('--wm-ti-ty', `${(qy || 0).toFixed(4)}%`);
-        // the glass light follows that smoothed lean through its own slower low-pass (#1413): it slides in whole device
+        // the glass light follows that smoothed lean through its own slower low-pass (#1413, SHINE_TAU, by the frame's
+        // own time): it slides in whole device
         // pixels (tiltPx is the measured width, nothing is read from the layout here) and its slant tips the way it
         // slides, so the light's angle moves with the phone. The frames go on until the light has arrived too (under
         // half a device pixel left), then stop
-        shineLean += (tiltNow.x - shineLean) * SHINE_EASE;
+        const dt = shineAt && ts > shineAt ? Math.min(50, ts - shineAt) : 16.7;
+        shineAt = ts || 0;
+        shineLean += (tiltNow.x - shineLean) * (1 - Math.exp(-dt / SHINE_TAU));
         const shineDone = Math.abs(tiltNow.x - shineLean) * SHINE_SLIDE < 0.5 * tiltPx.x;
-        if (done && shineDone) shineLean = tiltNow.x;
+        if (done && shineDone) { shineLean = tiltNow.x; shineAt = 0; }
         const dpr = window.devicePixelRatio || 1;
         shineVar('--wm-ti-sx', `${(Math.round((-shineLean * SHINE_SLIDE) / tiltPx.x) / dpr).toFixed(2)}px`);
         shineVar('--wm-ti-sk', `${(shineLean * SHINE_SKEW || 0).toFixed(1)}deg`);
