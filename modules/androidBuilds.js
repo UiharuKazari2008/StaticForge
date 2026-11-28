@@ -25,7 +25,14 @@
  *                apk/<versionCode>-<sha7>.apk (last 10 kept), the Release is published and 'release' is emitted.
  *   While it runs the server holds its own agent-coord gate (target dsapp-apk, repo DSApp-Kotlin) so agents see it.
  *
+ * Workers are tried in order (Nov 28 2026): Fat Misaka first, Ruiko the fallback. A worker with `power` (a rack server name) first takes a Rack
+ * Manager lease (rack.sock op lease, wait:true: powers the host on and waits) and releases it after the build; the host not up within 6 minutes,
+ * an unreachable host or a build that fails for an infrastructure reason (not a compile error) logs why and moves on to the next worker.
+ * An ssh worker with os 'linux' runs scripts/android/dsapp-linux-build.sh (the dsapp build image in docker on the host, signing with the same
+ * debug key as Ruiko's builds, kept root-only on the host in /etc/rackd/secrets/dsapp).
+ *
  * Config (secure.config.json, key androidBuilds): { workers: [{ id, kind: 'ssh', host, dir, folder, script } |
+ *   { id, kind: 'ssh', os: 'linux', host, power?, image, secrets, workDir } |
  *   { id, kind: 'local', javaHome, androidHome, keystore, alias?, storePassword? }], pushTokenFile, repoUrl?, skipBranches? }.
  *   Default worker: ruiko over ssh, C:/Users/ykaza/claude-build, folder dsapp-latest, build-latest.ps1.
  *
@@ -70,10 +77,13 @@ const MAX_COMMITS = 200;
 const GIT_ID = ['-c', 'user.name=Dreamscape Android builds', '-c', 'user.email=android-builds@yozora.bluesteel.737.jp.net'];
 const LOCAL_NEEDS = 'not configured: needs javaHome, androidHome and keystore (debug key 5c7b3ecc)';
 
+/** Fat Misaka (rack host) first, Ruiko the fallback: the default when secure.config.json lists no workers. */
+const MISAKA_WORKER = { id: 'misaka', kind: 'ssh', os: 'linux', name: 'Fat Misaka', host: 'fat-misaka', power: 'misaka', image: 'rack-build-dsapp:d69df5860a9a', secrets: '/etc/rackd/secrets/dsapp', workDir: '/srv/rack/builds/dsapp-apk' };
+const POWER_WAIT_MS = 6 * 60000;
 const DEFAULT_WORKER = { id: 'ruiko', kind: 'ssh', host: 'ruiko', dir: 'C:/Users/ykaza/claude-build', folder: 'dsapp-latest', script: 'build-latest.ps1' };
 
 const events = new EventEmitter();
-const T = { root: null, exec: null, coord: null, config: null, socket: null }; // test hooks
+const T = { root: null, exec: null, coord: null, config: null, socket: null, rack: null }; // test hooks
 let gResources = null;
 let index = { nextId: 1, releases: [], jobs: [], devices: {}, deliveries: {} };
 let job = null; // the running job (one at a time)
@@ -200,6 +210,7 @@ function normWorker(w) {
     const kind = w.kind === 'local' ? 'local' : 'ssh';
     const cap = String(w.name || w.id).replace(/^./, (c) => c.toUpperCase());
     if (kind === 'local') return { id: w.id, kind, name: cap, javaHome: w.javaHome || '', androidHome: w.androidHome || '', keystore: w.keystore || '', alias: w.alias || 'androiddebugkey', storePassword: w.storePassword || 'android' };
+    if (w.os === 'linux') return { id: w.id, kind, os: 'linux', name: cap, host: String(w.host || ''), power: String(w.power || ''), image: String(w.image || ''), secrets: String(w.secrets || ''), workDir: String(w.workDir || ''), dir: '', folder: '', script: '' };
     return { id: w.id, kind, name: cap, host: String(w.host || ''), dir: String(w.dir || ''), folder: String(w.folder || 'dsapp-latest'), script: String(w.script || 'build-latest.ps1') };
 }
 
@@ -211,7 +222,7 @@ function config() {
     }
     raw = raw && typeof raw === 'object' ? raw : {};
     let workers = (Array.isArray(raw.workers) ? raw.workers : []).map(normWorker).filter(Boolean);
-    if (!workers.length) workers = [normWorker(DEFAULT_WORKER)];
+    if (!workers.length) workers = [normWorker(MISAKA_WORKER), normWorker(DEFAULT_WORKER)];
     return {
         workers,
         pushTokenFile: String(raw.pushTokenFile || DEFAULT_PUSH_TOKEN_FILE),
@@ -227,6 +238,11 @@ function workerProblem(w) {
         return '';
     }
     if (!/^[A-Za-z0-9._@-]+$/.test(w.host)) return 'bad host in config';
+    if (w.os === 'linux') {
+        if (!/^[A-Za-z0-9._:/@-]+$/.test(w.image) || !/^\/[A-Za-z0-9._/-]+$/.test(w.secrets) || !/^\/[A-Za-z0-9._/-]+$/.test(w.workDir)) return 'bad image, secrets or workDir in config';
+        if (w.power && !/^[a-z0-9_-]+$/.test(w.power)) return 'bad power server in config';
+        return '';
+    }
     if (!/^[A-Za-z0-9._:/-]+$/.test(w.dir)) return 'bad dir in config';
     if (!/^[A-Za-z0-9._-]+$/.test(w.folder) || !/^[A-Za-z0-9._-]+$/.test(w.script)) return 'bad folder or script in config';
     return '';
@@ -353,7 +369,8 @@ function jobView(j, lines) {
     };
 }
 
-class Fail extends Error {}
+/** infra: the failure says nothing about the source (host off, ssh, docker, network): the next worker may still build it. */
+class Fail extends Error { constructor(msg, infra) { super(msg); this.infra = infra === true; } }
 
 async function git(j, cfg, args, opts = {}) {
     const r = await exec('git', GIT_ID.concat(args), { cwd: opts.cwd || repoDir(), env: gitEnv(cfg), timeoutMs: opts.timeoutMs || 180000, onLine: opts.quiet ? null : (l) => j.log(l) });
@@ -363,16 +380,80 @@ async function git(j, cfg, args, opts = {}) {
 
 async function exists(file) { try { await fsp.access(file); return true; } catch (_) { return false; } }
 
-/** First configured worker that is ready; throws with every reason when none is. */
+// ---------------------------------------------------------------- Rack Manager (rack.sock, same process): power and lease
+
+/** One request to Rack Manager over its unix socket rack.sock beside the agent-coord database (tests replace it with T.rack). */
+function rackAsk(req, timeoutMs) {
+    if (T.rack) return Promise.resolve().then(() => T.rack(req));
+    const file = process.env.AGENT_RACK_SOCKET || path.join(path.dirname(coord().dbPath()), 'rack.sock');
+    return new Promise((resolve, reject) => {
+        let buf = '';
+        const sock = net.createConnection(file, () => sock.write(`${JSON.stringify(req)}\n`));
+        sock.setEncoding('utf8');
+        sock.setTimeout(timeoutMs || 60000, () => { sock.destroy(); reject(new Error('Rack Manager did not answer in time')); });
+        sock.on('data', (c) => { buf += c; });
+        sock.on('end', () => {
+            let out = null;
+            try { out = JSON.parse(buf.trim()); } catch (_) { return reject(new Error('Rack Manager answered something unreadable')); }
+            if (!out.ok) return reject(new Error(out.error || 'Rack Manager failed'));
+            return resolve(out);
+        });
+        sock.on('error', (e) => reject(new Error(e.code === 'ENOENT' || e.code === 'ECONNREFUSED' ? 'Rack Manager is not running' : e.message)));
+    });
+}
+
+/**
+ * Takes a Rack Manager lease on the worker's host (powers it on and waits) for the build; the host not up within 6 minutes is an
+ * infrastructure failure (the next worker builds). Returns { id } to release after the build.
+ */
+async function takeHostLease(j, w) {
+    j.log(`${w.name}: taking a rack lease (powers the host on and waits up to 6 minutes)`);
+    const ask = rackAsk({ op: 'lease', server: w.power, purpose: 'dsapp build', minutes: 60, wait: true, by: GATE_AGENT }, POWER_WAIT_MS + 30000);
+    let timer = null;
+    const late = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Fail(`${w.name} did not come up in 6 minutes`, true)), POWER_WAIT_MS); });
+    let out;
+    try {
+        out = await Promise.race([ask, late]);
+    } catch (e) {
+        // a lease that is granted after we gave up must not stay open
+        ask.then((o) => releaseHostLease(j, w, o && o.result && o.result.lease && o.result.lease.id), () => {});
+        throw e instanceof Fail ? e : new Fail(`${w.name}: the rack lease failed: ${e.message}`, true);
+    } finally { clearTimeout(timer); }
+    const r = out && out.result ? out.result : {};
+    const state = r.power && r.power.state;
+    const id = r.lease && r.lease.id;
+    if (r.refused || !id || state !== 'up') {
+        if (id) await releaseHostLease(j, w, id);
+        throw new Fail(`${w.name} is not up (${r.refused ? `${r.code}: ${r.error}` : `power ${state || 'unknown'}`})`, true);
+    }
+    j.log(`${w.name}: host is up, lease ${id}`);
+    return { id };
+}
+
+async function releaseHostLease(j, w, id) {
+    if (!id) return;
+    try { await rackAsk({ op: 'lease_release', id, by: GATE_AGENT }, 30000); j.log(`${w.name}: rack lease released`); } catch (e) { j.log(`${w.name}: releasing the rack lease failed: ${e.message}`); }
+}
+
+/** Why a worker cannot build right now ('' when it can): bad config, or an ssh host that does not answer in 5 s. */
+async function workerNotReady(j, w) {
+    const bad = workerProblem(w);
+    if (bad) return bad;
+    if (w.kind === 'ssh') {
+        const r = await exec('ssh', ['-o', 'ConnectTimeout=5', '-o', 'BatchMode=yes', w.host, 'exit'], { timeoutMs: 15000 });
+        if (r.code !== 0) return 'unreachable';
+    }
+    return '';
+}
+
+const whyNot = (w, bad) => (bad === 'unreachable' ? `${w.name} unreachable` : `${w.name}: ${bad}`);
+
+/** First configured worker that is ready (no lease taken); throws with every reason when none is. Kept for tests and status. */
 async function pickWorker(j, cfg) {
     const why = [];
     for (const w of cfg.workers) {
-        const bad = workerProblem(w);
-        if (bad) { why.push(`${w.name}: ${bad}`); continue; }
-        if (w.kind === 'ssh') {
-            const r = await exec('ssh', ['-o', 'ConnectTimeout=5', '-o', 'BatchMode=yes', w.host, 'exit'], { timeoutMs: 15000 });
-            if (r.code !== 0) { why.push(`${w.name} unreachable`); continue; }
-        }
+        const bad = await workerNotReady(j, w);
+        if (bad) { why.push(whyNot(w, bad)); continue; }
         return w;
     }
     throw new Fail(why.join('; ') || 'no build worker is configured');
@@ -451,6 +532,23 @@ async function buildSsh(j, cfg, w, src, dir) {
     return apk;
 }
 
+/** A compile error says the source is broken (the next worker would fail the same way); anything else from the Linux host is infrastructure. */
+const COMPILE_ERROR = /^e: |: error: |Compilation failed|Execution failed for task ':[^']*compile/m;
+
+async function buildLinux(j, cfg, w, src, dir) {
+    const zip = path.join(dir, 'source.zip');
+    const apk = path.join(dir, 'dsapp.apk');
+    await git(j, cfg, ['archive', '--format=zip', '-o', zip, src.sha], { quiet: true });
+    await fsp.mkdir(path.dirname(JOINT_LOCK), { recursive: true });
+    j.log(`waiting for the joint build lock, then building on ${w.name}`);
+    const r = await exec('flock', ['-w', '1800', JOINT_LOCK, 'bash', path.join(SCRIPTS, 'dsapp-linux-build.sh'), w.host, w.image, w.secrets, w.workDir, zip, apk], { timeoutMs: 80 * 60000, onLine: (l) => j.log(l) });
+    if (r.code !== 0) {
+        const hit = /e: .*|NO APK|BUILD HOST: .*/.exec(r.out);
+        throw new Fail(`the build on ${w.name} failed (${r.code}): ${hit ? hit[0].slice(0, 200) : 'see the log'}`, !(r.code === 21 && COMPILE_ERROR.test(r.out)));
+    }
+    return apk;
+}
+
 async function buildLocal(j, cfg, w, src, dir) {
     const tar = path.join(dir, 'source.tar');
     const tree = path.join(dir, 'tree');
@@ -514,15 +612,35 @@ async function runJob(j) {
         cfg = config();
         gateStart(j, j.note);
         setStep(j, 'worker');
-        const w = await pickWorker(j, cfg);
-        j.worker = w.id;
-        j.log(`worker ${w.name} (${w.kind})`);
-        setStep(j, 'source');
-        const src = await prepareSource(j, cfg);
-        setStep(j, 'build');
         const dir = path.join(workDir(), String(j.id));
         await fsp.mkdir(dir, { recursive: true });
-        const apk = w.kind === 'local' ? await buildLocal(j, cfg, w, src, dir) : await buildSsh(j, cfg, w, src, dir);
+        const reasons = [];
+        let src = null;
+        let apk = null;
+        let w = null;
+        for (let i = 0; i < cfg.workers.length && !apk; i += 1) {
+            const cand = cfg.workers[i];
+            const more = i < cfg.workers.length - 1;
+            let lease = null;
+            try {
+                setStep(j, 'worker');
+                // a powered host is asked to come up first (its ssh answers only then); the reachability check follows
+                const cfgBad = workerProblem(cand);
+                if (!cfgBad && cand.os === 'linux' && cand.power) lease = await takeHostLease(j, cand);
+                const bad = cfgBad || await workerNotReady(j, cand);
+                if (bad) { const m = whyNot(cand, bad); reasons.push(m); j.log(`worker ${cand.name} skipped: ${bad}`); continue; }
+                j.worker = cand.id;
+                j.log(`worker ${cand.name} (${cand.kind})`);
+                if (!src) { setStep(j, 'source'); src = await prepareSource(j, cfg); }
+                setStep(j, 'build');
+                apk = cand.kind === 'local' ? await buildLocal(j, cfg, cand, src, dir) : (cand.os === 'linux' ? await buildLinux(j, cfg, cand, src, dir) : await buildSsh(j, cfg, cand, src, dir));
+                w = cand;
+            } catch (e) {
+                if (e instanceof Fail && e.infra && more) { reasons.push(`${cand.name}: ${e.message}`); j.log(`worker ${cand.name} failed for an infrastructure reason, falling back to the next worker: ${e.message}`); continue; }
+                throw e;
+            } finally { if (lease) await releaseHostLease(j, cand, lease.id); }
+        }
+        if (!apk) throw new Fail(reasons.join('; ') || 'no build worker is configured');
         setStep(j, 'publish');
         const release = await publish(j, w, src, apk);
         j.releaseId = release.id;
@@ -706,7 +824,8 @@ module.exports = {
         setCoord(c) { T.coord = c; },
         setConfig(c) { T.config = c; },
         setSocket(p) { T.socket = p; },
-        requestBuild, buildStatus, listView, workerProblem, pickWorker, config, flush, loadIndex, closeSocket, serveSocket,
+        setRack(fn) { T.rack = fn; },
+        requestBuild, buildStatus, listView, workerProblem, pickWorker, buildLinux, takeHostLease, COMPILE_ERROR, config, flush, loadIndex, closeSocket, serveSocket,
         currentJob: () => job, newJob, nextVersionCode, parseMerged, LOCAL_NEEDS
     }
 };

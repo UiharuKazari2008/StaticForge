@@ -125,6 +125,13 @@ port); Dreamscape reaches them through ONE `ssh -L` per instance (tunnel port = 
 on both sides; 9601... are free on the host, 9401+ are the replicas' HTTPS ports). Console ports 5576-5582 are the top of adb's scan range and away from
 the android role's own AVDs (which start at 5554).
 
+- **Grant order (Nov 28 2026, Yukimi approved):** a shape request (`aemu-a53`, `aemu-fold`, `emulator`) grants the Fat Misaka instances FIRST
+  (`aemu-a53-m1`, `-m2`, `aemu-fold-m1`, `-m2`; the order of `EMULATOR_IDS` in `modules/agentCoord/deviceQueue.js` is the grant order), then Ruiko's
+  (`-1`..`-4`), because Ruiko is Yukimi's desktop PC and only the fallback. Explicit ids work as before. A grant on a `-m` id does NOT power the host on:
+  the answer carries `host: 'misaka'` and `power: up | off | booting | unknown` (rack.sock `power status`, 4 s at most, never a wait), and
+  `lane.sh <id> up` powers it on (3-5 minutes cold), so on `power != up` expect a boot. Leases ended with "its session ended" within minutes because
+  an agent that had once called `coord_set_task status:done` kept `done` through every later heartbeat (the lease check reads `done` as an ended
+  session); any agent-coord call after `done` now makes the agent active again (`revive` in `modules/agentCoord/mcpServer.js`).
 - **How the host is driven:** `ssh fat-misaka` (login hvadmin, everything as user `rack` through `sudo`), the host's `/opt/android-sdk`, the lane's own AVD home,
   logs and last-use files in `/var/lib/rack/lane/` (`avd/`, `logs/`, `last/`, `home/` = the emulator's HOME with the console token). The lane does not use rackd's
   `android` role for the lifecycle (its `start` picks the console port itself and has no snapshot control); rackd is used for power and leases only.

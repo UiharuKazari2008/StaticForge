@@ -32,6 +32,7 @@ ab._test.setConfig({ workers: [ruiko], pushTokenFile: tokenFile });
 // ---- the stub exec layer
 const calls = [];
 let sshUp = true;
+const linux = { rc: 0, out: '' }; // the Linux (Fat Misaka) build script's answer
 let hold = null; // a promise the remote build waits for (to keep a build running)
 let counter = 0;
 const sha = (n) => crypto.createHash('sha1').update(`c${n}`).digest('hex');
@@ -42,6 +43,11 @@ ab._test.setExec(async (file, args, opts) => {
     if (file === 'bash') {
         line('ok origin/claude/ble-probe-1193'); line('resolved origin/feat/camera-approach-tones');
         return { code: 0, out: 'ok origin/claude/ble-probe-1193\nresolved origin/feat/camera-approach-tones\n' };
+    }
+    if (file === 'flock' && args.some((x) => /dsapp-linux-build\.sh$/.test(x))) {
+        if (linux.rc !== 0) { line(linux.out); return { code: linux.rc, out: linux.out }; }
+        fs.writeFileSync(args[args.length - 1], crypto.randomBytes(4096));
+        return { code: 0, out: 'APK received' };
     }
     if (file === 'flock') {
         if (hold) await hold;
@@ -208,7 +214,36 @@ const props = () => fs.readFileSync(path.join(tmp, 'data', 'repo', 'gradle.prope
     ab._test.setConfig({ workers: [{ id: 'x', kind: 'ssh', host: 'a;b', dir: 'C:/x', folder: 'f', script: 's' }], pushTokenFile: tokenFile });
     assert.strictEqual(ab._test.workerProblem(ab._test.config().workers[0]), 'bad host in config');
     ab._test.setConfig({ pushTokenFile: tokenFile });
-    assert.strictEqual(ab._test.config().workers[0].id, 'ruiko', 'default worker');
+    assert.deepStrictEqual(ab._test.config().workers.map((w) => w.id), ['misaka', 'ruiko'], 'default workers: Fat Misaka first, Ruiko the fallback');
+    assert.strictEqual(ab._test.workerProblem(ab._test.config().workers[0]), '');
+
+    // ---- Fat Misaka first (Nov 28 2026): lease and power, release after, fall back to Ruiko for infrastructure failures only
+    const rackCalls = [];
+    let power = 'up';
+    ab._test.setRack(async (req) => {
+        rackCalls.push(req.op);
+        if (req.op === 'lease') return { ok: true, result: { lease: { id: 'l_test' }, power: { state: power } } };
+        return { ok: true, result: { released: true } };
+    });
+    ab._test.setConfig({ pushTokenFile: tokenFile });
+    r = ab._test.requestBuild({}); d = await waitDone(r.id);
+    assert.strictEqual(d.job.state, 'done'); assert.strictEqual(d.job.worker, 'misaka');
+    assert.deepStrictEqual(rackCalls, ['lease', 'lease_release'], 'the host is leased for the build and released after');
+    rackCalls.length = 0; linux.rc = 12; linux.out = 'BUILD HOST: no APK came out (NO APK)';
+    r = ab._test.requestBuild({}); d = await waitDone(r.id);
+    assert.strictEqual(d.job.state, 'done'); assert.strictEqual(d.job.worker, 'ruiko', 'an infrastructure failure falls back to Ruiko');
+    assert.ok(d.job.log.some((l) => /falling back to the next worker/.test(l)));
+    assert.deepStrictEqual(rackCalls, ['lease', 'lease_release'], 'the lease is released after a failed build too');
+    rackCalls.length = 0; linux.rc = 21; linux.out = 'e: file:///work/src/A.kt:3:1 Unresolved reference: x';
+    r = ab._test.requestBuild({}); d = await waitDone(r.id);
+    assert.strictEqual(d.job.state, 'failed'); assert.ok(/failed \(21\)/.test(d.job.error), d.job.error);
+    assert.ok(!d.job.log.some((l) => /worker Ruiko/.test(l)), 'a compile error does not try the next worker');
+    rackCalls.length = 0; linux.rc = 0; power = 'off';
+    r = ab._test.requestBuild({}); d = await waitDone(r.id);
+    assert.strictEqual(d.job.state, 'done'); assert.strictEqual(d.job.worker, 'ruiko', 'a host that is not up falls back to Ruiko');
+    assert.deepStrictEqual(rackCalls, ['lease', 'lease_release']);
+    ab._test.setRack(null);
+    ab._test.setConfig({ workers: [ruiko], pushTokenFile: tokenFile });
 
     // ---- routes: admin only
     const handlers = {};

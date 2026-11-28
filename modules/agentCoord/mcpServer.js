@@ -101,11 +101,24 @@ function accountFromConfigDir() {
 let me = null; // { id, root }
 let lastRecordCheck = 0;
 
+/**
+ * A tool call is proof the session lives. An agent that once set its status to done (coord_set_task done, usually a subagent or a
+ * finished step) kept that status through every heartbeat, so every device lease it took afterwards ended at once with
+ * "its session ended" (lane agent on the Fat Misaka ids, Nov 28 2026). Any call after done makes it active again.
+ */
+function revive(u) {
+    try {
+        const cur = store.getAgent(u.id);
+        if (cur && cur.status === 'done' && u.status === undefined) u.status = 'active';
+    } catch (_) { /* the heartbeat goes on */ }
+    return u;
+}
+
 /** Registers (or refreshes) this agent; cheap after the first call. */
 function self(force) {
     const t = Date.now();
     if (me && !force && t - lastRecordCheck < 30000) {
-        store.upsertAgent({ id: me.id });
+        store.upsertAgent(revive({ id: me.id }));
         return me;
     }
     lastRecordCheck = t;
@@ -113,18 +126,22 @@ function self(force) {
     const envId = process.env.AGENT_COORD_ID;
     const kind = process.env.AGENT_COORD_KIND || (rec ? 'claude' : 'other');
     const cwd = (rec && rec.cwd) || process.env.AGENT_COORD_CWD || process.cwd();
-    const { repo, root } = store.repoOf(cwd);
+    // a session on Fat Misaka (docs/fleet/sessions-on-misaka.md): this server runs here over the ssh gate, its cwd is a folder
+    // there, so the repo, the root and the branch come in as environment from the launcher instead of a git call
+    const onMisaka = !!process.env.AGENT_COORD_HOST && !rec;
+    const { repo, root } = onMisaka && process.env.AGENT_COORD_REPO ? { repo: process.env.AGENT_COORD_REPO, root: process.env.AGENT_COORD_ROOT || cwd } : store.repoOf(cwd);
     const id = envId || (rec ? `claude-${rec.sessionId.slice(0, 8)}` : (me && me.id) || `${kind}-${os.hostname()}-${process.ppid}`);
     const a = {
         id,
         kind,
         cwd,
         repo,
-        branch: gitBranch(cwd),
+        branch: onMisaka ? (process.env.AGENT_COORD_BRANCH || '') : gitBranch(cwd),
         pid: rec ? rec.pid : process.ppid,
-        tmux: rec && rec.tmux ? String(rec.tmux) : '',
-        sessionId: rec ? rec.sessionId : undefined
+        tmux: rec && rec.tmux ? String(rec.tmux) : (onMisaka ? String(process.env.AGENT_COORD_TMUX || '').replace(/^([^:]+):(.+)$/, '$1 ($2)') : ''),
+        sessionId: rec ? rec.sessionId : (onMisaka && process.env.AGENT_COORD_SESSION_ID ? process.env.AGENT_COORD_SESSION_ID : undefined)
     };
+    if (onMisaka) a.host = process.env.AGENT_COORD_HOST;
     if (process.env.AGENT_COORD_ACCOUNT) a.account = process.env.AGENT_COORD_ACCOUNT;
     else {
         const acc = accountFromConfigDir();
@@ -134,7 +151,7 @@ function self(force) {
     const known = store.getAgent(id);
     const name = process.env.AGENT_COORD_NAME || (rec && rec.name && rec.nameSource !== 'derived' ? rec.name : '');
     if (name || !known || !known.name) a.name = name || (rec && rec.name) || id;
-    store.upsertAgent(a);
+    store.upsertAgent(revive(a));
     me = { id, root };
     return me;
 }
@@ -172,12 +189,26 @@ function paneOf(pid) {
 /** Types a steering message into a live Claude session's terminal. */
 function typeInto(agent, from, body) {
     if (!agent || agent.kind !== 'claude' || !agent.pid || agent.status === 'gone') return '';
+    if (agent.host === 'fat-misaka') return typeIntoMisaka(agent, from, body);
     const where = paneOf(agent.pid);
     if (!where) return '';
     const line = `[steering from ${from}] ${body}`.replace(/[\r\n]+/g, ' ').slice(0, 4000);
     try {
         execFileSync('tmux', [...where.sock, 'send-keys', '-t', where.pane, '-l', line], { timeout: 3000, stdio: 'ignore' });
         execFileSync('tmux', [...where.sock, 'send-keys', '-t', where.pane, 'Enter'], { timeout: 3000, stdio: 'ignore' });
+        return 'tmux';
+    } catch (_) { return ''; }
+}
+
+/** A session on Fat Misaka: its pane is on that host, reached over ssh (agent.tmux = "<session> (<socket>)"). */
+function typeIntoMisaka(agent, from, body) {
+    const m = /^(\S+) \(([^)]+)\)/.exec(String(agent.tmux || ''));
+    if (!m || !/^[A-Za-z0-9_-]+$/.test(m[1]) || !/^[A-Za-z0-9_-]+$/.test(m[2])) return '';
+    try {
+        const ssh = require('../misakaSshArgs');
+        const line = `[steering from ${from}] ${body}`.replace(/[\r\n]+/g, ' ').slice(0, 4000).replace(/'/g, "'\\''");
+        const t = `tmux -L ${m[2]} send-keys -t '=${m[1]}:'`;
+        execFileSync('ssh', [...ssh.sshOptions(), ssh.destination(), `${t} -l '${line}' && ${t} Enter`], { timeout: 12000, stdio: 'ignore' });
         return 'tmux';
     } catch (_) { return ''; }
 }
@@ -234,7 +265,7 @@ const TOOLS = [
     { name: 'coord_inspect', description: 'What another agent is doing: busy / idle, task, model, account, claims, the files it edited (by edit tool, or by shell while still uncommitted), its recent shell commands, its last message, and the uncommitted files in its folder.', inputSchema: S({ agent: str('Agent id, name or session id (coord_agents)'), limit: { type: 'number', description: 'Files to list (default 100)' }, git: { type: 'boolean', description: 'Include git status of its folder (default true)' } }, ['agent']) },
     { name: 'coord_editors', description: 'Which agents edited these paths (repo-relative), from their transcripts. Use before changing a file you did not claim.', inputSchema: S({ paths: strs('Paths'), all: { type: 'boolean', description: 'Also agents that are gone' } }, ['paths']) },
     { name: 'coord_locks', description: 'Every .agent-* busy lock in the repo root: made by agent-coord (with the agent\'s state) or by an agent outside it (with its age; stale = older than 3 h: report it, never delete someone else\'s).', inputSchema: S({ repo_root: str('Absolute repo root (default: yours)') }) },
-    { name: 'coord_device_request', description: 'Request exclusive use of a shared test device BEFORE any test, install, reboot, screenshot run or tap-through on it. Answers granted (lease with its end time) or your place in the queue and who holds it; with a shape alias (aemu-a53, aemu-fold, emulator) the first free instance is granted at once and the answer names it (device / instance), and the steer for a queued shape waiter names the instance it got; when queued do NOT use the device, a steer message says when it is yours. The A53 is the agents\' own test phone and the emulators are the test lane: request them and use them, never ask Yukimi (the A53 PIN is in ~/.secrets/ruiko-windows-pin.token; memory #300). The FOLD is Yukimi\'s own phone and off limits (rule fold-off-limits): refused unless purpose is final-install (the last install step of finished, tested work), Fleet holds her approval or a priority she named, or purpose approval (she is asked on the phone; only when she said she wants it). A device on the consent test lane, and the Fold with purpose approval, answer consent pending - do NOT touch the device until a steer message says it was allowed (Allow); when it is denied carry on without it, and do not ask again for 10 minutes. Never take a device someone else holds. Release it with coord_device_release as soon as the test ends.', inputSchema: S({ device: str('a53 | an emulator id (aemu-a53-1) | a shape alias: aemu-a53, aemu-fold or emulator (any shape; grants the first free instance, queues on the shape only when every instance is held) | ruiko-chrome | headless-chrome | another shared device name (fold only with purpose final-install or approval)'), why: str('What you test, one line'), minutes: { type: 'number', description: 'How long you need it (default 15, max 60)' }, purpose: str('Only for the Fold: final-install | approval') }, ['device']) },
+    { name: 'coord_device_request', description: 'Request exclusive use of a shared test device BEFORE any test, install, reboot, screenshot run or tap-through on it. Answers granted (lease with its end time) or your place in the queue and who holds it; with a shape alias (aemu-a53, aemu-fold, emulator) the first free instance is granted at once (the Fat Misaka instances first, then Ruiko;  a Fat Misaka grant also answers host misaka and its power state, and does not power it on: lane.sh up does) and the answer names it (device / instance), and the steer for a queued shape waiter names the instance it got; when queued do NOT use the device, a steer message says when it is yours. The A53 is the agents\' own test phone and the emulators are the test lane: request them and use them, never ask Yukimi (the A53 PIN is in ~/.secrets/ruiko-windows-pin.token; memory #300). The FOLD is Yukimi\'s own phone and off limits (rule fold-off-limits): refused unless purpose is final-install (the last install step of finished, tested work), Fleet holds her approval or a priority she named, or purpose approval (she is asked on the phone; only when she said she wants it). A device on the consent test lane, and the Fold with purpose approval, answer consent pending - do NOT touch the device until a steer message says it was allowed (Allow); when it is denied carry on without it, and do not ask again for 10 minutes. Never take a device someone else holds. Release it with coord_device_release as soon as the test ends.', inputSchema: S({ device: str('a53 | an emulator id (aemu-a53-1, or a Fat Misaka one: aemu-a53-m1, aemu-a53-m2, aemu-fold-m1, aemu-fold-m2) | a shape alias: aemu-a53, aemu-fold or emulator (any shape; grants the first free instance, queues on the shape only when every instance is held) | ruiko-chrome | headless-chrome | another shared device name (fold only with purpose final-install or approval)'), why: str('What you test, one line'), minutes: { type: 'number', description: 'How long you need it (default 15, max 60)' }, purpose: str('Only for the Fold: final-install | approval') }, ['device']) },
     { name: 'coord_device_release', description: 'Release a shared test device (or leave its queue) as soon as your test ends; the next agent in line is granted it at once.', inputSchema: S({ device: str('The device you hold or wait for') }, ['device']) },
     { name: 'coord_device_renew', description: 'Extend your lease on a shared test device (from now, default 15, max 60 minutes) when the test runs longer than planned. Leases also end when you are idle for 10 minutes or your session ends. On a lease that still waits for an Allow (a consent test-lane device, or the Fold with purpose approval) nothing runs yet and renewing only sets the length the lease gets once it is allowed; an allowed lease keeps its consent when renewed.', inputSchema: S({ device: str('The device you hold'), minutes: { type: 'number', description: 'Minutes from now (max 60)' } }, ['device']) },
     { name: 'coord_devices', description: 'Shared test devices: who holds each, when the lease ends, and who waits in line. Look before you plan a test; request a device with coord_device_request before using it, never use one someone else holds.', inputSchema: S({ device: str('One device (omit for all)') }) },
@@ -343,7 +374,7 @@ function run(name, args) {
         return { root: a.repo_root || ego.root, locks: store.lockFiles(a.repo_root || ego.root) };
     case 'coord_device_request': {
         const ag = store.getAgent(ego.id) || {};
-        return devices.request(ego.id, a.device, { why: a.why, minutes: a.minutes, sessionId: ag.sessionId, purpose: a.purpose });
+        return withHostPower(devices.request(ego.id, a.device, { why: a.why, minutes: a.minutes, sessionId: ag.sessionId, purpose: a.purpose }));
     }
     case 'coord_device_release': return devices.release(ego.id, a.device);
     case 'coord_device_renew': return devices.renew(ego.id, a.device, a.minutes);
@@ -525,6 +556,19 @@ function rackAsk(req, timeoutMs) {
         });
         sock.on('error', (e) => reject(new Error(e.code === 'ENOENT' || e.code === 'ECONNREFUSED' ? 'Rack Manager is not running (it runs inside the Dreamscape server)' : e.message)));
     });
+}
+
+/**
+ * A grant on a Fat Misaka instance (aemu-*-m1/m2) says where it runs and whether the host is on: host 'misaka', power up | off | booting |
+ * unknown. The grant does NOT power the host on (lane.sh up does, 3-5 minutes); this only tells the agent to expect a boot. Never waits
+ * for one: a 4 s look at rack.sock, else power 'unknown'.
+ */
+function withHostPower(r) {
+    const inst = r && r.granted ? (r.instance || r.device) : '';
+    const host = devices.hostOf(inst);
+    if (!host) return r;
+    const done = (power) => Object.assign({}, r, { host, power, note: power === 'up' ? `${inst} runs on Fat Misaka (host is on).` : `${inst} runs on Fat Misaka and the host is ${power}: the grant does not power it on, scripts/aemu-lane/lane.sh ${inst} up does (3-5 minutes for a cold host). Expect a boot.` });
+    return rackAsk({ op: 'power', server: host, action: 'status' }, 4000).then((o) => done(String((o.result && o.result.state) || 'unknown')), () => done('unknown'));
 }
 
 /** The instructions plus the shared memory's digest for this session's repo (a cheap local DB read, ~3 KB at most). */

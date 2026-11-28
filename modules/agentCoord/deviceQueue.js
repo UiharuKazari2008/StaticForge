@@ -43,7 +43,14 @@ Object.keys(KNOWN).forEach((id) => KNOWN[id].aliases.forEach((a) => ALIAS.set(a,
  * scripts/aemu-lane/lane.sh (pool_row / POOL_IDS); it is not read from that file because the server must not parse a
  * shell script at load (and lane.sh is edited by other sessions), so a new instance is added in both places by hand.
  */
-const EMULATOR_IDS = ['aemu-a53-1', 'aemu-a53-2', 'aemu-a53-3', 'aemu-a53-4', 'aemu-fold-1', 'aemu-fold-2', 'aemu-fold-3', 'aemu-fold-4'];
+const EMULATOR_IDS = [
+    // Fat Misaka (the rack's DL580, second backend, Nov 28 2026) FIRST: a shape request grants these before Ruiko's, which is
+    // Yukimi's desktop PC and only the fallback. The ORDER here is the grant order of every shape.
+    'aemu-a53-m1', 'aemu-a53-m2', 'aemu-fold-m1', 'aemu-fold-m2',
+    'aemu-a53-1', 'aemu-a53-2', 'aemu-a53-3', 'aemu-a53-4', 'aemu-fold-1', 'aemu-fold-2', 'aemu-fold-3', 'aemu-fold-4'
+];
+/** The rack host an instance runs on ('misaka' for the -m ids), or '' for Ruiko's. A grant on it does not power the host on (lane.sh up does). */
+function hostOf(dev) { return /^aemu-(a53|fold)-m\d+$/.test(String(dev || '')) ? 'misaka' : ''; }
 /** Shape aliases of coord_device_request: ask for "a free instance of this shape" instead of a named instance. */
 const SHAPES = {
     'aemu-a53': { name: 'any A53 emulator', ids: EMULATOR_IDS.filter((i) => i.startsWith('aemu-a53-')) },
@@ -617,4 +624,4 @@ function snapshotConsent() {
     };
 }
 
-module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, isTestLane, canBeTestLane, setConsent, requireConsent, snapshotConsent, settleNoConsent, KNOWN, EMULATOR_IDS, SHAPES, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, foldApproval, DEFAULT_MIN, MAX_MIN, IDLE_MS, DENY_HOLD_MS };
+module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, isTestLane, canBeTestLane, setConsent, requireConsent, snapshotConsent, settleNoConsent, KNOWN, EMULATOR_IDS, hostOf, SHAPES, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, foldApproval, DEFAULT_MIN, MAX_MIN, IDLE_MS, DENY_HOLD_MS };

@@ -417,11 +417,42 @@ function shapeFixture() {
     store.open().prepare("UPDATE device_queue SET state = 'cancelled' WHERE state IN ('held', 'waiting')").run();
     store.setSetting('deviceConsent', { consentDevices: [] });
     ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10'].forEach((id) => agent(id));
+    // Fat Misaka's four instances are listed first and granted first; most shape tests below are about Ruiko's, so a filler holds the -m ids
+    agent('misaka-filler');
+    dq.EMULATOR_IDS.slice(0, 4).forEach((i) => dq.request('misaka-filler', i, { minutes: 60 }));
 }
+function freeMisaka() { dq.EMULATOR_IDS.slice(0, 4).forEach((i) => dq.release('misaka-filler', i)); }
+
+t('Fat Misaka first: a shape grants the -m instances before Ruiko, explicit ids work, hostOf names the host', () => {
+    store.open().prepare("UPDATE device_queue SET state = 'cancelled' WHERE state IN ('held', 'waiting')").run();
+    store.setSetting('deviceConsent', { consentDevices: [] });
+    ['s1', 's2', 's3', 's4', 's5'].forEach((id) => agent(id));
+    assert.deepStrictEqual(dq.EMULATOR_IDS.slice(0, 4), ['aemu-a53-m1', 'aemu-a53-m2', 'aemu-fold-m1', 'aemu-fold-m2']);
+    assert.strictEqual(dq.request('s1', 'aemu-a53', {}).instance, 'aemu-a53-m1');
+    assert.strictEqual(dq.request('s2', 'aemu-a53', {}).instance, 'aemu-a53-m2');
+    assert.strictEqual(dq.request('s3', 'aemu-a53', {}).instance, 'aemu-a53-1', 'Ruiko is the fallback');
+    assert.strictEqual(dq.request('s4', 'aemu-fold', {}).instance, 'aemu-fold-m1');
+    assert.strictEqual(dq.request('s5', 'emulator', {}).instance, 'aemu-fold-m2', 'any shape: the first free in list order, Misaka first');
+    assert.strictEqual(dq.request('s5', 'aemu-fold-2', {}).granted, true, 'an explicit Ruiko id still works');
+    assert.strictEqual(dq.hostOf('aemu-fold-m2'), 'misaka');
+    assert.strictEqual(dq.hostOf('aemu-fold-2'), '');
+    // the lease-ending cause (Nov 28 2026): an agent that set status done kept it through every heartbeat, so each later lease ended at once
+    // with "its session ended"; any MCP call after done makes it active again
+    process.env.AGENT_COORD_ID = 'a';
+    agent('a');
+    dq.release('s4', 'aemu-fold-m1');
+    store.setStatus('a', 'done');
+    const rv = mcp.run('coord_device_request', { device: 'aemu-fold-m1', why: 'after done' });
+    assert.ok(rv && (rv.granted !== undefined || typeof rv.then === 'function'));
+    assert.strictEqual(store.getAgent('a').status, 'active');
+    dq.sweep();
+    assert.strictEqual(q('aemu-fold-m1').holder && q('aemu-fold-m1').holder.agentId, 'a', 'the lease on a Misaka id survives the sweep');
+    store.open().prepare("UPDATE device_queue SET state = 'cancelled' WHERE state IN ('held', 'waiting')").run();
+});
 
 t('shape alias: aemu-a53 grants the first free instance and names it', () => {
     shapeFixture();
-    assert.deepStrictEqual(dq.EMULATOR_IDS.filter((i) => i.startsWith('aemu-a53-')), ['aemu-a53-1', 'aemu-a53-2', 'aemu-a53-3', 'aemu-a53-4']);
+    assert.deepStrictEqual(dq.EMULATOR_IDS.filter((i) => i.startsWith('aemu-a53-')), ['aemu-a53-m1', 'aemu-a53-m2', 'aemu-a53-1', 'aemu-a53-2', 'aemu-a53-3', 'aemu-a53-4']);
     const r = dq.request('s1', 'aemu-a53', { why: 'shape', minutes: 10 });
     assert.strictEqual(r.granted, true);
     assert.strictEqual(r.device, 'aemu-a53-1');
@@ -448,8 +479,8 @@ t('shape alias: all instances held -> queued on the shape, FIFO, answer shows po
     assert.strictEqual(r.granted, false);
     assert.strictEqual(r.shape, 'aemu-a53');
     assert.strictEqual(r.position, 1);
-    assert.strictEqual(r.holders.length, 4);
-    assert.ok(r.holder && /^aemu-a53-\d$/.test(r.holder.instance));
+    assert.strictEqual(r.holders.length, 6);
+    assert.ok(r.holder && /^aemu-a53-(m)?\d$/.test(r.holder.instance));
     const r6 = dq.request('s6', 'aemu-a53', { why: 'waits too' });
     assert.strictEqual(r6.position, 2);
     assert.strictEqual(dq.request('s5', 'aemu-a53', {}).position, 1, 'asking again keeps the place');
@@ -495,7 +526,7 @@ t('shape alias: an earlier instance-specific waiter keeps its place; a shape wai
 
 t('shape alias: "emulator" picks any shape; a waiter on it takes whichever instance frees first', () => {
     shapeFixture();
-    const ids = dq.EMULATOR_IDS;
+    const ids = dq.EMULATOR_IDS.slice(4);
     ids.forEach((i, k) => assert.strictEqual(dq.request(`s${(k % 8) + 1}`, i, {}).granted, true));
     // eight instances held by s1..s8 (s9 and s10 free to ask)
     const r = dq.request('s9', 'emulator', { why: 'any' });
@@ -515,7 +546,7 @@ t('shape alias: "emulator" picks any shape; a waiter on it takes whichever insta
 
 t('shape alias: leaving the queue, a gone waiter is skipped, and an exact instance id works as before', () => {
     shapeFixture();
-    dq.EMULATOR_IDS.slice(0, 4).forEach((i, k) => dq.request(`s${k + 1}`, i, {}));
+    dq.EMULATOR_IDS.slice(4, 8).forEach((i, k) => dq.request(`s${k + 1}`, i, {}));
     dq.request('s5', 'aemu-a53', {});
     dq.request('s6', 'aemu-a53', {});
     assert.strictEqual(dq.release('s5', 'aemu-a53').leftQueue, true);
@@ -533,17 +564,17 @@ t('shape alias: leaving the queue, a gone waiter is skipped, and an exact instan
 
 t('shape alias: status and coord_devices stay readable, per shape and overall', () => {
     shapeFixture();
-    dq.EMULATOR_IDS.slice(0, 4).forEach((i, k) => dq.request(`s${k + 1}`, i, {}));
+    dq.EMULATOR_IDS.slice(4, 8).forEach((i, k) => dq.request(`s${k + 1}`, i, {}));
     dq.request('s5', 'aemu-a53', { why: 'queued' });
     const all = dq.status();
     assert.ok(all.devices.some((x) => x.device === 'aemu-a53' && x.queue.length === 1 && /queue on the shape/.test(x.label)));
     assert.ok(all.devices.some((x) => x.device === 'aemu-a53-1' && x.holder));
     assert.ok(!all.devices.some((x) => x.device === 'aemu-fold-1'), 'idle instances are not listed');
     const one = dq.status('aemu-a53');
-    assert.strictEqual(one.devices.length, 5);
-    assert.strictEqual(one.holding, 4);
+    assert.strictEqual(one.devices.length, 7);
+    assert.strictEqual(one.holding, 8);
     const m = mcp.run('coord_devices', { device: 'aemu-a53' });
-    assert.strictEqual(m.devices.length, 5);
+    assert.strictEqual(m.devices.length, 7);
     const mr = mcp.run('coord_device_request', { device: 'emulator', why: 'mcp shape' });
     assert.strictEqual(mr.granted !== undefined, true);
     JSON.stringify(m);
