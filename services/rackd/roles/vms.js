@@ -57,8 +57,14 @@ async function describe(name) {
   if (state === 'running' && nics.length) {
     for (const src of ['agent', 'lease', 'arp']) {
       const r = await virsh(['domifaddr', name, '--source', src], { timeoutMs: 8000 });
-      for (const l of r.stdout.split('\n')) { const f = l.trim().split(/\s+/); if (f[1] && /^[0-9a-f:]{17}$/i.test(f[1]) && f[3]) { const n = nics.find(z => z.mac && z.mac.toLowerCase() === f[1].toLowerCase()); if (n && !n.ip) n.ip = f[3].split('/')[0]; } }
-      if (nics.every(n => n.ip)) break;
+      let mac = null; // virsh prints the MAC only on an interface's first row; later rows (IPv4 after IPv6) carry '-'
+      for (const l of r.stdout.split('\n')) {
+        const f = l.trim().split(/\s+/); if (f.length < 4) continue;
+        if (/^[0-9a-f:]{17}$/i.test(f[1])) mac = f[1]; else if (f[1] !== '-') continue;
+        const n = mac && nics.find(z => z.mac && z.mac.toLowerCase() === mac.toLowerCase()); const a = f[3].split('/')[0];
+        if (n && (!n.ip || (n.ip.includes(':') && !a.includes(':')))) n.ip = a; // an IPv4 address wins over IPv6 link-local
+      }
+      if (nics.every(n => n.ip && !n.ip.includes(':'))) break;
     }
   }
   const vnc = attr(x, 'graphics', 'port');
@@ -237,6 +243,7 @@ module.exports = {
       await vok(['undefine', name, '--nvram', '--managed-save', '--snapshots-metadata', '--tpm', ...(bool(p.storage, false) ? ['--remove-all-storage'] : [])], { timeoutMs: 120000 });
       for (const f of files0) if (f.startsWith('/srv/rack/') && fs.existsSync(f)) fs.rmSync(f, { force: true }); // file disks in directory pools that libvirt left behind
       delete tags[name]; writeJson(TAGS, tags); fs.rmSync(X.logPath(name), { force: true });
+      try { hv.actions['agent-forget']({ name }); } catch { /* no in-guest agent was registered */ } // drops /etc/rackd/secrets/vm-agent/<name> with the VM
       events.emit('vms', 'removed', name, { name });
       return { ok: true };
     },
@@ -272,7 +279,7 @@ module.exports = {
       if (cv.code !== 0) return { file: raw.file, note: 'raw PPM (conversion failed)' };
       fs.unlinkSync(raw.abs); return { file: png.file };
     },
-    // linked-clone {source, name, memMB?, vcpus?, start?:true, waitIpS?}: qcow2 overlay on the template's disk (backing file, no copy), own NVRAM copy,
+    // linked-clone {source, name, memMB?, vcpus?, start?:true, waitIpS?, waitAgentS?}: qcow2 overlay on the template's disk (backing file, no copy), own NVRAM copy,
     // copy of the template's TPM state (libvirt keeps it per UUID), new UUID and MACs. Tagged disposable, purpose=windows-test (windows11 templates).
     // The source must be shut off and tagged template=...; it is locked (start, snapshot, delete refused) while clones exist.
     async 'linked-clone'(p) {
@@ -292,7 +299,7 @@ module.exports = {
         xml = xml.replace(/<name>[^<]*<\/name>/, `<name>${name}</name>`).replace(/<uuid>[^<]*<\/uuid>\s*/, '');
         xml = xml.split(base).join(overlay);
         xml = xml.replace(/<mac address='[^']*'\/>/g, () => `<mac address='${randMac()}'/>`);
-        xml = xml.replace(/(<disk\b[^>]*device='cdrom'[\s\S]*?)<source\b[^>]*\/>\s*/g, '$1');
+        xml = xml.replace(/<disk\b[^>]*device='cdrom'[\s\S]*?<\/disk>/g, d => d.replace(/<source\b[^>]*\/>\s*/, ''));
         if (vcpus) xml = xml.replace(/<vcpu\b([^>]*)>\d+<\/vcpu>/, `<vcpu$1>${vcpus}</vcpu>`);
         if (memMB) xml = xml.replace(/<memory\b([^>]*)>\d+<\/memory>/, `<memory$1>${memMB * 1024}</memory>`).replace(/<currentMemory\b([^>]*)>\d+<\/currentMemory>/, `<currentMemory$1>${memMB * 1024}</currentMemory>`);
         const nv = xml.match(/<nvram\b[^>]*>([^<]+)<\/nvram>/);
@@ -311,10 +318,29 @@ module.exports = {
       writeJson(TAGS, tags);
       events.emit('vms', 'added', name, { name });
       if (p.start !== false) await vok(['start', name]);
-      let ip = null;
+      // A Windows clone gets its own in-guest agent token (docs/vista-vm-agent.md): kept in /etc/rackd/secrets/vm-agent/<name> (agent-register), written into the guest
+      // (C:\agent\token.txt, read by the agent per request) through the guest agent as soon as the guest answers; the template's token is never reused.
+      let agent = null;
+      if (tags[source]?.guest === 'windows') {
+        const token = require('crypto').randomBytes(24).toString('hex');
+        await hv.actions['agent-register']({ name, token });
+        agent = (async () => {
+          for (let i = 0; i < 150; i++) {
+            if (!(await names()).includes(name)) return 'gone';
+            if (p.start !== false && await hv.guestPing(name)) {
+              try { await hv.actions['file-write']({ name, path: 'C:\\agent\\token.txt', data: token }); return 'pushed'; } catch { /* guest agent not ready for file calls yet */ }
+            }
+            await sleep(2000);
+          }
+          return 'timeout';
+        })().catch(() => 'failed');
+        agent.then(r => events.emit('vms', 'state', name, { name, agentToken: r }));
+      }
+      let ip = null, agentToken = agent ? 'pending' : null;
       const waitS = p.start !== false && p.waitIpS ? num(p.waitIpS, 'waitIpS', 1, 300) : 0;
-      for (let i = 0; i < waitS / 2; i++) { ip = (await describe(name)).nics.find(n => n.ip)?.ip || null; if (ip) break; await sleep(2000); }
-      return { name, source, overlay, started: p.start !== false, ip, ms: Date.now() - t0, tags: tags[name] };
+      for (let i = 0; i < waitS / 2; i++) { ip = (await describe(name)).nics.map(n => n.ip).find(a => a && !a.includes(':')) || null; if (ip) break; await sleep(2000); }
+      if (agent && p.waitAgentS) agentToken = await Promise.race([agent, sleep(num(p.waitAgentS, 'waitAgentS', 1, 300) * 1000).then(() => 'pending')]);
+      return { name, source, overlay, started: p.start !== false, ip, agentToken, ms: Date.now() - t0, tags: tags[name] };
     },
     // Clones the template (tag template=dreamscape, or `from`), boots the clone, checks `branch` out over ssh when a key is installed.
     async dsclone(p) {
