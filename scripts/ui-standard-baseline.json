@@ -1,14 +1,14 @@
 {
  "note": "Counts may only go down. See docs/design/ui-standard.md and scripts/check-ui-standard.js.",
  "totals": {
-  "colour-literal": 11937,
+  "colour-literal": 11932,
   "font-literal": 486,
   "theme-negative": 2674,
   "own-control": 700,
   "inline-style": 691,
   "theme-art-path": 175,
-  "hand-built-window": 106,
-  "toast": 1051,
+  "hand-built-window": 105,
+  "toast": 979,
   "own-menubar": 61,
   "colour-in-script": 1518,
   "native-scrollbar": 40,
@@ -314,7 +314,7 @@
   },
   "public/css/director.css": {
    "native-scrollbar": 3,
-   "colour-literal": 315,
+   "colour-literal": 310,
    "font-literal": 15,
    "own-control": 2
   },
@@ -1323,7 +1323,7 @@
    "colour-in-script": 18,
    "inline-style": 4,
    "hand-built-window": 1,
-   "toast": 70
+   "toast": 3
   },
   "public/scripts/comp/directorLearningAdmin.js": {
    "toast": 3
@@ -1532,6 +1532,9 @@
    "hand-built-window": 3
   },
   "public/scripts/comp/melatonNetworkDialogs.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/melatonWeatherDesktop.js": {
    "hand-built-window": 1
   },
   "public/scripts/comp/menmaDsapApplet.js": {
@@ -1851,8 +1854,7 @@
   },
   "public/scripts/comp/wmDirector.js": {
    "inline-style": 1,
-   "hand-built-window": 1,
-   "toast": 1
+   "hand-built-window": 1
   },
   "public/scripts/comp/wmDoubles.js": {
    "colour-in-script": 53
@@ -2002,9 +2004,6 @@
   },
   "public/scripts/comp/workstationLock.js": {
    "colour-in-script": 10,
-   "hand-built-window": 1
-  },
-  "public/scripts/comp/melatonWeatherDesktop.js": {
    "hand-built-window": 1
   }
  }
