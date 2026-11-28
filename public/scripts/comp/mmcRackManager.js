@@ -46,7 +46,7 @@
         { id: 'containers', name: 'Containers', i16: `${ITEMS}/programs-and-features-16.png`, i32: `${ITEMS}/programs-and-features-32.png`, desc: 'Docker containers, images and volumes.' },
         { id: 'builds', name: 'Builds', i16: `${ITEMS}/backup-and-restore-center-16.png`, i32: `${ITEMS}/backup-and-restore-center-32.png`, desc: 'Clean, tracked builds: pipelines, runs, logs and artifacts.' },
         { id: 'terminal', name: 'Terminal', i16: '/static_images/vista-cmd/cmd-16.png', i32: '/static_images/vista-cmd/cmd-32.png', desc: 'A shell on the server, and its tmux sessions.' },
-        { id: 'storage', name: 'Storage', i16: `${ITEMS}/iscsi-initiator-16.png`, i32: `${ITEMS}/iscsi-initiator-32.png`, desc: 'Disks, file systems, volumes and RAM disks.' },
+        { id: 'storage', name: 'Storage', i16: '/static_images/vista-devmgr/disk-drives-16.png', i32: '/static_images/vista-devmgr/disk-drives-32.png', desc: 'Disks, file systems, volumes and RAM disks.' },
         { id: 'networking', name: 'Networking', i16: `${ITEMS}/network-and-sharing-center-16.png`, i32: `${ITEMS}/network-and-sharing-center-32.png`, desc: 'Interfaces, routes, bridges and listening ports.' },
         { id: 'services', name: 'Services', i16: `${ITEMS}/administrative-tools-16.png`, i32: `${ITEMS}/administrative-tools-32.png`, desc: 'System services.' },
         { id: 'logs', name: 'Logs', i16: `${ITEMS}/problem-reports-and-solutions-16.png`, i32: `${ITEMS}/problem-reports-and-solutions-32.png`, desc: 'The system journal, like Event Viewer.' },
@@ -330,7 +330,7 @@
 
     // ---- small renderers ------------------------------------------------------------------------------
 
-    const bar = (pct, cls) => `<div class="mmc-progress rm-bar"><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"${cls ? ` class="${cls}"` : ''} style="--rm-pct:${Math.max(0, Math.min(100, pct))}"><div></div></div><span>${Math.round(pct)}%</span></div>`;
+    const bar = (pct0, cls) => { const pct = Math.max(0, Math.min(100, Number(pct0) || 0)); return `<div class="mmc-progress rm-bar"><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"${cls ? ` class="${cls}"` : ''} style="--rm-pct:${pct}"><div></div></div><span>${Math.round(pct)}%</span></div>`; };
     const dur = (s) => {
         s = Math.max(0, Math.round(Number(s) || 0));
         const d = Math.floor(s / 86400);

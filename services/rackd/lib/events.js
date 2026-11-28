@@ -44,8 +44,8 @@ function tickMetrics() {
     emit('rack', 'metrics', null, {
       cpu: dTot > 0 ? Math.round((1 - (s.idle - prev.idle) / dTot) * 1000) / 10 : 0,
       mem: (m => ({ totalB: m.totalB, usedB: m.totalB - m.availB, availB: m.availB }))(memInfo()), load: os.loadavg(),
-      net: { rxBps: Math.round((s.rx - prev.rx) / dt), txBps: Math.round((s.tx - prev.tx) / dt) },
-      disk: { rBps: Math.round((s.rd - prev.rd) / dt), wBps: Math.round((s.wr - prev.wr) / dt) },
+      net: { rxBps: Math.max(0, Math.round((s.rx - prev.rx) / dt)), txBps: Math.max(0, Math.round((s.tx - prev.tx) / dt)) },
+      disk: { rBps: Math.max(0, Math.round((s.rd - prev.rd) / dt)), wBps: Math.max(0, Math.round((s.wr - prev.wr) / dt)) },
     });
   }
   prev = s;

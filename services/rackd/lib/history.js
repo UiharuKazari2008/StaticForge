@@ -27,7 +27,7 @@ function sample() {
     const dt = (s.t - prev.t) / 1000 || 1, dTot = s.total - prev.total, m = events.memInfo(), c = roles.containers?.count?.() || {};
     return {
       t: s.t, cpu: dTot > 0 ? Math.round((1 - (s.idle - prev.idle) / dTot) * 1000) / 10 : 0, memUsedB: m.totalB - m.availB, memTotalB: m.totalB,
-      diskRBps: Math.round((s.rd - prev.rd) / dt), diskWBps: Math.round((s.wr - prev.wr) / dt), netRxBps: Math.round((s.rx - prev.rx) / dt), netTxBps: Math.round((s.tx - prev.tx) / dt), load1: os.loadavg()[0],
+      diskRBps: Math.max(0, Math.round((s.rd - prev.rd) / dt)), diskWBps: Math.max(0, Math.round((s.wr - prev.wr) / dt)), netRxBps: Math.max(0, Math.round((s.rx - prev.rx) / dt)), netTxBps: Math.max(0, Math.round((s.tx - prev.tx) / dt)), load1: os.loadavg()[0],
       vms: roles.vms?.count?.() || 0, avds: roles.android?.count?.() || 0, sandboxes: roles.sandboxes?.count?.() || 0, containers: c.containers || 0, replicas: c.replicas || 0, builds: roles.builds?.count?.() || 0, jobs: jobs.runningCount(),
     };
   })() : null;

@@ -420,7 +420,7 @@
             { t: 'Volume', w: 280, key: 'n', text: (x) => x.name },
             { t: 'Size', w: 80, num: true, key: 's', value: (x) => x.sizeB, text: (x) => (x.sizeB ? R.bytes(x.sizeB) : '') },
             { t: 'Used By', w: 200, key: 'u', text: (x) => arr(x.usedBy).join(', ') }
-        ], arr(d.volumes).map((x) => ({ key: `v:${x.name}`, icon: `${ITEMS}/iscsi-initiator-16.png`, data: x })), 'There are no volumes.');
+        ], arr(d.volumes).map((x) => ({ key: `v:${x.name}`, icon: '/static_images/vista-devmgr/volumes-16.png', data: x })), 'There are no volumes.');
         return c.page('Containers', eng.running === false ? 'Docker is not running' : `Docker ${eng.version || ''}`, [
             eng.running === false ? { id: 'ct-warn', title: 'Docker', body: `<p>${c.state(false, 'The Docker engine is not running on this server.', true)}</p>` } : null,
             { id: 'ct-list', title: 'Containers', body: R.jobStrip(n) + cl },

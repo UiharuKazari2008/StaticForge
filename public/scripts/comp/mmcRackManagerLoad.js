@@ -162,13 +162,14 @@
         const tip = { strips: [], from: d.from, to: d.to, W, padL, padR, H, padT, axisH };
         rows.forEach((s, i) => {
             const y0 = padT + i * (titleH + stripH + gap) + titleH;
-            const vals = s.series.flatMap((x) => x.pts.map((p) => p[1])).concat(s.series.flatMap((x) => arr(x.band).flatMap((b) => [b[1], b[2]])));
+            const vals = s.series.flatMap((x) => x.pts.map((p) => p[1])).concat(s.series.flatMap((x) => arr(x.band).flatMap((b) => [b[1], b[2]]))).filter((v) => Number.isFinite(v) && (s.id === 'temp' || v >= 0));
             let hi = s.max != null ? s.max : (vals.length ? Math.max(...vals) : 1);
             let lo = 0;
             if (s.id === 'temp' || s.id === 'pwr') { lo = vals.length ? Math.min(...vals) : 0; const sp = Math.max(hi - lo, s.id === 'pwr' ? 40 : 6); lo = Math.max(0, lo - sp * 0.15); hi = hi + sp * 0.15; }
             else if (s.max == null) hi = Math.max(hi * 1.12, s.int ? 2 : 1);
             if (s.int) hi = Math.ceil(hi);
-            const Y = (v) => y0 + stripH - ((v - lo) / (hi - lo || 1)) * stripH;
+            // values are capped to the strip: a rate can come in below zero (a counter that reset) or above a fixed max (CPU over 100 %)
+            const Y = (v) => y0 + stripH - ((Math.min(hi, Math.max(lo, Number(v) || 0)) - lo) / (hi - lo || 1)) * stripH;
             out.push(`<rect x="${padL}" y="${y0}" width="${W - padL - padR}" height="${stripH}" class="rm-cbg"/>`);
             d.off.forEach(([a, b]) => { const x1 = Math.max(padL, X(a)); const x2 = Math.min(W - padR, X(b)); if (x2 > x1) out.push(`<rect x="${x1.toFixed(1)}" y="${y0}" width="${(x2 - x1).toFixed(1)}" height="${stripH}" class="rm-coff"/>`); });
             [0, 0.5, 1].forEach((f) => { const yy = y0 + stripH - f * stripH; out.push(`<line x1="${padL}" x2="${W - padR}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" class="rm-cg"/>`); });
@@ -242,7 +243,7 @@
             const t = t0.from + ((x - t0.padL) / (t0.W - t0.padL - t0.padR)) * (t0.to - t0.from);
             if (t < t0.from || t > t0.to) { tipEl.hidden = true; cur.setAttribute('hidden', ''); return; }
             const near = (pts) => { let b = null; for (const p of pts) if (!b || Math.abs(p[0] - t) < Math.abs(b[0] - t)) b = p; return b && Math.abs(b[0] - t) <= (t0.to - t0.from) / 40 ? b : null; };
-            const rows = t0.strips.map((s) => `<div class="rm-tip-h">${esc(s.title)}</div>${s.series.map((x) => { const p = near(x.pts); return `<div><i style="background:${x.color}"></i>${esc(x.name)} <b>${p ? esc(s.fmt(p[1])) : '-'}</b></div>`; }).join('')}`).join('');
+            const rows = t0.strips.map((s) => `<div class="rm-tip-h">${esc(s.title)}</div>${s.series.map((x) => { const p = near(x.pts); return `<div><i style="background:${x.color}"></i>${esc(x.name)} <b>${p ? esc(s.fmt(s.title === 'Temperatures' ? p[1] : Math.max(0, Number(p[1]) || 0))) : '-'}</b></div>`; }).join('')}`).join('');
             cur.removeAttribute('hidden');
             cur.setAttribute('x1', x); cur.setAttribute('x2', x);
             tipEl.innerHTML = `<div class="mmc-hint">${esc(new Date(t).toLocaleString())}</div>${rows}`;

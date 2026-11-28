@@ -61,7 +61,7 @@
         lo = Math.max(0, lo - sp * 0.12);
         hi += sp * 0.12;
         const X = (t) => padL + ((t - o.from) / (o.to - o.from)) * (W - padL - padR);
-        const Y = (v) => H - padB - ((v - lo) / (hi - lo)) * (H - padT - padB);
+        const Y = (v) => H - padB - ((Math.min(hi, Math.max(lo, Number(v) || 0)) - lo) / (hi - lo || 1)) * (H - padT - padB);
         const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => { const v = lo + (hi - lo) * f; return `<line x1="${padL}" x2="${W - padR}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" class="rm-cg"/><text x="${padL - 4}" y="${(Y(v) + 3).toFixed(1)}" text-anchor="end" class="rm-ct">${Math.round(v)}</text>`; }).join('');
         const span = o.to - o.from;
         const fmt = (t) => (span > 2 * 86400e3 ? new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' }) : new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));

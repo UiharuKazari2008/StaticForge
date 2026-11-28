@@ -1142,10 +1142,25 @@ function proxyUpgrade(req, socket, head, up) {
     upstream.end();
 }
 
+/** config.json public_hostname (staticforge.737.jp.net): the reverse proxy in front sends neither the public Host nor
+ *  X-Forwarded-Host (seen live: Host 192.168.200.101:9220), so the page's public origin is named here. Read per call. */
+function publicHosts() {
+    try {
+        const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'config.json'), 'utf8'));
+        return [cfg.public_hostname, cfg.mcp_public_hostname].filter((h) => typeof h === 'string' && h);
+    } catch (_) { return []; }
+}
+
+/** The page's origin is this server: the Host header, or the public name the reverse proxy forwards (737.jp.net sends
+ *  X-Forwarded-Host; Host is then the internal address, so a Host-only check refused every console behind the proxy). */
 function sameOrigin(req) {
     const origin = req.headers.origin;
     if (!origin) return true;
-    try { return new URL(origin).host === req.headers.host; } catch (_) { return false; }
+    let oh;
+    try { oh = new URL(origin).host.toLowerCase(); } catch (_) { return false; }
+    const hosts = [req.headers.host].concat(String(req.headers['x-forwarded-host'] || '').split(','), publicHosts())
+        .map((h) => String(h || '').trim().toLowerCase()).filter(Boolean);
+    return hosts.includes(oh) || hosts.some((h) => h.replace(/:(443|80)$/, '') === oh.replace(/:(443|80)$/, ''));
 }
 
 /** True when the upgrade was a Rack Manager path (taken, accepted or refused). */
@@ -1156,7 +1171,10 @@ function handleUpgrade(req, socket, head, sessionMiddleware) {
     sessionMiddleware(req, {}, async () => {
         const s = req.session;
         if (!s || !s.authenticated) return refuseUpgrade(socket, '401 Unauthorized');
-        if (!fullAdmin(s, s.userType, s.applicationAuth) || !sameOrigin(req)) return refuseUpgrade(socket, '403 Forbidden');
+        if (!fullAdmin(s, s.userType, s.applicationAuth) || !sameOrigin(req)) {
+            console.warn(`[rackManager] upgrade ${String(req.url).split('?')[0]} refused: ${!fullAdmin(s, s.userType, s.applicationAuth) ? 'not a full admin sign-in' : `origin ${req.headers.origin} vs host ${req.headers.host} / ${req.headers['x-forwarded-host'] || '-'}`}`);
+            return refuseUpgrade(socket, '403 Forbidden');
+        }
         try {
             const cfg = serverOf(m[1]);
             if (m[2] === 'ilo/ws') {

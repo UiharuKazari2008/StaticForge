@@ -115,6 +115,11 @@
 
     // ---- Storage --------------------------------------------------------------------------------------------------
 
+    const DEVMGR = '/static_images/vista-devmgr';
+    const EXPL = '/static_images/vista-explorer';
+    // Vista's own art: Device Manager's Disk drives / DVD/CD-ROM drives for disks, Explorer's drive icons for volumes
+    const diskIcon = (d) => (d.type === 'rom' ? `${DEVMGR}/dvd-cdrom-16.png` : d.type === 'disk' ? `${DEVMGR}/disk-drives-16.png` : d.mountpoint === '/' ? `${EXPL}/drive-system-16.png` : `${DEVMGR}/volumes-16.png`);
+    const fsIcon = (x) => (x.mount === '/' ? `${EXPL}/drive-system-16.png` : /^(nfs|cifs|smb|fuse\.sshfs)/.test(x.fstype || '') ? `${EXPL}/drive-network-16.png` : x.fstype === 'tmpfs' ? `${DEVMGR}/res-memory-16.png` : `${EXPL}/drive-fixed-16.png`);
     const flatDisks = (nodes, depth, out) => { arr(nodes).forEach((d) => { out.push({ d, depth }); flatDisks(d.children, depth + 1, out); }); return out; };
     const rdOf = (c, n) => arr(dataOf(n, 'storage').ramdisks).find((r) => `rd:${r.name}` === c.sel);
     const lvOf = (c, n) => arr(dataOf(n, 'storage').lvs).find((l) => `lv:${l.vg}/${l.name}` === c.sel);
@@ -126,12 +131,12 @@
         const disks = flatDisks(d.disks, 0, []);
         const dl = list(c, 'rm-disks', [
             { t: 'Name', w: 190, key: 'n', text: (x) => x.d.name, html: (x) => `<i style="padding-left:${x.depth * 14}px">${esc(x.d.name)}</i>` },
-            { t: 'Size', w: 70, num: true, key: 's', text: (x) => x.d.size },
+            { t: 'Size', w: 76, num: true, key: 's', value: (x) => Number(x.d.size) || 0, text: (x) => (Number.isFinite(Number(x.d.size)) && x.d.size !== null && x.d.size !== '' ? R.bytes(Number(x.d.size)) : String(x.d.size || '')) },
             { t: 'Type', w: 60, key: 't', text: (x) => x.d.type },
             { t: 'Model', w: 150, key: 'm', text: (x) => x.d.model || '' },
             { t: 'File System', w: 80, key: 'f', text: (x) => x.d.fstype || '' },
             { t: 'Mount Point', w: 160, key: 'p', text: (x) => x.d.mountpoint || '' }
-        ], disks.map((x, i) => ({ key: `d:${i}`, icon: `${ITEMS}/iscsi-initiator-16.png`, data: x })), 'No disks are reported.', { presorted: true, sortId: undefined });
+        ], disks.map((x, i) => ({ key: `d:${i}`, icon: diskIcon(x.d), data: x })), 'No disks are reported.', { presorted: true, sortId: undefined });
         const fl = list(c, 'rm-fs', [
             { t: 'Mounted On', w: 190, key: 'm', text: (x) => x.mount },
             { t: 'Type', w: 60, key: 't', text: (x) => x.fstype },
@@ -139,21 +144,21 @@
             { t: 'Used', w: 76, num: true, key: 'u', value: (x) => x.usedB, text: (x) => R.bytes(x.usedB) },
             { t: 'Free', w: 76, num: true, key: 'a', value: (x) => x.availB, text: (x) => R.bytes(x.availB) },
             { t: 'Usage', w: 170, key: 'p', value: (x) => pct(x.usedB, x.sizeB), text: (x) => `${Math.round(pct(x.usedB, x.sizeB))}%`, html: (x) => barCell(x.usedB, x.sizeB) }
-        ], arr(d.filesystems).map((x) => ({ key: `fs:${x.mount}`, icon: `${ITEMS}/iscsi-initiator-16.png`, data: x })), 'No file systems are reported.');
+        ], arr(d.filesystems).map((x) => ({ key: `fs:${x.mount}`, icon: fsIcon(x), data: x })), 'No file systems are reported.');
         const vl = list(c, 'rm-vgs', [
             { t: 'Volume Group', w: 150, key: 'n', text: (x) => x.name },
             { t: 'Size', w: 76, num: true, key: 's', value: (x) => x.sizeB, text: (x) => R.bytes(x.sizeB) },
             { t: 'Free', w: 76, num: true, key: 'f', value: (x) => x.freeB, text: (x) => R.bytes(x.freeB) },
             { t: 'Used', w: 170, key: 'u', text: (x) => `${Math.round(pct(x.sizeB - x.freeB, x.sizeB))}%`, html: (x) => barCell(x.sizeB - x.freeB, x.sizeB) },
-            { t: 'Physical Volumes', w: 200, key: 'p', text: (x) => arr(x.pvs).join(', ') }
-        ], arr(d.vgs).map((x) => ({ key: `vg:${x.name}`, icon: `${ITEMS}/iscsi-initiator-16.png`, data: x })), 'No volume groups.');
+            { t: 'Physical Volumes', w: 200, key: 'p', text: (x) => (typeof x.pvs === 'number' ? `${x.pvs} disk${x.pvs === 1 ? '' : 's'}` : arr(x.pvs).join(', ')) }
+        ], arr(d.vgs).map((x) => ({ key: `vg:${x.name}`, icon: `${DEVMGR}/storage-controllers-16.png`, data: x })), 'No volume groups.');
         const ll = list(c, 'rm-lvs', [
             { t: 'Logical Volume', w: 150, key: 'n', text: (x) => `${x.vg}/${x.name}` },
             { t: 'Size', w: 76, num: true, key: 's', value: (x) => x.sizeB, text: (x) => R.bytes(x.sizeB) },
             { t: 'File System', w: 80, key: 'f', text: (x) => x.fstype || '' },
             { t: 'Mount Point', w: 160, key: 'm', text: (x) => x.mount || '' },
             { t: 'Used By', w: 200, key: 'u', text: (x) => (Array.isArray(x.usedBy) ? x.usedBy.join(', ') : x.usedBy || '') }
-        ], arr(d.lvs).map((x) => ({ key: `lv:${x.vg}/${x.name}`, icon: `${ITEMS}/iscsi-initiator-16.png`, data: x })), 'No logical volumes.');
+        ], arr(d.lvs).map((x) => ({ key: `lv:${x.vg}/${x.name}`, icon: x.mount === '/' ? `${EXPL}/drive-system-16.png` : `${DEVMGR}/volumes-16.png`, data: x })), 'No logical volumes.');
         const mem = d.memory || {};
         const budget = Math.max(0, (mem.totalB || 0) - 32 * GB);
         const rl = list(c, 'rm-ramd', [
@@ -165,7 +170,7 @@
             { t: 'Backing Folder', w: 150, key: 'b', text: (x) => x.backing || '' },
             { t: 'Sync', w: 56, key: 'y', text: (x) => (x.syncMin ? `${x.syncMin} min` : '') },
             { t: 'Persist', w: 50, key: 'p', text: (x) => (x.persist ? 'Yes' : 'No') }
-        ], arr(d.ramdisks).map((x) => ({ key: `rd:${x.name}`, icon: `${ITEMS}/iscsi-initiator-16.png`, data: x })), 'There are no RAM disks. Use Create RAM Disk to make one.');
+        ], arr(d.ramdisks).map((x) => ({ key: `rd:${x.name}`, icon: `${DEVMGR}/res-memory-16.png`, data: x })), 'There are no RAM disks. Use Create RAM Disk to make one.');
         return c.page('Storage', `${arr(d.ramdisks).length} RAM disks`, [
             { id: 'st-disks', title: 'Disks', body: dl },
             { id: 'st-fs', title: 'File Systems', body: fl },
@@ -174,7 +179,7 @@
             { id: 'st-ram', title: 'RAM Disks', body: `<p>RAM disks may use all memory except 32 GB (${R.bytes(budget)} of ${R.bytes(mem.totalB)}). In use now: ${R.bytes(mem.ramdiskB || 0)}.</p>${R.bar(pct(mem.ramdiskB || 0, budget), pct(mem.ramdiskB || 0, budget) > 90 ? 'is-error' : '')}${rl}` }
         ]);
     });
-    R.commands['role:storage'] = () => [{ text: 'Create Volume...', action: 'st-lvnew', icon: `${ITEMS}/iscsi-initiator-16.png` }, { text: 'Create RAM Disk...', action: 'st-rdnew' }];
+    R.commands['role:storage'] = () => [{ text: 'Create Volume...', action: 'st-lvnew', icon: `${DEVMGR}/volumes-16.png` }, { text: 'Create RAM Disk...', action: 'st-rdnew' }];
     R.selCommands['role:storage'] = (n, key, c) => {
         const k = String(key);
         if (k.startsWith('rd:')) { const r = rdOf(c, n); return r ? { title: r.name, items: [{ text: 'Resize...', action: 'st-rdsize' }, { text: 'Sync Now', action: 'st-rdsync', disabled: !r.backing }, { text: 'Delete...', action: 'st-rddel' }] } : null; }
@@ -237,7 +242,7 @@
         const vgs = arr(d.vgs);
         if (!vgs.length) { void R.box(c, 'There is no volume group to make a volume in.'); return; }
         R.wizard(c, {
-            id: 'lvnew', title: 'Create Volume Wizard', icon: `${ITEMS}/iscsi-initiator-32.png`, w: 480, h: 300,
+            id: 'lvnew', title: 'Create Volume Wizard', icon: `${DEVMGR}/volumes-32.png`, w: 480, h: 300,
             pages: [
                 { key: 'where', instruction: 'Choose the volume group and a name', html: `${R.field('Volume group:', R.sel('vg', vgs.map((v) => ({ value: v.name, text: `${v.name} (${R.bytes(v.freeB)} free)` })), vgs[0].name))}${R.field('Name:', R.inp('name', ''))}${R.field('Size (GB):', R.inp('size', 50))}`, next: (ctx) => { const v = vgs.find((x) => x.name === R.val(ctx, 'vg')); const size = Number(R.val(ctx, 'size')); if (!/^[A-Za-z0-9._-]+$/.test((R.val(ctx, 'name') || '').trim())) { R.err(ctx, 'Use letters, digits, dots, dashes and underscores for the name.'); return false; } if (!(size >= 1) || (v && size * GB > v.freeB)) { R.err(ctx, `The size must be 1 GB or more and fit in the ${v ? R.bytes(v.freeB) : ''} that is free.`); return false; } R.err(ctx, ''); return 'fs'; } },
                 { key: 'fs', instruction: 'Format and mount', nextText: 'Create', finish: true, html: `${R.field('File system:', R.sel('fs', [{ value: 'ext4', text: 'ext4' }, { value: 'xfs', text: 'xfs' }, { value: '', text: 'None (unformatted)' }], 'ext4'))}${R.field('Mount on (optional):', R.inp('mount', ''), true)}<p class="rm-hint">A mounted volume gets a line in /etc/fstab.</p>` }
