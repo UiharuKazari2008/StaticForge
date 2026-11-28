@@ -135,7 +135,9 @@ function startRun(p, ref, by, params = {}) {
       await ok(['chown', '-R', `${uid}:${gid}`, outDir, cache]);
       // privileged pipelines (DreamOS: mkosi needs loop devices, repart, mounts) run as root with the host's /dev; shipped presets only
       const priv = !!(isTrusted(p) && p.privileged);
-      const args = ['run', '--rm', '--name', ct, '--user', priv ? '0:0' : `${uid}:${gid}`, '--label', `rack.run=${record.id}`, '--label', `rack.pipeline=${p.id}`,
+      // a container with a secret mount runs as root too (the secrets folder is root-only), still without --privileged
+      const asRoot = priv || (isTrusted(p) && (p.secrets || []).length > 0);
+      const args = ['run', '--rm', '--name', ct, '--user', asRoot ? '0:0' : `${uid}:${gid}`, '--label', `rack.run=${record.id}`, '--label', `rack.pipeline=${p.id}`,
         '-v', `${src}:/work/src`, '-v', `${outDir}:/out`, '-v', `${cache}:/cache`, '-w', '/work/src', '-e', 'HOME=/cache/home', '-e', 'RACK_OUT=/out', '-e', `RACK_COMMIT=${record.commit}`];
       if (priv) { args.push('--privileged'); if (p.devMount) args.push('-v', '/dev:/dev'); }
       // secrets: /etc/rackd/secrets/<name> mounted read-only at /secrets, only for a shipped preset that lists the name
