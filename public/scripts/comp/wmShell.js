@@ -1820,8 +1820,12 @@
         // both devices open a menu with its first row under the highlight, a disabled one too (recorded:
         // soft key, tap-and-hold and Start menus; Word Mobile's and Excel Mobile's Undo and Windows Media's
         // Queue Up, 6.1 and 6.5, #975; a drop-down keeps its own mark for the current choice).
-        // It leaves as soon as the finger goes anywhere in the menu
-        if (side !== 'dropdown' || pop.querySelector(':scope > .is-hot')) {
+        // It leaves as soon as the finger goes anywhere in the menu.
+        // A sample for the app (menuSample) has no row under the highlight (#1421): the app draws the copy as it
+        // stands and no finger ever takes the highlight away, and 6.5's selector is art the copy does not carry,
+        // so the first row came out as white text on the white menu
+        const sample = !!(opts && opts.sample);
+        if (!sample && (side !== 'dropdown' || pop.querySelector(':scope > .is-hot'))) {
             const first = pop.querySelector(':scope > .wm-popup-item');
             if (first && side !== 'dropdown') first.classList.add('is-hot');
             const cool = () => { pop.querySelectorAll(':scope > .is-hot').forEach((x) => x.classList.remove('is-hot')); pop.removeEventListener('pointerover', cool); pop.removeEventListener('pointerdown', cool); };
