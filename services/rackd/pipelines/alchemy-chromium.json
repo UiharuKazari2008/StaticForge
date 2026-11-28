@@ -2,11 +2,15 @@
   "id": "alchemy-chromium",
   "name": "Alchemy-Chromium (patched Chromium)",
   "repo": "https://yozora.bluesteel.737.jp.net/DreamScape/Alchemy-Chromium.git",
-  "ref": "main",
+  "ref": "master",
   "dockerfileFile": "alchemy-chromium.Dockerfile",
-  "script": "# Chromium source goes beside the patches checkout (own LV: /srv/rack/builds/alchemy-chromium/chromium once mounted).\nset -x\nmkdir -p /cache/chromium && cd /cache/chromium\n[ -f .gclient ] || fetch --nohooks --no-history chromium\ngclient sync --nohooks --no-history -D\ncd /work/src && python3 apply.py /cache/chromium/src\ncd /cache/chromium/src && gn gen out/Release --args='is_debug=false is_component_build=false symbol_level=0 blink_symbol_level=0 enable_nacl=false'\nautoninja -C out/Release chrome\nmkdir -p /out && tar -C out/Release -cJf /out/alchemy-chromium-linux-x64.tar.xz chrome icudtl.dat resources.pak chrome_100_percent.pak chrome_200_percent.pak v8_context_snapshot.bin locales\n",
-  "cpus": 72,
-  "memGB": 400,
+  "script": "set -x\n# /work/src = DreamScape/Alchemy-Chromium (master); the Chromium checkout and every cache live on the pipeline's own LV (/cache = <builds>/alchemy-chromium/cache).\ngit config --global --add safe.directory '*'\nmkdir -p /cache/chromium /cache/ccache && cd /cache/chromium\n# build-alchemy.sh from the repo is the single source of the gn args, patch list and package layout (it is what Core ran).\n# Adjusted for the container only: ROOT is the cache checkout, no sudo install-build-deps (the image carries the packages), ccache wraps the compiler.\ncp /work/src/build-alchemy.sh /cache/build-alchemy.run.sh\nsed -i 's|^ROOT=.*|ROOT=/cache/chromium|; /install-build-deps/d' /cache/build-alchemy.run.sh\nsed -i 's|^HERE=.*|HERE=/work/src|' /cache/build-alchemy.run.sh\nsed -i '/^use_siso = false$/a cc_wrapper = \"ccache\"' /cache/build-alchemy.run.sh\ngrep -q 'cc_wrapper = \"ccache\"' /cache/build-alchemy.run.sh && grep -q '^ROOT=/cache/chromium' /cache/build-alchemy.run.sh && ! grep -q install-build-deps /cache/build-alchemy.run.sh\nexport CCACHE_DIR=/cache/ccache CCACHE_BASEDIR=/cache/chromium/src CCACHE_COMPILERCHECK=content CCACHE_SLOPPINESS=time_macros CCACHE_MAXSIZE=60G\nexport JOBS=${JOBS:-80}\necho \"[rack] chromium tag $TAG, jobs $JOBS, start $(date -Is)\"\n# a checkout already at the tag skips the sync (a repeat shallow sync refetches for 20+ min and once hung); a new TAG or an empty cache syncs\nV=$(sed -n 's/^MAJOR=//p;s/^MINOR=//p;s/^BUILD=//p;s/^PATCH=//p' /cache/chromium/src/chrome/VERSION 2>/dev/null | paste -sd.)\nif [ -z \"${STAGE:-}\" ]; then if [ \"$V\" = \"$TAG\" ]; then STAGE=after-sync; else STAGE=all; fi; fi\necho \"[rack] checkout at '$V', stage $STAGE\"\nbash /cache/build-alchemy.run.sh \"$TAG\" \"$STAGE\"\nccache -s || true\nmkdir -p /out && cp /cache/chromium/alchemy-chromium-$TAG.tar.gz /out/ && (cd /out && sha256sum alchemy-chromium-$TAG.tar.gz > alchemy-chromium-$TAG.tar.gz.sha256)\necho \"[rack] end $(date -Is)\"\n",
+  "cpus": 80,
+  "memGB": 128,
   "artifacts": [],
-  "timeoutMin": 720
+  "timeoutMin": 1080,
+  "env": {
+    "TAG": "156.0.8078.79",
+    "JOBS": "80"
+  }
 }
