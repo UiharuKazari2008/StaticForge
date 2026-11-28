@@ -858,6 +858,41 @@
         return `portable-${fold ? 'fold' : 'phone'}-${size}.png`;
     }
 
+    /**
+     * A device Device Center never shows and the tray never names: the test lane's (the server's `test` flag,
+     * modules/testDevices.js) and an emulator (the same shapes the server's device fence knows - an
+     * emulator-NNNN serial, an AVD model, aemu). It connects, it may run a test, and it adds no row, no tray
+     * line, no balloon and no battery news anywhere (Yukimi, Nov 26 2026, #1299: "no device connected and
+     * disconnected in the device center tray for devices that are test and emulator devices").
+     */
+    const TEST_MODEL_RE = /sdk_gphone|google_sdk|generic_x86|generic_x64|ranchu|goldfish|aemu|\bavd\b|\bemulator\b/i;
+    function isTestRow(d) {
+        if (!d) return true;
+        if (d.test === true) return true;
+        if (/^emulator-\d+$/i.test(String(d.deviceId || ''))) return true;
+        return TEST_MODEL_RE.test(`${d.model || ''} ${d.name || ''}`);
+    }
+
+    /**
+     * A device that has been set up (a partnership): only these are listed - in the tray's menu and tooltip
+     * and in Device Center. One that is merely connected waits to be set up and shows in the tray's set-up
+     * prompt alone, never as a row (Yukimi, Nov 26 2026, #1299: "no devices are added to device center until
+     * you setup active sync").
+     */
+    function isSetUp(d) {
+        return !!(d && d.partner) && d.platform !== 'cafeready';
+    }
+
+    /** The set-up devices, the only ones a list shows: test and emulator devices, and DreamOS computers, are out. */
+    function listedDevices() {
+        return st.devices.filter((d) => isSetUp(d) && !isTestRow(d));
+    }
+
+    /** A device that is connected and waits for its setup (the tray's set-up prompt, never a row). */
+    function awaitingSetup() {
+        return st.devices.filter((d) => !isSetUp(d) && !isTestRow(d) && d.online && d.session === 'pending');
+    }
+
     root.activeSync = {
         kind,
         state,
@@ -869,6 +904,10 @@
         /** The current transfer as the server sees it (#822): { active, files, filesDone, up, down, startedAt, done } or null. */
         transferProgress: () => (remote ? Object.assign({}, remote, { active: remoteActive() }) : null),
         device: (id) => st.devices.find((d) => d.deviceId === id) || null,
+        isTestRow,
+        isSetUp,
+        listedDevices,
+        awaitingSetup,
         deviceIcon,
         primary: () => st.devices.find((d) => d.primary) || null,
         pick: (list) => { const l = Array.isArray(list) ? list : []; return l.find((d) => d && d.primary) || l[0] || null; },

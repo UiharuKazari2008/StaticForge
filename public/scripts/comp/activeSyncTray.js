@@ -66,9 +66,12 @@
                 sections: [{
                     type: 'list',
                     initfn: (s) => {
-                        const devices = a.state().devices.filter((d) => (d.online || d.partner) && d.platform !== 'cafeready');
+                        const devices = (a.listedDevices ? a.listedDevices() : a.state().devices.filter((d) => d.partner));
+                        const waiting = a.awaitingSetup ? a.awaitingSetup() : [];
                         s.items = [{ text: 'Open Melaton Mobile Device Center', action: 'open', className: 'context-menu-item-default' }];
                         if (devices.length) s.items.push({ separator: true }, ...devices.map((d) => ({ text: d.primary && devices.length > 1 ? `${line(d)} (primary)` : line(d), action: `dev:${d.deviceId}` })));
+                        // a phone that is here and not set up yet: the one place it is named before it is hers (#1299)
+                        if (waiting.length) s.items.push({ separator: true }, ...waiting.map((d) => ({ text: `Set up ${d.name}`, action: `dev:${d.deviceId}` })));
                         // the folder files sent to a phone go to (activeSyncRemoteStorage.js openReceived)
                         const sharing = devices.filter((d) => d.online && d.platform !== 'cafeready' && (d.permissions || []).includes('files'));
                         if (sharing.length && root.phoneStorage && typeof root.phoneStorage.openReceived === 'function') {
@@ -99,7 +102,9 @@
     function paint(st) {
         const el = ensureIcon();
         if (!el) return;
-        const known = st.devices.filter((d) => d.online || d.partner);
+        // the set-up devices alone (#1299): one that is merely connected, or waits for its setup, adds no line -
+        // the tray is a list of the phones she has, not of everything that has ever knocked
+        const known = st.devices.filter((d) => a.isSetUp(d));
         const online = known.filter((d) => d.online);
         const img = el.querySelector('img');
         // the primary device's state when one is set (#979): another phone connecting does not light the icon
@@ -121,7 +126,9 @@
     function onState(raw) {
         // a DreamOS computer (platform cafeready, #910) is not a mobile device: no tray line, balloon or battery news for
         // it here (it is in Explorer's Network; Device Center keeps its own page for administrators)
-        const st = Object.assign({}, raw, { devices: (raw.devices || []).filter((d) => d.platform !== 'cafeready') });
+        // a test device or an emulator is not the user's phone at all: it never takes a tray line, a balloon or a
+        // battery word (activeSync.isTestRow, the server's own test lane; Yukimi, Nov 26 2026, #1299)
+        const st = Object.assign({}, raw, { devices: (raw.devices || []).filter((d) => d.platform !== 'cafeready' && !a.isTestRow(d)) });
         if (!st.online) { paint({ devices: [] }); seen.clear(); first = true; return; }
         paint(st);
         for (const d of st.devices) {
@@ -166,7 +173,7 @@
      * phone's wallpapers are loaded ahead, when the phone is known or its wallpapers change.
      */
     function prefetch(st) {
-        const devs = st.devices.filter((d) => d.online || d.partner);
+        const devs = st.devices.filter((d) => a.isSetUp(d));
         if (!devs.length || !root.featureLoader) return;
         root.featureLoader.loadFeature('activesync_device_art').then(() => {
             const D = root.activeSyncDeviceArt;

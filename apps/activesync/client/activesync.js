@@ -276,9 +276,23 @@
 
         // ---------------------------------------------------------------- state
 
+        /**
+         * The devices this window may name: none of the test lane's and no emulator (activeSync.isTestRow), so a
+         * test device can never take the window or add a row (Yukimi, Nov 26 2026, #1299).
+         */
         devices() {
             const a = as();
-            return a ? a.state().devices : [];
+            if (!a) return [];
+            const list = a.state().devices;
+            return typeof a.isTestRow === 'function' ? list.filter((d) => !a.isTestRow(d)) : list;
+        }
+
+        /** The set-up devices: what a list, a crumb menu and a picture page shows (#1299, only what she has). */
+        setUp() {
+            const a = as();
+            const list = this.devices();
+            const isSetUp = a && typeof a.isSetUp === 'function' ? a.isSetUp : (d) => !!(d && d.partner);
+            return list.filter((d) => isSetUp(d) || d.deviceId === this.deviceId);
         }
 
         /**
@@ -289,7 +303,9 @@
             const list = this.devices();
             const chosen = this.deviceId && list.find((d) => d.deviceId === this.deviceId);
             if (chosen && (chosen.online || chosen.partner)) return chosen;
-            return list.find((d) => d.primary) || list.find((d) => d.online) || null;
+            // the primary device, else a set-up one that is here: a device that merely connected never takes the
+            // window over (it is offered for setup, #1299)
+            return list.find((d) => d.primary) || list.find((d) => d.online && d.partner) || null;
         }
 
         select(deviceId) {
@@ -485,7 +501,7 @@
 
             // bread crumbs
             const crumbs = ['<span>Home</span>'];
-            const others = this.devices().filter((d) => d.online || d.partner);
+            const others = this.setUp();
             if (established || (dev && dev.partner)) {
                 const label = dev.partner ? dev.name : 'Quick Connect';
                 crumbs.push(`<img src="${A}/breadcrumb-arrow.png" alt="">`, others.length > 1 ? `<span class="asdc-crumb-menu">${esc(label)}</span>` : `<span>${esc(label)}</span>`);
@@ -506,7 +522,7 @@
                         onAction: (action) => this.select(action),
                         sections: [{ type: 'list', initfn: (sec) => {
                             const cur = this.device();
-                            sec.items = this.devices().filter((d) => d.online || d.partner).map((d) => ({ text: `${d.name}${d.primary ? ' (primary)' : ''}${d.online ? '' : ' (not connected)'}`, action: d.deviceId, checked: !!(cur && cur.deviceId === d.deviceId) }));
+                            sec.items = this.setUp().map((d) => ({ text: `${d.name}${d.primary ? ' (primary)' : ''}${d.online ? '' : ' (not connected)'}`, action: d.deviceId, checked: !!(cur && cur.deviceId === d.deviceId) }));
                         } }]
                     });
                 }
@@ -721,7 +737,7 @@
                 <input type="text" id="asdcDeviceName" maxlength="40" value="${esc(m.name)}" spellcheck="false" autocomplete="off" data-asdc-manage="name">
                 <div class="asdc-error">${esc(m.error || '')}</div>
                 <div class="asdc-manage-primary"><input type="checkbox" id="asdcPrimary" data-asdc-manage="primary"${m.primary ? ' checked' : ''}><label for="asdcPrimary">Make this my primary device</label></div>
-                <p class="asdc-manage-note">Device Center, the notification area and the Sidebar gadgets stay on your primary device, and show it as not connected while it is away. Other devices that connect are added to the list without taking its place.</p>
+                <p class="asdc-manage-note">Device Center, the notification area and the Sidebar gadgets stay on your primary device, and show it as not connected while it is away. Other devices you set up join the list without taking its place; a device that merely connects waits to be set up and is not listed.</p>
                 <div class="asdc-page-buttons"><button type="button" class="btn-standard primary" data-asdc="manage-save">Save</button><button type="button" class="btn-standard" data-asdc="back">Cancel</button></div>
             </div>`;
         }
