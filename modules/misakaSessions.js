@@ -228,7 +228,9 @@ async function renewLeases() {
     }
 }
 const accessTimers = new Map(); // account id -> timer
-function accessTimer(gr, index, id) {
+function accessTimer(_gr, _index, id) {
+    const index = id === 'host' ? undefined : id; // by account id: no Fleet config needed (also after a server start)
+    const gr = null;
     clearTimeout(accessTimers.get(id));
     const wait = async () => {
         let nextMs = 5 * 60 * 1000;
@@ -509,6 +511,13 @@ async function end(sessionId, opts = {}) {
     return out;
 }
 
+/** At module load / reload: the access-token timer of every account that has a live Misaka session (a server restart must not let a running login expire). */
+function rearm() {
+    const ids = new Set(Object.values(records()).filter((r) => !r.ended && r.accountId).map((r) => r.accountId));
+    ids.forEach((id) => { if (!accessTimers.has(id)) accessTimer(null, null, id); });
+    return [...ids];
+}
+
 /** The Supervisor's hook: a work item ended, so its Misaka session (if any) ends too. Never throws. */
 async function endForWork(sessionId, reason) {
     if (!sessionId || !recordOf(sessionId)) return null;
@@ -521,9 +530,11 @@ function describe(id) {
     return r ? { host: 'fat-misaka', replica: r.replica, cwd: r.cwd, lease: r.leaseId || '', replicaUrl: r.replicaUrl || '' } : null;
 }
 
-module.exports = { resolveHost, launch, tmux, ssh, recordOf, records, mirrorLive, end, endForWork, describe, loginOf, install, sshOptions: sshArgs.sshOptions, destination: sshArgs.destination, cfg: sshArgs.cfg, _test: { sessionFiles, MISAKA_NOTE, replicaName, srcOf, loginFiles } };
+module.exports = { rearm, resolveHost, launch, tmux, ssh, recordOf, records, mirrorLive, end, endForWork, describe, loginOf, install, sshOptions: sshArgs.sshOptions, destination: sshArgs.destination, cfg: sshArgs.cfg, _test: { sessionFiles, MISAKA_NOTE, replicaName, srcOf, loginFiles } };
 
 require('./hotReload').mark(module, {
-    dispose() { accessTimers.forEach((t) => { if (t && t.unref) clearTimeout(t); }); return { readyFor }; },
-    accept(state) { if (state) readyFor = state.readyFor || ''; }
+    dispose() { accessTimers.forEach((t) => { if (t && t.unref) clearTimeout(t); }); accessTimers.clear(); return { readyFor }; },
+    accept(state) { if (state) readyFor = state.readyFor || ''; rearm(); }
 });
+const armLater = setTimeout(() => { try { rearm(); } catch (_) { /* later */ } }, 5000);
+if (armLater.unref) armLater.unref();

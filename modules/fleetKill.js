@@ -174,7 +174,12 @@ async function killWork(item, opts = {}) {
     };
     const claimed = new Set();
     const killed = [];
+    const mk = () => (d.misaka ? d.misaka() : require('./misakaSessions'));
+    const onMisaka = []; // sessions on Fat Misaka: no pid here, ended through ssh (misakaSessions.end) below
     for (const s of sessions) {
+        let remote = null;
+        try { remote = mk().recordOf(s.sessionId); } catch (_) { remote = null; }
+        if (remote) { onMisaka.push(s.sessionId); killed.push({ sessionId: s.sessionId, itemId: s.itemId, pids: [], tmux: [], misaka: true }); continue; }
         const l = live.get(s.sessionId);
         let pids = [];
         if (l && Number.isInteger(l.pid)) pids = treeOf(l.pid);
@@ -224,6 +229,11 @@ async function killWork(item, opts = {}) {
             try { const r = await d.tmux(['kill-session', '-t', `=${name}`]); if (r && r.code === 0) gone.push(name); } catch (_) { /* no such session */ }
         }
         k.tmux = gone;
+    }
+
+    // 3b. a session on Fat Misaka: its tmux and watcher, unpushed work to a wip branch, replica, lease and login copy (misakaSessions.end)
+    for (const id of onMisaka) {
+        try { const r = await mk().end(id, { reason: `work item ${item.id} was stopped` }); const k = killed.find((x) => x.sessionId === id); if (k) { k.misakaEnd = { replicaDeleted: r.replicaDeleted, leaseReleased: r.leaseReleased, wip: r.wip || '' }; k.tmux = ['rc (Fat Misaka)']; } } catch (e) { console.warn(`[fleetKill] Misaka session ${String(id).slice(0, 8)}: ${e.message}`); }
     }
 
     // 4. release what the sessions held

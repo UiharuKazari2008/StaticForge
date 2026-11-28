@@ -763,7 +763,7 @@ function db() {
         if (!hcols.has('other_session')) d.exec("ALTER TABLE supervisor_holds ADD COLUMN other_session TEXT NOT NULL DEFAULT ''");
         const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
         if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
-        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER'], ['input_questions', 'TEXT'], ['sent_back_at', 'INTEGER'], ['sent_back_checks', 'INTEGER NOT NULL DEFAULT 0'], ['parked_at', 'INTEGER'], ['starting_at', 'INTEGER'], ['host', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
+        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER'], ['input_questions', 'TEXT'], ['sent_back_at', 'INTEGER'], ['sent_back_checks', 'INTEGER NOT NULL DEFAULT 0'], ['parked_at', 'INTEGER'], ['starting_at', 'INTEGER'], ['host', 'TEXT'], ['git_identity', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
         // Sent Back has an age (#1256): items already Sent Back when the column arrives are dated by their session's last review
         if (!wcols.has('sent_back_at')) d.exec("UPDATE supervisor_work SET sent_back_at = COALESCE((SELECT MAX(r.at) FROM supervisor_reviews r WHERE r.session_id = supervisor_work.session_id), started_at, created_at) WHERE state = 'waiting'");
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
@@ -1454,7 +1454,7 @@ function rowWork(r, liveFn) {
         topology: r.topology || 'planner', stages: (() => { try { return JSON.parse(r.stages || '{}'); } catch (_) { return {}; } })(), parentId: r.parent_id || null,
         issue: r.issue_repo && r.issue_number ? { repo: r.issue_repo, number: r.issue_number, url: yz().issueUrl(r.issue_repo, r.issue_number) } : null,
         issues: allIssueRefs(r).map((i, n) => Object.assign({ repo: i.repo, number: i.number, url: yz().issueUrl(i.repo, i.number) }, i.title ? { title: i.title } : {}, { primary: n === 0 })),
-        remoteControl: !!r.remote_control, joinedInto: r.joined_into || null, host: r.host || '',
+        remoteControl: !!r.remote_control, joinedInto: r.joined_into || null, host: r.host || '', gitIdentity: r.git_identity || '',
         issueNote: r.issue_note || '',
         questions: (() => { try { const q = r.input_questions ? JSON.parse(r.input_questions) : []; return Array.isArray(q) ? q : []; } catch (_) { return []; } })(),
         check: (() => { try { return r.check_json ? JSON.parse(r.check_json) : null; } catch (_) { return null; } })(),
@@ -1731,7 +1731,7 @@ function enqueue(item, opts = {}) {
     const held = !item.startNow && !item.parentId && item.hold !== false;
     const r = db().prepare(`INSERT INTO supervisor_work (title, prompt, cwd, account, model, effort, source, source_ref, state, start_now, created_at, message, engine)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, held ? 'held' : 'queued', item.startNow ? 1 : 0, Date.now(), held ? 'Waiting to be started' : 'Waiting for a slot', engine);
-    db().prepare('UPDATE supervisor_work SET topology = ?, stages = ?, parent_id = ?, remote_control = ?, host = ? WHERE id = ?').run(topology, stages, item.parentId || null, item.remoteControl === true ? 1 : 0, item.host === 'misaka' || item.host === 'dreamscape' ? item.host : null, r.lastInsertRowid);
+    db().prepare('UPDATE supervisor_work SET topology = ?, stages = ?, parent_id = ?, remote_control = ?, host = ?, git_identity = ? WHERE id = ?').run(topology, stages, item.parentId || null, item.remoteControl === true ? 1 : 0, item.host === 'misaka' || item.host === 'dreamscape' ? item.host : null, item.gitIdentity === 'claude' ? 'claude' : null, r.lastInsertRowid);
     if (item.issueFields && item.issueFields.repo && item.issueFields.number) {
         db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ? WHERE id = ?').run(item.issueFields.repo, item.issueFields.number, item.issueFields.id || null, r.lastInsertRowid);
     }
@@ -2119,7 +2119,8 @@ async function loginMove(w, rv, qs) {
     } catch (_) { /* unknown account: the item is still started again */ }
     try {
         const l = liveSessionsById().get(rv.sessionId);
-        if (l && l.tmuxSession) await spawnHelper.run('tmux', ['kill-session', '-t', `=${l.tmuxSession}`], { timeout: 5000 });
+        if (require('./misakaSessions').recordOf(rv.sessionId)) await require('./misakaSessions').end(rv.sessionId, { reason: 'login expired' });
+        else if (l && l.tmuxSession) await spawnHelper.run('tmux', ['kill-session', '-t', `=${l.tmuxSession}`], { timeout: 5000 });
     } catch (_) { /* gone already */ }
     if (Number.isFinite(idx)) fs8.markLoginFailed(idx, 'Login expired', w.account);
     const tried = loginTried.get(w.id) || new Set();
@@ -2222,7 +2223,7 @@ function pumpWork(gr) {
                 const engine = (w.engine && w.engine !== 'claude') ? w.engine : (stage.engine !== 'claude' ? stage.engine : undefined);
                 const r = await require('./claudeSessionLauncher').start(g, {
                     cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}${track}${planFirst ? `\n\n${autoPlannerNote(stages, w.id)}` : (topology === 'planner' ? `\n\n${plannerNote(stages)}` : '')}\n\n${SUPERVISED_NOTE}\n\n${NO_MISTAKES}`, title: w.title, account: pick.index,
-                    mode: st.defaultMode, engine, remoteControl: !!w.remote_control, host: w.host || undefined, workId: w.id,
+                    mode: st.defaultMode, engine, remoteControl: !!w.remote_control, host: w.host || undefined, workId: w.id, gitIdentity: w.git_identity || undefined,
                     model: w.model || stage.model || (engine ? undefined : (st.defaultModel || 'sonnet')), effort: w.effort || stage.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source}, ${topology})`
                 });
                 if (r.state === 'failed' && loginFailover(w, pick, r.message)) regroup = true;
@@ -2891,6 +2892,7 @@ function updateWork(id, fields, opts = {}) {
     }
     if (f.engine !== undefined) set.engine = f.engine && f.engine !== 'claude' ? String(f.engine).slice(0, 60) : 'claude';
     if (f.remoteControl !== undefined) set.remote_control = f.remoteControl === true ? 1 : 0;
+    if (f.gitIdentity !== undefined) set.git_identity = f.gitIdentity === 'claude' ? 'claude' : null; // Misaka sessions: whose Yozora credential git uses (null: the Fleet identity)
     if (f.host !== undefined) set.host = f.host === 'misaka' || f.host === 'dreamscape' ? f.host : null; // null: Fleet's sessionHost setting decides
     // issues: one or several (the first is the primary); an empty list drops the other issues and keeps the primary
     let newRefs = null;
@@ -3142,7 +3144,7 @@ async function pauseSession(sessionId, opts = {}) {
     const by = String(opts.by || 'Fleet').slice(0, 80);
     let pids = [];
     const launcher = require('./claudeSessionLauncher');
-    if (mode === 'freeze') {
+    if (mode === 'freeze' && !live.host) { // a Fat Misaka session has no pid here: it is held (Esc and a note) instead
         pids = descendants(live.pid);
         pids.forEach((p) => { try { process.kill(p, 'SIGSTOP'); } catch (_) { /* gone */ } });
     } else {
@@ -4554,6 +4556,11 @@ async function fleetOp(req) {
         const u = updateWork(w.id, f, { by });
         return { item: fm.workRow(u), changed: Object.keys(f) };
     }
+    // an agent's own item that is running / sent back / waiting for input is stopped with everything it was doing (stopWork), as Fleet's Stop does
+    if (op === 'fleet_work_cancel' && ['starting', 'running', 'waiting', 'input'].includes(w.state)) {
+        await stopWork(w.id, { by: `agent ${by}`, then: 'delete' });
+        return { item: fm.workRow(getWork(w.id)) };
+    }
     const u = op === 'fleet_work_hold' ? holdWork(w.id) : cancelWork(w.id);
     if (op === 'fleet_work_cancel' && req.reason) setWork(w.id, { message: `Cancelled by ${by}: ${String(req.reason).slice(0, 300)}` });
     return { item: fm.workRow(getWork(u.id)) };
@@ -4598,7 +4605,7 @@ function onSockConnection(sock) {
                     : await resumeSession(String(req.sessionId || ''), { note: `by ${String(req.by || 'an agent').slice(0, 80)}` });
                 out = { ok: true, result: r };
             } else if (req.op === 'enqueue') {
-                const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, engine: req.engine, host: req.host, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
+                const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, engine: req.engine, host: req.host, gitIdentity: req.gitIdentity, topology: req.topology, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
                 out = { ok: true, work: w };
             } else {
                 if (!settings().enabled) throw new Error('The Supervisor is off (Fleet > Coordination > Supervisor)');

@@ -51,7 +51,9 @@ function handle(m) {
         const dir = path.join(claudeHome, '.claude', 'projects', proj);
         fs.mkdirSync(dir, { recursive: true });
         if (fd !== null) { try { fs.closeSync(fd); } catch (_) { /* closed */ } }
-        fd = fs.openSync(path.join(dir, `${sid}.jsonl`), 'a+');
+        const tf = path.join(dir, `${sid}.jsonl`);
+        fs.closeSync(fs.openSync(tf, 'a')); // r+ below: positioned writes (an append handle ignores the offset)
+        fd = fs.openSync(tf, 'r+');
         live.proj = proj;
         save();
     } else if (m.t === 'rec') {

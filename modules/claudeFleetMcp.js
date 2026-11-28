@@ -66,6 +66,7 @@ const TOOLS = [
         mode: { type: 'string', enum: ['bypassPermissions', 'acceptEdits', 'auto', 'default', 'plan'], description: 'Permission mode (default bypassPermissions, as Remote Control\'s)' },
         allowFull: { type: 'boolean', description: 'Allow an account at 95% or more of a limit' },
         host: { type: 'string', enum: ['misaka', 'dreamscape', 'auto'], description: 'Where the session runs: misaka (Fat Misaka, in its own replica worktree: it commits and pushes instead of editing the live tree; the host is woken and kept on for its life), dreamscape, or auto / unset (Fleet setting sessionHost, Dreamscape unless changed; Misaka falls back to Dreamscape when it cannot be used). Misaka takes StaticForge work with the default cwd only' },
+        gitIdentity: { type: 'string', enum: ['fleet', 'claude'], description: 'Misaka sessions: whose Yozora credential its git and Yozora MCP use. Default fleet (director.yozora, CLAUDE.md: Fleet sessions are Yozora on Yozora); claude only when Yukimi asked for it' },
         startNow: { type: 'boolean', description: 'Start it now when there is room. Default false: the item lands in Waiting (held) until Yukimi starts it, or you do with fleet_work_start when she asked or agreed' },
         engine: str('claude (default: the account\'s plan), tokenrouter (DeepSeek V4.1 Flash unless model names another), or custom:<provider id> (custom:sloproxy, custom:deepinfra, custom:deepseek): another model runs the same Claude Code session through the Director\'s bridge')
     }, ['prompt']),
@@ -312,7 +313,7 @@ function workDispatch(sup, name, input) {
     }
     if (name === 'fleet_work_update') {
         const f = {};
-        ['title', 'prompt', 'appendNote', 'topology', 'stages', 'account', 'model', 'effort', 'remoteControl', 'host', 'issues'].forEach((k) => { if (input[k] !== undefined) f[k] = input[k]; });
+        ['title', 'prompt', 'appendNote', 'topology', 'stages', 'account', 'model', 'effort', 'remoteControl', 'host', 'gitIdentity', 'issues'].forEach((k) => { if (input[k] !== undefined) f[k] = input[k]; });
         const w = sup.updateWork(input.id, f, { by: 'Yozora' });
         return { item: workRow(w), changed: Object.keys(f) };
     }
@@ -405,7 +406,7 @@ async function dispatch(gr, name, input) {
         let w = sup.enqueue({
             title: input.title, prompt, cwd, account: input.account && String(input.account).toLowerCase() !== 'auto' ? acc.index : null,
             model: input.engine && input.engine !== 'claude' ? (input.model || undefined) : model, engine: input.engine, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, startNow: input.startNow === true, source: 'director',
-            remoteControl: input.remoteControl === true, issues: input.issues, host: input.host
+            remoteControl: input.remoteControl === true, issues: input.issues, host: input.host, gitIdentity: input.gitIdentity
         }, { gr });
         await sup.pumpWork(gr);
         w = sup.getWork(w.id);
