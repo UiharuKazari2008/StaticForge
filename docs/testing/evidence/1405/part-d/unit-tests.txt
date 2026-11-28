@@ -1,10 +1,12 @@
 #1405 part D - unit tests of fix/1405-fgs-start (DSApp-Kotlin)
-commit     840fde9adc41028fda170dcfe0d19bd92503d01f (origin/main 763cc1fc + 619e415d + this follow-up)
+commit     0b167e3bcb42a74944831cc307a5566c713f4072 (origin/main 763cc1fc + 619e415d + 840fde9a + 74558a14 FgsStarter + 0b167e3b test fix)
 What       gradlew.bat --no-daemon testDebugUnitTest -Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx3500m
            on Ruiko, fresh folder claude-build\dsapp-ut-1405d from git archive of the commit; no APK, nothing installed
-Build gate #336 (dsapp-unit-tests); the first run of 619e415d was gate #335: 705 tests, 0 failures
+Build gate #360 (dsapp-unit-tests). The first run of 74558a14 failed to compile the test file only (the nested enum was named
+           through a val alias, 'Unresolved reference Fallback'); main code compiled; fixed in 0b167e3b and run again below.
+Earlier runs: 619e415d gate #335 705 tests 0 failures; 840fde9a gate #336 714 tests 0 failures
 Date       2026-11-27
-Checks     check-perf-rules --dsapp ok (183 files), check-notifications --dsapp ok
+Checks     check-perf-rules --dsapp ok (184 files), check-notifications --dsapp ok, check-app-scope ok
 
 > Task :app:compileDebugUnitTestKotlin
 > Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
@@ -13,7 +15,7 @@ Checks     check-perf-rules --dsapp ok (183 files), check-notifications --dsapp 
 
 [Incubating] Problems report is available at: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405d/build/reports/problems/problems-report.html
 
-BUILD SUCCESSFUL in 2m 15s
+BUILD SUCCESSFUL in 1m 54s
 27 actionable tasks: 27 executed
 Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
 GRADLE EXIT=0
@@ -32,7 +34,7 @@ jp.net.seventhreeseven.dreamscape.BackgroundValueTest: tests=12 failures=0 error
 jp.net.seventhreeseven.dreamscape.BarsHealPolicyTest: tests=62 failures=0 errors=0
 jp.net.seventhreeseven.dreamscape.DriveWatchStepTest: tests=13 failures=0 errors=0
 jp.net.seventhreeseven.dreamscape.ExampleUnitTest: tests=1 failures=0 errors=0
-jp.net.seventhreeseven.dreamscape.ForegroundStartPolicyTest: tests=21 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ForegroundStartPolicyTest: tests=31 failures=0 errors=0
 jp.net.seventhreeseven.dreamscape.NavRoomPolicyTest: tests=53 failures=0 errors=0
 jp.net.seventhreeseven.dreamscape.NoteRepeaterTest: tests=12 failures=0 errors=0
 jp.net.seventhreeseven.dreamscape.NoteSoundArbiterTest: tests=37 failures=0 errors=0
@@ -54,4 +56,4 @@ jp.net.seventhreeseven.dreamscape.TaskCatchUpTest: tests=10 failures=0 errors=0
 jp.net.seventhreeseven.dreamscape.TaskDeliveryTest: tests=9 failures=0 errors=0
 jp.net.seventhreeseven.dreamscape.TestLaneTest: tests=10 failures=0 errors=0
 jp.net.seventhreeseven.dreamscape.ToneSchedulerTest: tests=9 failures=0 errors=0
-TOTAL tests=714 failures=0 errors=0
+TOTAL tests=724 failures=0 errors=0
