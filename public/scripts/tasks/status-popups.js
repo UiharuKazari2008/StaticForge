@@ -133,9 +133,15 @@
             if (list.length > 1) sec.push(text(`${list.length - 1} more ${list.length === 2 ? 'recording' : 'recordings'} running.`));
             return { title: 'XM Radio Recording', role: 'xmrec', sec, foot: ['XM Radio'], buttons: [{ text: 'Monitor' }, { text: 'Cancel' }, { text: 'Hide' }] };
         },
+        // Open lands on the running chat on its persona (the page's popup: wmShell directorOpenLink -> wmDirectorApp.openSession).
+        // The app's copy carries it as open { app, persona, sessionId } (persona wren | kabuki | xi, from the snapshot's
+        // director.persona / sessionId) and hands it to the page with the tap (melatonopenapp { id, persona, sessionId },
+        // wmDirector.js); idle, or without them, Open is the app as it was left
         director(f) {
             const d = f.director || {};
-            return pop('director', 'Director', [text(d.running ? 'The Director is working.' : 'The Director is idle.'), links(['Open'])]);
+            const p = pop('director', 'Director', [text(d.running ? 'The Director is working.' : 'The Director is idle.'), links(['Open'])]);
+            if (d.running && d.sessionId && (d.persona === 'wren' || d.persona === 'kabuki' || d.persona === 'xi')) p.open = { app: 'director', persona: d.persona, sessionId: String(d.sessionId) };
+            return p;
         },
         prints(f) {
             const n = (f.prints && f.prints.phone) || 0;

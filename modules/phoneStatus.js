@@ -52,6 +52,7 @@ let timer = null;
 let running = false;
 let again = false;
 let directorRunning = false;
+let directorOpen = null; // { persona, sessionId } of the running chat: the popup's Open lands on it (#1319)
 // deviceId -> { field: json } as last sent to that phone's background link
 const sent = new Map();
 
@@ -94,8 +95,14 @@ function touch(reason) {
 /** cursorDirector's status broadcast: whether a turn runs (the push carries it; no read of our own). */
 function directorStatus(status) {
     const r = !!(status && (status.running || (status.xi && status.xi.running)));
-    if (r === directorRunning) return;
+    // the chat the turn runs in, on its persona (Yozora first, as the page's own popup reads it)
+    const xi = status && status.xi && status.xi.running && status.xi.sessionId ? status.xi : null;
+    const open = !r ? null : xi ? { persona: 'xi', sessionId: String(xi.sessionId) }
+        : status.sessionId && (status.persona === 'wren' || status.persona === 'kabuki') ? { persona: status.persona, sessionId: String(status.sessionId) } : null;
+    const same = (directorOpen && directorOpen.sessionId) === (open && open.sessionId) && (directorOpen && directorOpen.persona) === (open && open.persona);
+    if (r === directorRunning && same) return;
     directorRunning = r;
+    directorOpen = open;
     touch('director');
 }
 
@@ -262,7 +269,7 @@ async function build() {
         mail: { unread: mailUnread(), fresh: ib.mailFresh, new: fresh.mail },
         sms: { unread: await smsUnread(), fresh: ib.smsFresh, new: fresh.sms },
         chat: { fresh: ib.chatFresh },
-        director: { running: directorRunning, unseen: ib.directorUnseen },
+        director: { running: directorRunning, unseen: ib.directorUnseen, persona: directorOpen ? directorOpen.persona : null, sessionId: directorOpen ? directorOpen.sessionId : null },
         prints: { phone: phonePrints() },
         weather: weather(),
         lapis: lapis(),
@@ -345,4 +352,4 @@ async function run() {
     }
 }
 
-module.exports = { bind, touch, directorStatus, buildTest, _test: { build, run, sent, reset: () => { sent.clear(); gr = null; directorRunning = false; } } };
+module.exports = { bind, touch, directorStatus, buildTest, _test: { build, run, sent, reset: () => { sent.clear(); gr = null; directorRunning = false; directorOpen = null; } } };

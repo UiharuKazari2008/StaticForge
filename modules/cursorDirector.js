@@ -3285,12 +3285,15 @@ async function directorStatus(sample) {
     const runningSessionId = runs.size ? Array.from(runs.keys())[0] : null;
     let sessions = [];
     let runningName = null;
+    let runningPersona = null;
     try {
         const index = peekIndex(layout().indexPath);
         sessions = traySessions(index, runningSessionId);
         if (runningSessionId) {
             const running = index.chats.find((chat) => chat.id === runningSessionId);
             runningName = running ? (running.name || 'Director') : null;
+            // wren | kabuki: the tab the running chat lives in (the pages open it on its persona, the status icon's Open)
+            runningPersona = running ? (running.memoryStore === customProviders.OBLITERATED_STORE ? 'kabuki' : 'wren') : null;
         }
     } catch (_) { /* no index yet */ }
     return {
@@ -3298,6 +3301,7 @@ async function directorStatus(sample) {
         running: runs.size > 0,
         sessionId: runningSessionId,
         sessionName: runningName,
+        persona: runningPersona,
         computer,
         cursorLogin: { ...lastCursorLogin },
         last: { ...lastTurn },
@@ -9404,6 +9408,7 @@ module.exports = {
         readIndex, writeIndex, peekIndex, saveDirectorTrace, runAgentTurn, git, dirSize, computerSize,
         invalidateProjectPrepare, prepareState: () => projectPrepare, DRAFT_FLUSH_MS,
         setBrowserChild: (child) => { browserChild = child; },
+        runs,
         idleShutdownState: () => ({ computerStopped, lastDirectorActivityAt, code: lastPrepare && lastPrepare.code })
     }
 };

@@ -112,6 +112,156 @@ const load = (persona) => {
     return m;
 };
 
+// #1319 finding 5: the reply box was lifted over the input bar only, so with the log open it landed inside the
+// log and covered the text entry. The log's bottom margin is now one pure sum (DirectorMascot.logSpace) of
+// measured pixels, and the box is the limit where it stands over the log's column.
+{
+    const space = (o) => DirectorMascot.logSpace(o);
+    const panel = { bottom: 500, left: 20, right: 380 };
+    const base = { composerTop: 520, panel, box: null, current: 84, marginTop: 10 };
+    // no box: the gap above the bar matches the gap at the log's top (as before)
+    assert.deepStrictEqual(space(base), { space: 74, lift: 0 });
+    assert.strictEqual(space({ ...base, composerTop: 600 }).space, 0, 'never a negative margin');
+    // the box over the log's column takes the bar's place as the limit
+    const box = { top: 380, left: 6, right: 394 };
+    assert.deepStrictEqual(space({ ...base, box }), { space: 214, lift: 140 }, 'the log ends a gap above the box');
+    assert.strictEqual(space({ ...base, box }).space - space(base).space, 520 - 380, 'lifted by exactly the room the box takes above the bar');
+    // not over the log's column (she stands there, the log is beside her): nothing changes
+    assert.strictEqual(space({ ...base, box: { top: 380, left: 0, right: 20 } }).lift, 0, 'a box that ends where the log starts');
+    assert.strictEqual(space({ ...base, box: { top: 380, left: 380, right: 440 } }).lift, 0, 'a box that starts where the log ends');
+    // a box that does not rise above the bar takes no room from the log
+    assert.strictEqual(space({ ...base, box: { top: 520, left: 6, right: 394 } }).lift, 0);
+    assert.strictEqual(space({ ...base, box: { top: 560, left: 6, right: 394 } }).lift, 0);
+    // a log already far above the box needs no lift
+    assert.deepStrictEqual(space({ ...base, panel: { bottom: 100, left: 20, right: 380 }, box }), { space: 0, lift: 0 });
+    // the sum settles: the margin it asks for, applied, asks for itself again (no creeping)
+    const first = space({ ...base, box });
+    const moved = { bottom: panel.bottom - (first.space - base.current), left: 20, right: 380 };
+    assert.deepStrictEqual(space({ ...base, panel: moved, current: first.space, box }), first);
+    const gone = space({ ...base, panel: moved, current: first.space, box: null });
+    assert.strictEqual(gone.space, 74 + 0, 'the box gone, the log is back where it was');
+    assert.strictEqual(space({ ...base, current: undefined, marginTop: undefined, box: null }).space, 0, 'missing numbers are zero, not NaN');
+}
+
+// ... and on a stage with the log, the box and the input bar (fake rectangles; the panel's bottom follows its margin)
+{
+    const vars = {};
+    let rectReads = 0;
+    const classes = new Set();
+    const mb = () => (vars['--dm-composer-space'] !== undefined ? parseFloat(vars['--dm-composer-space']) : 84);
+    const rect = (top, bottom, left, right) => ({ top, bottom, left, right, width: right - left, height: bottom - top });
+    const composer = { shown: true, getBoundingClientRect() { return this.shown ? rect(620, 680, 0, 400) : rect(0, 0, 0, 0); } };
+    const panelEl = { getBoundingClientRect() { rectReads += 1; return rect(60, 700 - mb(), 12, 388); } };
+    const head = {};
+    const style = { bottom: '', top: '', maxHeight: '' };
+    const boxEl = {
+        style,
+        classList: { contains: (c) => (c === 'hidden' ? boxEl.hiddenClass : false), add(c) { if (c === 'hidden') boxEl.hiddenClass = true; }, remove(c) { if (c === 'hidden') boxEl.hiddenClass = false; } },
+        hiddenClass: false,
+        height: 200,
+        // display: none under the log's peek
+        get offsetHeight() { return classes.has('dm-log-peek') || boxEl.hiddenClass ? 0 : boxEl.height; },
+        getBoundingClientRect() { return rect(396, 596, boxEl.left, boxEl.right); },
+        left: 6,
+        right: 394,
+        dataset: {},
+        querySelector: () => head
+    };
+    const host = {
+        classList: { contains: (c) => classes.has(c) },
+        style: { setProperty(k, v) { vars[k] = v; } },
+        querySelector(sel) { return sel === '.director-chat-messages-container' ? panelEl : sel === '#directorComposer' ? composer : null; }
+    };
+    const layer = { getBoundingClientRect: () => rect(0, 700, 0, 400), style: { getPropertyValue: () => '12px' } };
+    global.getComputedStyle = (el) => (el === head ? { top: '-18px' } : { marginTop: '10px', marginBottom: `${mb()}px` });
+    const f = load('kabuki');
+    f.view = 'mascot';
+    f.host = host; f.layer = layer; f._shown = true; f.root = {};
+    f.el = { result: boxEl, dialogBody: { replaceChildren() {} }, dialogSuggest: { replaceChildren() {} } };
+    f.paintPager = () => {}; f.paintChrome = () => {};
+    f._tab = 'reply';
+    const space = () => parseFloat(vars['--dm-composer-space']);
+
+    // the log fits above the bar: the gap to the bar equals the gap at its top (700 - 90 = 610, a gap of 10 above 620)
+    boxEl.hiddenClass = true;
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), 90, 'no box: the log ends a gap above the input bar');
+    // the reply box comes up with the log open: placeResult lifts the box over the bar and refits the log above it
+    boxEl.hiddenClass = false;
+    f.placeResult();
+    assert.strictEqual(style.bottom, '104px', 'the box stands on the input bar (620 up to 700 is 80, then 8 and half the quick bar)');
+    // its top is 700 - 104 - 200 = 396, its name plate 18 more: the log ends a gap of 10 above 378
+    assert.strictEqual(space(), 710 - 378, 'the log ends above the box and its name plate');
+    assert.strictEqual(700 - mb(), 378 - 10, 'the log no longer reaches the box');
+    assert.strictEqual(f._logLift, space() - 90);
+    const lifted = space();
+    // the same place again: nothing is written (one pass, no loop)
+    let writes = 0;
+    const setProperty = host.style.setProperty;
+    host.style.setProperty = (k, v) => { writes += 1; setProperty(k, v); };
+    f.placeResult();
+    f.fitLogPanel(composer);
+    assert.strictEqual(writes, 0, 'an unchanged fit writes nothing');
+    // the box grows (its text): the resize observer's refit moves the log up with it
+    boxEl.height = 260;
+    f.refitLog();
+    assert.strictEqual(space(), lifted + 60, 'a taller box lifts the log further');
+    boxEl.height = 200;
+    f.refitLog();
+    assert.strictEqual(space(), lifted, 'and back');
+    // the log closed (the box over her scene): the log keeps its place
+    classes.add('dm-log-hidden');
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), 90, 'log closed, Reply shown: unchanged');
+    classes.delete('dm-log-hidden');
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), lifted, 'the log opens again: it clears the box');
+    // the log's peek hides the box (display: none): no room taken
+    classes.add('dm-log-hidden'); classes.add('dm-log-peek');
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), 90, 'peek hides the box');
+    classes.delete('dm-log-hidden'); classes.delete('dm-log-peek');
+    f.fitLogPanel(composer);
+    // the Report card is a full view of its own: the log is not squeezed out for it
+    f._tab = 'card';
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), 90, 'Report card tab: no lift');
+    f._tab = 'reply';
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), lifted);
+    // the box beside the log, not over it (the wide layout puts the log in its own column)
+    boxEl.left = 400; boxEl.right = 780;
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), 90, 'a box that is not over the log takes nothing from it');
+    boxEl.left = 6; boxEl.right = 394;
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), lifted);
+    // the input bar hidden: what the box added is taken back (the box's place came from the bar)
+    composer.shown = false;
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), 90, 'no input bar: the box adds nothing');
+    assert.strictEqual(f._logLift, 0);
+    composer.shown = true;
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), lifted);
+    // the box closes: the log gets its room back, at once
+    f.hideResult();
+    assert.strictEqual(space(), 90, 'the box closed: the log is restored');
+    assert.strictEqual(f._logLift, 0);
+    // nothing to refit: no rectangle is read (the observer fires on every shown / hidden / grown box)
+    rectReads = 0;
+    f.refitLog();
+    assert.strictEqual(rectReads, 0, 'a hidden box and no lift: refitLog reads nothing');
+    // the composer centred (a new chat): the log is not fitted at all
+    classes.add('director-composer-center');
+    boxEl.hiddenClass = false;
+    vars['--dm-composer-space'] = '33px';
+    f.fitLogPanel(composer);
+    assert.strictEqual(space(), 33, 'the home view leaves the log alone');
+    classes.delete('director-composer-center');
+    delete global.getComputedStyle;
+}
+
 // Growth (#704, per-card since 2026-11-06): each report card is one result; its hit ratio (hit 1,
 // partial 0.5, miss 0; rescores win) earns +2 / +1 / 0 or costs -1 / -2. Never below zero.
 const { directorMascotGrowthPoints, directorMascotStageFor, directorMascotCardPoints } = require('../public/scripts/comp/directorMascot.js');

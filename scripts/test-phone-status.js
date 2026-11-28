@@ -38,6 +38,9 @@ ps.bind(gr);
     assert.deepStrictEqual(Object.keys(d.fields).sort(), ['director', 'mail', 'notices'], 'only what changed');
     assert.strictEqual(d.fields.mail.fresh, 1);
     assert.strictEqual(d.fields.director.running, true);
+    // #1319: no chat named by the status, so the popup's Open has nothing to land on (it opens the app as it was left)
+    assert.strictEqual(d.fields.director.persona, null);
+    assert.strictEqual(d.fields.director.sessionId, null);
 
     inbox.setPref('admin', 'icon.mailAll', '1');
     await ps._test.run();

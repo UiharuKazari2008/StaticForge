@@ -34,7 +34,10 @@
  *                attachments are WM thumbnails with a remove box
  *   Sessions     a WM list of the persona's chats (preview, name, date, workspace) with Archives;
  *                tap opens one, tap-and-hold its menu (Fork, Move, Auto-Repair, Nuke, Delete);
- *                back key and Cancel return to her
+ *                back key and Cancel return to her. Over the list the shell's tab strip (.wm-tabs): one
+ *                tab per persona that can be chosen (Yumiya; Chiyo with an engine; Yozora while she is on),
+ *                the one in use marked; a tap switches persona and the list is that persona's. The strip
+ *                repaints from director.js's paintPersonaToggle (every persona or availability change)
  *   pages        the desktop's windows as pages with ok: Prints (the prints pane: tap views,
  *                hold for Open / Show on Message / Attach / Recycle), History (Open Full History),
  *                the tool inspector (directorToolInspector.js hosted, tabs at the bottom), text
@@ -353,12 +356,24 @@
      * reload-reopen flag from being saved unless this app is on screen (the phone always starts on Today).
      */
     let patchedDirector = null;
+    let patchedToggle = null;
     function patchDirector() {
         const d = dir();
         if (!d) return false;
         patchHandOffs(d);
         patchWindows(d);
         patchContextMenu();
+        // director.js paints its persona toggle on every persona change and every change of who can be chosen (Chiyo's
+        // engines arriving, Yozora switched on): the Sessions tabs follow it, nothing polls
+        if (patchedToggle !== d && typeof d.paintPersonaToggle === 'function') {
+            patchedToggle = d;
+            const paint = d.paintPersonaToggle.bind(d);
+            d.paintPersonaToggle = function (...args) {
+                const out = paint(...args);
+                try { paintPersonaTabs(); } catch (err) { console.warn('[wmDirector] persona tabs', err); }
+                return out;
+            };
+        }
         if (patchedDirector !== d && typeof d.saveReopenState === 'function') {
             patchedDirector = d;
             const save = d.saveReopenState.bind(d);
@@ -494,6 +509,9 @@
     // ---------------------------------------------------------------- hand-offs from other views
 
     let pendingRun = null;
+    // the cover (handOff opts.cover) is lifted at the latest after this, whatever the hand-off is waiting on
+    const COVER_MAX_MS = 15000;
+    let coverTimer = null;
     // the picture view the Director opened over (Pictures & Videos' Menu > Ask Wren): Back re-opens it
     let viewerReturn = null;
 
@@ -529,13 +547,23 @@
      * Director on): the app opens over that view (Back returns to it) and the desktop function runs on
      * the window hosted here, so its chips, lookups and send path are director.js's own.
      */
-    function handOff(run) {
+    function handOff(run, opts) {
         const d = dir();
         const booted = document.documentElement.dataset.wmBoot === 'done';
-        if (!ws || !booted || (shown && isCurrent() && d && d.directorWindowIsOpen())) return Promise.resolve(run(d));
+        // opts.cover: the page is hidden (wm-director.css .wmd-cover) until the hand-off has landed, so a chat that
+        // is only the way there (the one she last had, a new draft, another persona's) is never seen
+        const cover = !!(opts && opts.cover);
+        const uncover = () => { clearTimeout(coverTimer); if (page) page.classList.remove('wmd-cover'); };
+        if (!ws || !booted || (shown && isCurrent() && d && d.directorWindowIsOpen())) {
+            const covered = cover && shown && isCurrent() && !!page;
+            if (covered) { page.classList.add('wmd-cover'); coverTimer = setTimeout(uncover, COVER_MAX_MS); }
+            let out;
+            try { out = Promise.resolve(run(d)); } catch (err) { uncover(); throw err; }
+            return covered ? out.finally(uncover) : out;
+        }
         return new Promise((resolve) => {
             let done = false;
-            const finish = (v) => { if (!done) { done = true; resolve(v); } };
+            const finish = (v) => { if (!done) { done = true; if (cover) uncover(); resolve(v); } };
             pendingRun = async (dd) => {
                 const had = dd && dd.pendingAttachments ? dd.pendingAttachments.length : 0;
                 try {
@@ -546,6 +574,7 @@
                     finish(v);
                 } catch (err) { console.warn('[wmDirector] hand-off', err); finish(undefined); }
             };
+            pendingRun.cover = cover;
             // the shell closes the picture view under a newly opened app; Back brings it back
             const pic = openViewerPicture();
             viewerReturn = pic && ws.current && ws.current !== APP_ID ? { app: ws.current, filename: pic } : null;
@@ -599,7 +628,10 @@
         // Messaging's Director accounts (#763): open THAT session in the app (her persona first),
         // and the session row's own menu (Fork, Move to workspace, Auto-Repair, Nuke, Delete)
         openSession: (p, id) => openSessionOf(p, id),
-        sessionMenuRows: (p, id, session) => sessionRowsFor(p, id, session)
+        sessionMenuRows: (p, id, session) => sessionRowsFor(p, id, session),
+        // the personas that can be chosen now ({ key, label, on }) and the Sessions tabs' tap
+        personaTabs: () => personaChoices(),
+        pickPersona: (p) => pickPersona(p)
     };
 
     /**
@@ -632,9 +664,16 @@
         return d.persona === p;
     }
 
-    /** The app in front on persona p's session id, its messages on screen (the Sessions page's tap). */
+    /**
+     * The app in front on persona p's session id, its messages on screen (the Sessions page's tap; Messaging's Director
+     * accounts; the Director status icon's Open Director with a turn running). The page stays covered until the chat is
+     * there (handOff cover) unless that chat is already the one on screen, so neither the chat she last had nor a new
+     * draft shows on the way (the window opening, the persona changing). false: the persona or the chat is not there.
+     */
     function openSessionOf(p, id) {
         if (id == null) return Promise.resolve(false);
+        const d0 = dir();
+        const onScreen = !!(d0 && (!p || d0.persona === p) && d0.currentSession && String(d0.currentSession.id) === String(id));
         return handOff(async (d) => {
             if (!d) return false;
             if (!d.directorWindowIsOpen()) await d.openDirectorWindow();
@@ -643,7 +682,7 @@
             if (!sessionById(id)) return false;
             await openSession(id);
             return true;
-        });
+        }, { cover: !onScreen });
     }
 
     /**
@@ -1121,11 +1160,20 @@
         return `<button type="button" class="wmd-session${String(s.id) === String(curId) ? ' is-current' : ''}" data-id="${esc(s.id)}">${thumb}<span class="wmd-session-text"><span class="wmd-session-name">${esc(s.name || 'Untitled')}</span><span class="wmd-session-date"><span>${busy ? 'Working... ' : ''}${esc(sessionDate(d, s))}</span>${wsTag}</span></span></button>`;
     }
 
-    function renderSessions() {
+    // directorSessions as they were when a persona tab was tapped: those rows are the other persona's, so nothing is drawn
+    // until her own list arrives (a new array); and each persona's list keeps the scroll position it was left at
+    let listStale = null;
+    const listScroll = {};
+
+    /** scrollTo: where the list stands afterwards (a persona's own position); else it stays where it is (a refresh). */
+    function renderSessions(scrollTo) {
         const d = dir();
         const t = stack.find((p) => p.kind === 'sessions');
         const list = t && t.el.querySelector('.wmd-sessions-list');
         if (!d || !list) return;
+        if (listStale && d.directorSessions === listStale) return;
+        listStale = null;
+        const keep = typeof scrollTo === 'number' ? scrollTo : list.scrollTop;
         const all = d.directorSessions || [];
         const curId = d.currentSession && d.currentSession.id;
         const active = all.filter((s) => !s.archived);
@@ -1145,6 +1193,62 @@
                 img.src = '/static_images/app_icons/director.webp';
             };
         });
+        if (list.scrollTop !== keep) list.scrollTop = keep;
+    }
+
+    // ---------------------------------------------------------------- persona tabs (Sessions page)
+
+    /**
+     * The personas that can be chosen now, as the Persona menu and the Sessions tabs list them: Yumiya always, Chiyo
+     * once an engine can run her (or while she is the one on screen), Yozora while she is on and her window is open
+     * (director.js setPersona returns without a word otherwise).
+     */
+    function personaChoices(d) {
+        d = d || dir();
+        if (!d) return [];
+        const pick = (key) => ({ key, label: personaName(key), on: d.persona === key });
+        const out = [pick('wren')];
+        if (d.kabukiAvailable() || d.persona === 'kabuki') out.push(pick('kabuki'));
+        if (d._xiEnabled === true && (d.persona === 'xi' || d.directorWindowIsOpen())) out.push(pick('xi'));
+        return out;
+    }
+
+    const tabScroll = { first: 0 };
+    /**
+     * The Sessions page's tab strip (the shell's .wm-tabs / .wm-tab: Windows Mobile's tab control, a pivot in 6.5.1): one
+     * tab per persona that can be chosen, the one in use aria-selected. No strip while there is only one persona. Drawn
+     * when the page opens and from director.js's paintPersonaToggle (patchDirector), which runs on every persona or
+     * availability change; the tabs are rebuilt only when the set changes.
+     */
+    function paintPersonaTabs() {
+        const t = stack.find((p) => p.kind === 'sessions');
+        const strip = t && t.el.querySelector('.wmd-persona-tabs');
+        const d = dir();
+        if (!strip || !d) return;
+        const list = personaChoices(d);
+        const many = list.length > 1;
+        // (.wm-tabs is display: flex, which [hidden] does not beat)
+        strip.style.display = many ? '' : 'none';
+        const key = list.map((c) => `${c.key}:${c.label}`).join('|');
+        if (strip.dataset.set !== key) {
+            strip.dataset.set = key;
+            strip.innerHTML = list.map((c) => `<button type="button" class="wm-tab" role="tab" data-persona="${esc(c.key)}" aria-selected="false">${esc(c.label)}</button>`).join('');
+        }
+        strip.querySelectorAll('.wm-tab').forEach((b) => {
+            const on = String(list.some((c) => c.key === b.dataset.persona && c.on));
+            if (b.getAttribute('aria-selected') !== on) b.setAttribute('aria-selected', on);
+        });
+        if (many && window.wmSettings && typeof window.wmSettings.fitTabs === 'function') window.wmSettings.fitTabs(strip, tabScroll);
+        refreshTitle();
+    }
+
+    let tabBusy = false;
+    /** A tap on a persona tab: the same switch as the menu's (the list below becomes hers); taps while one is under way are dropped. */
+    async function pickPersona(p) {
+        const d = dir();
+        if (!d || !p || d.persona === p || tabBusy) return false;
+        tabBusy = true;
+        try { return await choosePersona(p); } finally { tabBusy = false; }
     }
 
     function sessionById(id) {
@@ -1172,8 +1276,13 @@
                 corner: 'close',
                 title: () => `${personaName(dir() && dir().persona)}: Sessions`,
                 render(el) {
-                    el.innerHTML = '<div class="wmd-sessions-list" role="list"></div>';
-                    const list = el.firstChild;
+                    el.innerHTML = '<div class="wm-tabs wmd-persona-tabs" role="tablist" aria-label="Persona"></div><div class="wmd-sessions-list" role="list"></div>';
+                    const strip = el.firstChild;
+                    const list = el.lastChild;
+                    strip.addEventListener('click', (e) => {
+                        const b = e.target.closest && e.target.closest('.wm-tab');
+                        if (b && b.dataset.persona) void pickPersona(b.dataset.persona);
+                    });
                     list.addEventListener('click', (e) => {
                         const row = e.target.closest('.wmd-session');
                         if (row) void openSession(row.dataset.id);
@@ -1186,6 +1295,7 @@
                 keys: () => ({ left: { label: 'Cancel', action: () => closePages('sessions') }, right: { label: 'Menu', menu: sessionsMenu } })
             });
         }
+        paintPersonaTabs();
         renderSessions();
         try { await busyOf(() => d.loadDirectorSessions()); } catch (_) { /* keep what is listed */ }
         renderSessions();
@@ -1239,20 +1349,21 @@
         if (composing) closeComposer();
         // pages of the other persona's chat (prints, history) do not carry over; Sessions does
         while (stack.length && top().kind !== 'sessions') popPage();
-        try { await busyOf(() => d.setPersona(p)); } catch (err) { console.warn('[wmDirector] persona', err); }
+        // the Sessions page stays up: its list is the other persona's until hers arrives (empty meanwhile, her scroll
+        // position kept for the way back)
+        const onList = !!(top() && top().kind === 'sessions');
+        const listEl = onList ? top().el.querySelector('.wmd-sessions-list') : null;
+        if (listEl) { listScroll[d.persona] = listEl.scrollTop; listStale = d.directorSessions; listEl.innerHTML = ''; }
+        // (setPersona loads the new persona's sessions itself: no second load here)
+        try { await busyOf(() => d.setPersona(p)); } catch (err) { console.warn('[wmDirector] persona', err); } finally { listStale = null; }
         syncComposer();
-        if (top() && top().kind === 'sessions') { renderSessions(); try { await d.loadDirectorSessions(); } catch (_) { /* best effort */ } renderSessions(); }
+        if (top() && top().kind === 'sessions') { paintPersonaTabs(); renderSessions(listScroll[d.persona] || 0); }
         refreshTitle();
         ws.refreshSoftKeys();
     }
 
     function personaItems() {
-        const d = dir();
-        if (!d) return [];
-        const items = [{ label: personaName('wren'), radio: d.persona === 'wren', action: () => switchPersona('wren') }];
-        if (d.kabukiAvailable() || d.persona === 'kabuki') items.push({ label: personaName('kabuki'), radio: d.persona === 'kabuki', action: () => switchPersona('kabuki') });
-        if (d._xiEnabled === true) items.push({ label: personaName('xi'), radio: d.persona === 'xi', action: () => switchPersona('xi') });
-        return items;
+        return personaChoices().map((c) => ({ label: c.label, radio: c.on, action: () => switchPersona(c.key) }));
     }
 
     // ---------------------------------------------------------------- Prints (the desktop's prints pane)
@@ -1946,8 +2057,8 @@
     function sessionsMenu() {
         return [
             { label: 'New Session', action: () => { void newSession(); } },
-            { label: 'Refresh', action: () => { void showSessions(); } },
-            { label: 'Persona', submenu: personaItems }
+            // (no Persona submenu: the tabs over the list switch it)
+            { label: 'Refresh', action: () => { void showSessions(); } }
         ];
     }
 
@@ -2096,6 +2207,7 @@
                 }
                 everShown = true;
                 p.classList.remove('wmd-prepaint');
+                if (run && run.cover) { p.classList.add('wmd-cover'); clearTimeout(coverTimer); coverTimer = setTimeout(() => p.classList.remove('wmd-cover'), COVER_MAX_MS); }
                 void attach(run);
             },
             hide() {
@@ -2147,6 +2259,14 @@
         window.addEventListener('melatonscreen', wake, { signal: appScopeSignal });
         document.addEventListener('visibilitychange', wake, { signal: appScopeSignal });
         patchContextMenu();
+        // the app's own Director popup (status-popups.js) opens Melaton with its Open's payload while this page sleeps:
+        // { id: 'director', persona, sessionId } lands on that chat on its persona; without them, the app as it was
+        window.addEventListener('melatonopenapp', (e) => {
+            const o = e && e.detail;
+            if (!o || typeof o !== 'object' || o.id !== APP_ID) return;
+            if (['wren', 'kabuki', 'xi'].includes(o.persona) && o.sessionId != null && o.sessionId !== '') void openSessionOf(o.persona, o.sessionId);
+            else if (ws) ws.open(APP_ID);
+        }, { signal: appScopeSignal });
         window.addEventListener('wmDirectorPrefsChange', () => { if (page) { paintPrints(); if (isCurrent()) ws.refreshSoftKeys(); } });
         // the soft keys follow the Director (a turn starts or ends, a chat opens)
         const refresh = () => {

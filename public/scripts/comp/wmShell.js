@@ -6457,7 +6457,21 @@
     const imapNew = () => { try { const m = window.wmMessaging; return m && typeof m.imapNew === 'function' ? Number(m.imapNew()) || 0 : 0; } catch (_) { return 0; } };
     const GEN_REQUEST_TYPES = new Set(['generate_image', 'generate_preset', 'reroll_image', 'upscale_image', 'expand_image', 'reroll_expanded_image', 'enhance_image', 'max_enhance_image', 'animate_image']);
 
-    /** { running, persona, name, sessionId, watched } from director_computer_status (null before the first answer). */
+    /**
+     * The persona key (wren | kabuki) of the chat a Wren-server turn runs in: the server's word (cursorDirector directorStatus
+     * persona), else the chat's row in the Director's list (memoryStore 'obliterated' is Chiyo's), else the persona on
+     * screen when the turn is the one this page started, else Wren's.
+     */
+    function runningPersonaKey(st) {
+        if (st.persona === 'wren' || st.persona === 'kabuki') return st.persona;
+        const di = window.directorInstance;
+        const row = di && Array.isArray(di.directorSessions) ? di.directorSessions.find((r) => r && String(r.id) === String(st.sessionId)) : null;
+        if (row && 'memoryStore' in row) return row.memoryStore === 'obliterated' ? 'kabuki' : 'wren';
+        if (di && di.persona === 'kabuki' && String(di._runningSessionId) === String(st.sessionId)) return 'kabuki';
+        return 'wren';
+    }
+
+    /** { running, persona (the label), personaKey (wren | kabuki | xi, while a turn runs), name, sessionId, watched } from director_computer_status (null before the first answer). */
     function directorState() {
         const st = shellDirectorStatus || (window.directorInstance && window.directorInstance._status) || null;
         if (!st) {
@@ -6471,8 +6485,31 @@
             return null;
         }
         const xi = st.xi && st.xi.running ? st.xi : null;
-        if (xi) return { running: true, persona: 'Yozora', name: xi.sessionName || '', sessionId: xi.sessionId || null, watched: st.watched };
-        return { running: !!st.running, persona: 'Director', name: st.sessionName || '', sessionId: st.sessionId || null, watched: st.watched };
+        if (xi) return { running: true, persona: 'Yozora', personaKey: 'xi', name: xi.sessionName || '', sessionId: xi.sessionId || null, watched: st.watched };
+        return { running: !!st.running, persona: 'Director', personaKey: st.running && st.sessionId ? runningPersonaKey(st) : null, name: st.sessionName || '', sessionId: st.sessionId || null, watched: st.watched };
+    }
+
+    /**
+     * The Director popup's Open (statusBubble 'director'; status-popups.js mirrors it for the app's own copy). With a turn
+     * running it lands straight on that chat on its persona (wmDirectorApp.openSession: the persona first, then the
+     * session, the app covered until the chat is on screen - never the chat it last had, nor a draft, on the way); idle,
+     * or when that cannot be done (the chat is gone), the app as it was left. Read again at the tap: the turn may have
+     * ended since the popup was drawn.
+     */
+    function directorOpenLink() {
+        return {
+            label: 'Open Director',
+            action: () => {
+                const d = directorState();
+                const app = window.wmDirectorApp;
+                if (d && d.running && d.personaKey && d.sessionId && app && typeof app.openSession === 'function') {
+                    closeBubble();
+                    Promise.resolve(app.openSession(d.personaKey, d.sessionId)).then((ok) => { if (!ok) open('director'); }, () => open('director'));
+                    return;
+                }
+                open('director');
+            }
+        };
     }
 
     /**
@@ -9176,7 +9213,7 @@
             const o = window.optionsData;
             const anlas = o && o.balance && Number(o.balance.totalCredits);
             if (Number.isFinite(anlas) && anlas >= 0) sections.push(`Balance: ${anlas.toLocaleString()} Anlas`);
-            const links = apps.has('director') ? [{ label: 'Open Director', action: () => open('director') }] : [];
+            const links = apps.has('director') ? [directorOpenLink()] : [];
             if (links.length) sections.push({ links });
             bubble({ title: 'Director', role, anchor, sections, buttons: [{ text: 'Hide' }] });
         } else if (role === 'wxalert' || role === 'rain') {

@@ -1833,6 +1833,17 @@
                                         <i class="fas fa-bars"></i>
                                     </button>
 
+                                    <!-- Persona: Wren | Kabuki | Xi, always in the menu bar (Yukimi, Nov 26 2026, #1319; director.js
+                                         paintPersonaToggle shows the names that can be chosen and hides the whole group with only Wren) -->
+                                    <div id="directorPersonaGroup" class="gallery-toggle-group hidden" data-persona="wren"
+                                        role="group" aria-label="Director persona" title="Director persona">
+                                        <button type="button" class="gallery-toggle-btn active" data-persona="wren" aria-pressed="true" title="Yumiya">Yumiya</button>
+                                        <!-- Kabuki: Wren's chats on Obliterated Memories engines (director.js paintPersonaToggle) -->
+                                        <button type="button" class="gallery-toggle-btn hidden" data-persona="kabuki" aria-pressed="false" title="Chiyo (Obliterated Memories)">Chiyo</button>
+                                        <button type="button" class="gallery-toggle-btn" data-persona="xi" aria-pressed="false" title="Yozora">Yozora</button>
+                                        <div class="gallery-toggle-slider"></div>
+                                    </div>
+
                                     <!-- Session preview (toggled by view) -->
                                     <div id="directorSessionPreviewContainer"
                                         class="director-session-preview-container director-header-element hidden"
@@ -1934,13 +1945,6 @@
                                     <!-- Session List Overlay -->
                                     <div id="directorSessionList" class="director-session-overlay hidden">
                                         <div class="director-header">
-                                            <div id="directorPersonaGroup" class="gallery-toggle-group hidden" data-persona="wren" title="Director persona">
-                                                <button type="button" class="gallery-toggle-btn active" data-persona="wren" title="Yumiya">Yumiya</button>
-                                                <!-- Kabuki: Wren's chats on Obliterated Memories engines (director.js paintPersonaToggle) -->
-                                                <button type="button" class="gallery-toggle-btn hidden" data-persona="kabuki" title="Chiyo (Obliterated Memories)">Chiyo</button>
-                                                <button type="button" class="gallery-toggle-btn" data-persona="xi" title="Yozora">Yozora</button>
-                                                <div class="gallery-toggle-slider"></div>
-                                            </div>
                                             <div class="director-session-overlay-actions">
                                                 <button type="button" id="directorNewSessionBtn"
                                                     class="btn-secondary btn-small">

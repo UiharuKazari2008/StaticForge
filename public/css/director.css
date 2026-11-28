@@ -399,16 +399,31 @@ html.disable-blur .director-session-overlay {
     transform: translateX(calc(200% + 8px));
 }
 
-/* Inactive names: light text on the dark track (the Vista light-face blue vanished there). */
-body #directorSessionList #directorPersonaGroup .gallery-toggle-btn:not(.active) {
-    color: hsl(210 35% 90%);
+/* The persona control sits in the Director's menu bar (#directorCommonHeader, public/app.html; Yukimi Nov 26 2026, #1319).
+   Inactive names: the toolbar's tinted text on its dark track (the Vista light-face blue vanished there). */
+body #directorCommonHeader #directorPersonaGroup .gallery-toggle-btn:not(.active) {
+    color: var(--text-accent-tinted);
     opacity: 0.8;
-    text-shadow: 0 1px 2px hsl(0 0% 0% / 65%);
 }
 
-body #directorSessionList #directorPersonaGroup .gallery-toggle-btn:not(.active):hover {
-    color: #fff;
+body #directorCommonHeader #directorPersonaGroup .gallery-toggle-btn:not(.active):hover {
+    color: var(--text-primary);
     opacity: 1;
+}
+
+/* Keyboard: a ring in the bar's text colour, drawn inside the button so the track does not clip it */
+#directorPersonaGroup .gallery-toggle-btn:focus-visible {
+    outline: 2px solid var(--text-accent-tinted);
+    outline-offset: -2px;
+}
+
+/* a narrow bar: the names stay, the buttons give up their minimum width and padding */
+@container director-header (max-width: 520px) {
+    #directorCommonHeader #directorPersonaGroup .gallery-toggle-btn {
+        min-width: 0;
+        padding: 0 6px;
+        font-size: 0.75rem;
+    }
 }
 
 /* One slider and active-text colour per persona, from the theme status tokens: Wren blue, Kabuki red lantern, Xi green */
@@ -3316,10 +3331,6 @@ html.disable-blur .director-attach-chip {
     font-size: 16px;
 }
 
-#directorSessionList > .director-header:has(#directorPersonaGroup:not(.hidden))::before {
-    content: none;
-}
-
 #directorCommonHeader .director-header-center {
     justify-content: flex-start;
     gap: var(--spacing-sm);
@@ -3389,7 +3400,6 @@ html.disable-blur .director-attach-chip {
         width: 76px;
     }
 
-    #directorWindow .director-container.director-sessions-rail #directorPersonaGroup,
     #directorWindow .director-container.director-sessions-rail .director-session-info,
     #directorWindow .director-container.director-sessions-rail .director-session-label {
         display: none;
@@ -3397,6 +3407,11 @@ html.disable-blur .director-attach-chip {
 
     #directorWindow .director-container.director-sessions-rail #directorSessionList > .director-header {
         justify-content: center;
+    }
+
+    /* the rail has room for the plus only, not the "Sessions" heading */
+    #directorWindow .director-container.director-sessions-rail #directorSessionList > .director-header::before {
+        content: none;
     }
 
     #directorWindow .director-container.director-sessions-rail .director-session-item {
@@ -3687,6 +3702,34 @@ html.disable-blur .director-attach-chip {
     gap: 6px;
     flex-shrink: 0;
     margin-left: auto;
+}
+
+/* A turn runs in this chat: director.js sessionRunningMarkHtml (the tray icon's glyph and words) in every row, shown by
+   [data-running] that paintRunningSessions / markSessionRunning set in place. */
+.director-session-running {
+    display: none;
+    align-items: center;
+    color: var(--text-accent);
+}
+
+.director-session-item[data-running="1"] .director-session-running {
+    display: inline-flex;
+}
+
+.director-session-item[data-running="1"] .director-session-running i {
+    /* perf: allow status indicator: pulses only on the row of a chat whose turn runs ([data-running]); opacity + transform */
+    animation: pulse-generation 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .director-session-item[data-running="1"] .director-session-running i {
+        animation: none;
+    }
+}
+
+/* The rail shows pictures only (no marks): a running chat's picture wears the accent edge. */
+#directorWindow .director-container.director-sessions-rail .director-session-item[data-running="1"] {
+    border-color: var(--text-accent);
 }
 
 /* #directorWindow: the header is the title-bar toolbar row (toolbar-visible),

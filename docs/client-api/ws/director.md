@@ -110,6 +110,7 @@ Read-only, so it is **not** destructive: the tray icon and tray menu need it. Re
   "running": false,
   "sessionId": null,
   "sessionName": null,
+  "persona": null,
   "computer": { "ready": true, "code": null, "error": null },
   "last": { "state": "idle", "sessionId": "<chat id>", "error": null, "at": "<ISO-8601>" },
   "sessions": [{ "id": "<chat id>", "name": "…", "created_at": "<ISO-8601>", "current": false }],
@@ -122,6 +123,7 @@ Read-only, so it is **not** destructive: the tray icon and tray menu need it. Re
 - At server start, before the computer check, the server runs `cursor-agent update` and `claude update` on the host (each capped at 3 minutes, in parallel), so Wren's jail binds the new builds. The boot log shows each CLI's old and new version. It is skipped while an Xi turn is live, and `director.autoUpdateClis: false` turns it off. A failed update only logs a warning.
 - TokenRouter usage (`director_get_cursor_usage` with `engine: "tokenrouter"`): the account's remaining balance as one value, `balance` (number, USD) and `balanceText` (`"$12.34"`), which is TokenRouter's top-up balance plus unexpired vouchers from `GET /api/management/self/wallet`. That route needs the TokenRouter **Personal Management Key** of the same account, entered as the optional second key on the TokenRouter entry in Security Center > Service Keys (`secure.config.json` `tokenrouter.keys[].managementKey`, or `TOKENROUTER_MANAGEMENT_KEY`); the model API key is not accepted there. The badge uses the pair of the selected TokenRouter key. Cached for a minute, failures included (TokenRouter allows 10 calls a minute per key). `limited` is true at or below $0. `autoPercent` / `apiPercent` stay null; the badge shows the wallet mark and the dollar value.
 - Claude usage (`director_get_cursor_usage` with `engine: "claude"`, Wren or Xi): the 5-hour and 7-day windows from the last Claude call. Real Wren and Xi turns update it, and `modules/claudeUsageProbe.js` sends a one-line Haiku ping (throwaway HOME, no tools, no MCP) when the figures are 6 hours old. It only pings while a logged-in client is connected or was in the last 4 hours; otherwise the next login triggers it. One ping at a time, and 30 minutes between failed attempts.
+- `persona` is `wren` or `kabuki` (the tab the running chat lives in: `kabuki` for an Obliterated Memories chat) while a Wren-server turn runs, else `null`. Xi's turn is in `xi`. The status icon's Open Director uses it to land on that chat on its own tab.
 - `sessions` is the 3 most recent chats from `index.json`, newest first, with `current` set on the one a turn is running in.
 - `resources` measures **the Director's computer, not the Dreamscape host**: the tracked `bwrap` child plus its descendants (`cursor-agent`, `node`, headless chrome), read from `/proc/<pid>/stat` and `/proc/<pid>/task/<pid>/children`. `cpu` is a percent of one core over a 150 ms `utime + stime` delta and `rss` is in bytes; both are the tree total, and `processes` is the top 6 by CPU. With no turn running this is the last live sample with `live: false`, or `null` when there has not been one.
 

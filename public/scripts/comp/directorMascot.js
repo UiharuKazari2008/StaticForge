@@ -886,6 +886,10 @@ class DirectorMascot {
         this.manifests = new Map();      // persona -> normalized manifest (or null when missing)
         this.persona = null;
         this.manifest = null;
+        this._switchTicket = 0;          // setPersona: the newest request wins
+        this._switchKey = null;          // the persona a switch is on its way to
+        this._build = null;              // its off-stage build (shader body), freed when another request comes
+        this._holding = false;           // a switch is holding the old persona on stage: growth waits for the new manifest
         this.working = false;
         this._thinkAloud = false;
         this.view = 'mascot';
@@ -1070,8 +1074,13 @@ class DirectorMascot {
         // She stands on the input bar wherever it sits (centred on a new chat, at the bottom later):
         // anything that moves or resizes it re-lays her out.
         if (typeof ResizeObserver === 'function') {
-            this._resize = new ResizeObserver(() => this.layout());
-            [host, host.querySelector('#directorComposer'), host.querySelector('.director-chat-input'), host.querySelector('.director-chat-messages-container')]
+            // The reply box is watched too (its text grows, it shows and hides): only the log's room
+            // changes with it, not her place, so a change of the box alone refits the log and nothing else.
+            this._resize = new ResizeObserver((entries) => {
+                if (this.el && Array.isArray(entries) && entries.length && entries.every((entry) => entry.target === this.el.result)) this.refitLog();
+                else this.layout();
+            });
+            [host, host.querySelector('#directorComposer'), host.querySelector('.director-chat-input'), host.querySelector('.director-chat-messages-container'), this.el.result]
                 .filter(Boolean).forEach((el) => this._resize.observe(el));
         }
         // The bar slides between the centred home and the bottom without resizing anything watched above:
@@ -1204,18 +1213,75 @@ class DirectorMascot {
     // Fit the figure above the input bar: height from the view, width from the camera's aspect.
     // Visual novel log panel: the gap above the input bar matches the gap at its top (Yukimi 2026-11-01).
     // The composer floats in the docked view and sits in flow in the window, so measure rather than assume.
+    //
+    // The reply box (placeResult) is lifted over the input bar only, so with the log open it sat inside the
+    // log. While it is up over the log's column the log ends above it instead (#1319 finding 5). One pass:
+    // every rectangle is read first, then the one property is written.
     fitLogPanel(composer) {
         const panel = this.host.querySelector('.director-chat-messages-container');
-        if (!composer || !panel || this.view !== 'mascot' || this.host.classList.contains('director-composer-center')) return;
+        if (!panel || this.view !== 'mascot' || this.host.classList.contains('director-composer-center')) return;
+        if (!composer && !this._logLift) return;
         const pb = panel.getBoundingClientRect();
-        const cb = composer.getBoundingClientRect();
-        if (!pb.height || !cb.height) return;
+        const cb = composer ? composer.getBoundingClientRect() : null;
+        if (!pb.height) return;
         const cs = getComputedStyle(panel);
         const top = parseFloat(cs.marginTop) || 0;
         const current = parseFloat(cs.marginBottom) || 0;
+        if (!cb || !cb.height) {
+            // No input bar to measure from (hidden): the fit stays as it was, minus what the reply box added
+            // (it has no bar to stand on any more, and its place was worked out from that bar).
+            if (this._logLift) this.host.style.setProperty('--dm-composer-space', `${Math.max(0, Math.round(current - this._logLift))}px`);
+            this._logLift = 0;
+            return;
+        }
+        const box = this.replyBoxEdge();
         // A larger bottom margin widens the gap one for one, whether the composer floats or sits in flow.
-        const want = Math.max(0, Math.round(current + top - (cb.top - pb.bottom)));
-        if (Math.abs(want - current) > 1) this.host.style.setProperty('--dm-composer-space', `${want}px`);
+        const fit = DirectorMascot.logSpace({ composerTop: cb.top, panel: pb, box, current, marginTop: top });
+        this._logLift = fit.lift;
+        if (Math.abs(fit.space - current) > 1) this.host.style.setProperty('--dm-composer-space', `${fit.space}px`);
+    }
+
+    // The log panel's bottom margin (--dm-composer-space) as a pure sum of measured pixels. panel: its rect
+    // { bottom, left, right }; composerTop: the input bar's top; current / marginTop: the panel's margins now;
+    // box: null, or the reply box { top (its name plate included), left, right }. The gap above the bar matches
+    // the gap at the panel's top; a box standing over the panel's column takes the bar's place as the limit.
+    // lift: how much of space the box adds (taken back when the bar goes away).
+    static logSpace({ composerTop, panel, box, current, marginTop }) {
+        const gap = Math.max(0, Number(marginTop) || 0);
+        const now = Number(current) || 0;
+        const space = (limit) => Math.max(0, Math.round(now + gap - (limit - panel.bottom)));
+        const base = space(composerTop);
+        const over = !!box && box.top < composerTop && box.right > panel.left && box.left < panel.right;
+        const full = over ? space(box.top) : base;
+        return { space: full, lift: full - base };
+    }
+
+    // The reply box where it stands (viewport px), or null when it takes no room from the log: the log closed
+    // (it keeps its place; the box over her scene covers nothing), the box hidden (closed, or hidden by the log's
+    // peek), or on the Report card tab (a full view of its own that covers the log by design). The place is its
+    // laid-out one, not the painted one: the box slides in from 10 px low and its first look would be short.
+    replyBoxEdge() {
+        const box = this.el && this.el.result;
+        if (!box || !this.layer || box.classList.contains('hidden') || this._tab === 'card') return null;
+        const open = this.host.classList.contains('dm-log-peek') || !this.host.classList.contains('dm-log-hidden');
+        const height = open ? box.offsetHeight : 0;
+        if (!height) return null;
+        const rect = box.getBoundingClientRect();
+        const lift = parseFloat(box.style.bottom);
+        const top = Number.isFinite(lift) ? this.layer.getBoundingClientRect().bottom - lift - height : rect.top;
+        const head = box.querySelector('.dm-dialog-head');
+        const plate = head ? Math.max(0, -(parseFloat(getComputedStyle(head).top) || 0)) : 0;
+        return { top: top - plate, left: rect.left, right: rect.right };
+    }
+
+    // The reply box showed, hid or grew (or the log opened or closed with it up): the log refits, her place
+    // is left alone. Nothing to do while the box is hidden and the log holds no lift of it.
+    refitLog() {
+        const box = this.el && this.el.result;
+        if (!this._shown || !this.host || !this.layer || !box) return;
+        if (!this._logLift && box.classList.contains('hidden')) return;
+        if (this._heldUntil && Date.now() < this._heldUntil) return;
+        this.fitLogPanel(this.host.querySelector('#directorComposer'));
     }
 
     // Inline custom property on the stage, written only when it changes: an unchanged write still
@@ -1433,8 +1499,13 @@ class DirectorMascot {
     preload(manifest) {
         // Faces for every set; bodies only for the stage and size she is at. The growth frames are many
         // (#742) and load when she gets near them (preloadBodies).
-        const files = new Set();
         this.preloadBodies(this.stageBodyIds());
+        this.prefetchFaces(manifest);
+    }
+
+    prefetchFaces(manifest) {
+        if (typeof Image === 'undefined') return;
+        const files = new Set();
         Object.values(manifest.faceSets).forEach((f) => {
             Object.values(f.expressions || {}).forEach((x) => files.add(x));
             if (f.blink) files.add(f.blink);
@@ -1443,9 +1514,9 @@ class DirectorMascot {
         files.forEach((file) => { const img = new Image(); img.decoding = 'async'; img.src = manifest.base + file; });
     }
 
-    // Body ids the current stage can show, at her size and the next one up.
-    stageBodyIds() {
-        const m = this.manifest; const st = this.stageState; const def = this.stageDef();
+    // Body ids a stage can show, at her size and the next one up (default: the stage she is on).
+    stageBodyIds(m = this.manifest, st = this.stageState) {
+        const def = m && st ? m.stages[st.stage] || null : null;
         if (!m || !st || !def) return [];
         const g = m.behaviour && m.behaviour.growth;
         const steps = g && g.steps && Array.isArray(g.steps[st.stage]) ? g.steps[st.stage].map((x) => x.suffix) : [];
@@ -1457,54 +1528,217 @@ class DirectorMascot {
     }
 
     // Fetch and decode body sheets ahead of a swap; resolves when they are ready (or failed).
-    preloadBodies(ids) {
-        const m = this.manifest;
+    preloadBodies(ids, manifest = this.manifest) {
+        const files = [];
+        (ids || []).forEach((id) => {
+            const b = manifest && manifest.bodies[id];
+            if (b) files.push(b.body, b.head);
+        });
+        return this.decodeFiles(manifest, files);
+    }
+
+    // Fetch and decode picture files of a manifest once each (the manifest keeps its own `_loaded` cache);
+    // resolves when they are decoded (or failed).
+    decodeFiles(m, files) {
         // SYNC: a thenable that runs at once where there is nothing to wait for (no pictures to
         // load: the node tests), so stage changes there stay in step with the test's clock
         const SYNC = { then(fn) { fn(); return SYNC; } };
         if (!m || typeof Image === 'undefined') return SYNC;
         const cache = m._loaded || (m._loaded = new Map());
         const jobs = [];
-        (ids || []).forEach((id) => {
-            const b = m.bodies[id];
-            if (!b) return;
-            [b.body, b.head].filter(Boolean).forEach((file) => {
-                if (!cache.has(file)) {
-                    const img = new Image();
-                    img.decoding = 'async';
-                    img.src = m.base + file;
-                    cache.set(file, typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve());
-                }
-                jobs.push(cache.get(file));
-            });
+        (files || []).filter(Boolean).forEach((file) => {
+            if (!cache.has(file)) {
+                const img = new Image();
+                img.decoding = 'async';
+                img.src = m.base + file;
+                cache.set(file, typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve());
+            }
+            jobs.push(cache.get(file));
         });
         return Promise.all(jobs);
     }
 
+    // A persona switch keeps the stage occupied (#1319 finding 3). The one on stage stays until the next is
+    // ready: her pictures decoded, her shader body built OFF the stage with its first sheet uploaded; then
+    // everything changes in one synchronous block (swapPersona), so no frame between has an empty stage. The
+    // newest request wins: a switch while one is building drops the older build and frees its WebGL context.
+    // Nothing on stage to hold (the first show, a hidden stage): the plain swap, as before.
     async setPersona(persona) {
         const key = persona === 'xi' || persona === 'kabuki' ? persona : 'wren';
-        if (key === this.persona && this.manifest) return;
-        this.persona = key;
-        // another persona's sheets: the shown check below loads hers instead
-        if (this._shown) this._shown = null;
+        if (this._switchKey === key) return;                   // already on its way
+        if (key === this.persona && this.manifest) {
+            // back to the one on stage: an older build for another persona is dropped
+            if (this._switchKey) { this.cancelSwitch(); this.endHold(); }
+            return;
+        }
+        const ticket = this.startSwitch(key);
+        const hold = !!(this._shown && this.manifest);
+        this._holding = hold;
+        // held: the persona on stage stays hers (manifest, stage and persona agree) until the swap
+        if (!hold) this.persona = key;
         const manifest = await this.loadManifest(key);
-        if (this.persona !== key) return;      // switched again while loading
+        if (ticket !== this._switchTicket) return;             // switched again while loading
+        let build = null;
+        if (manifest && this._shown && this.manifest && this.el) {
+            build = await this.prepareSwitch(manifest, ticket);
+            if (ticket !== this._switchTicket) { this.freeBuild(build); return; }
+        }
+        this._switchKey = null;
+        this._build = null;
+        this.swapPersona(key, manifest, build);
+    }
+
+    // A new request: the older build (if any) is dropped, and its ticket no longer counts.
+    startSwitch(key) {
+        this.cancelSwitch();
+        this._switchKey = key;
+        return this._switchTicket;
+    }
+
+    cancelSwitch() {
+        this._switchTicket = (this._switchTicket || 0) + 1;
+        this._switchKey = null;
+        this.freeBuild(this._build);
+        this._build = null;
+    }
+
+    // Her WebGL context and sheets are freed exactly once, unless the swap took the body on stage.
+    freeBuild(build) {
+        if (!build || build.freed || build.adopted) return;
+        build.freed = true;
+        if (build.gl) build.gl.release();
+        if (build.canvas) build.canvas.remove();
+    }
+
+    // Everything of the new persona's first look, off the stage: { gl, canvas, id } where gl is her shader body
+    // with the first sheet uploaded (null: pictures instead, decoded). Never throws: a failed build is the
+    // plain swap.
+    async prepareSwitch(m, ticket) {
+        const build = { gl: null, canvas: null, id: null, freed: false, adopted: false };
+        this._build = build;
+        try {
+            const first = { stage: DirectorMascot.startStage(m), step: '' };
+            const def = first.stage ? m.stages[first.stage] : null;
+            const body = def ? m.bodies[def.body] : null;
+            const set = body ? m.faceSets[body.faces] || null : null;
+            build.id = def ? def.body : null;
+            m._preloaded = true;
+            this.prefetchFaces(m);
+            // the room behind her, her head and the face she opens on: swapped in with her, already decoded
+            const files = [m.background, body && body.head];
+            if (set) files.push(DirectorMascot.faceFile(set, this.shownExpression()), set.blink, set.mouth && set.mouth.talk);
+            let shader = null;
+            if (body && this.glWanted()) {
+                const made = this.makeGL(m);
+                if (made.body.ok) {
+                    build.gl = made.body;
+                    build.canvas = made.canvas;
+                    // as render() does: no pinned pieces unless they are on
+                    if (DIRECTOR_MASCOT_PINS) build.gl.setPins(def.pin, body.parts ? m.base + body.parts : null, body.under ? m.base + body.under : null);
+                    else build.gl.setPins(null, null, null);
+                    // her size at no points is the sheet as drawn (gain 1); nothing animates
+                    shader = build.gl.show(m.base + body.body, { ms: 0, cfg: def.grow || null, gain: 1 });
+                } else {
+                    this._glOff = true;
+                }
+            }
+            // the pictures path needs her body decoded; the shader path holds it in the GPU instead
+            if (body && !build.gl) {
+                files.push(body.body);
+                this.preloadBodies(this.stageBodyIds(m, first), m);
+            }
+            const decoded = this.decodeFiles(m, files);
+            const ok = shader ? await shader : true;
+            if (ticket !== this._switchTicket) return build;
+            if (!ok || (build.gl && build.gl.offLost)) {
+                // a sheet that would not load, or the context lost: back to the pictures for good this session
+                this._glOff = true;
+                this.freeBuild(build);
+                build.gl = null;
+                build.canvas = null;
+                await this.decodeFiles(m, [body.body]);
+            }
+            await decoded;
+        } catch (_) {
+            this.freeBuild(build);
+            build.gl = null;
+            build.canvas = null;
+        }
+        return build;
+    }
+
+    // The one synchronous block of a persona switch: her state, her shader body on the stage (the old one
+    // freed exactly once), her pictures, her name. No await in it, so no frame is drawn between the old
+    // stage and the new one.
+    swapPersona(key, manifest, build) {
+        this._holding = false;
+        const old = this.glBody;
+        const next = build && build.gl && !build.freed && this._shown && this.el && this.el.glSlot ? build : null;
+        this.persona = key;
         this.manifest = manifest;
-        // another persona's sheets are another size: the shader body is made again for hers
-        this.dropGL();
         this._faceSet = null;
         this.growthPoints = 0;
+        this._pendingBody = null;
         this.resetStage();
-        if (this.el) this.el.name.textContent = manifest ? manifest.name : '';
+        // another persona's sheets are another size: her own shader body, made for hers (or none)
+        this.glBody = next ? next.gl : null;
+        this._glId = next ? next.id : null;
+        if (next) { this._gainShown = 1; next.adopted = true; }
+        if (this.el && this.el.glSlot) {
+            if (next) this.el.glSlot.replaceChildren(next.canvas); else this.el.glSlot.replaceChildren();
+        }
+        this.freeBuild(build);
+        if (old) old.release();
+        if (this.el) {
+            this.el.name.textContent = manifest ? manifest.name : '';
+            // her name on a box that is up (a reply, or her live line)
+            if (manifest && this.el.dialogName && this.el.dialogName.textContent) {
+                const aloud = !!(this.el.result && this.el.result.dataset.mode === 'live' && this._thinkAloud && this.working);
+                this.el.dialogName.textContent = aloud ? `${manifest.name} (thinking)` : manifest.name;
+            }
+        }
+        this._camKey = JSON.stringify(this.camera());
         this.applyView();
+        this.cutPictures(manifest, !next && !this.glWanted());
+        // the first frame at her size now, in this same step (the canvas is laid out by applyView)
+        if (next && this.glBody === next.gl) this.glBody.draw();
         this.render();
         this.settleLayout();
+        this.endHold();
+    }
+
+    // Her old pictures never fade over her new ones (another size, another place on the stage: they would
+    // hang there as a ghost): the layers that fade are cleared, and her head, face and (pictures) body are set
+    // straight to the new ones, already decoded.
+    cutPictures(manifest, body) {
+        if (!this.el || !manifest || !this._shown) return;
+        [this.el.bodyPrev, this.el.headPrev, this.el.facePrev].forEach((img) => { if (img && img.hasAttribute('src')) img.removeAttribute('src'); });
+        const id = this.currentBodyId();
+        const def = id ? manifest.bodies[id] : null;
+        if (!def) return;
+        if (body && this.el.body.getAttribute('src') !== manifest.base + def.body) this.el.body.setAttribute('src', manifest.base + def.body);
+        this.renderHead(def, 0);
+        this.renderFace(undefined, 0);
+    }
+
+    // The chat's messages that came while the switch was building were not read against the old persona's
+    // manifest (applyGrowth waits); they are read now against the one on stage.
+    endHold() {
+        this._holding = false;
+        if (!this._growthLate) return;
+        this._growthLate = false;
+        if (Array.isArray(this._messages)) this.applyGrowth(this._messages);
     }
 
     // ---- stage machine ----
+    // The stage a persona starts on.
+    static startStage(m) {
+        return m && m.behaviour && m.behaviour.start && m.stages[m.behaviour.start] ? m.behaviour.start : (m ? Object.keys(m.stages)[0] || null : null);
+    }
+
     resetStage() {
         const m = this.manifest;
-        const start = m && m.behaviour && m.behaviour.start && m.stages[m.behaviour.start] ? m.behaviour.start : (m ? Object.keys(m.stages)[0] : null);
+        const start = DirectorMascot.startStage(m);
         this.stageState = {
             stage: start,
             step: '',            // in-between size inside the stage (behaviour.growth.steps suffix)
@@ -1562,21 +1796,35 @@ class DirectorMascot {
 
     // Make the shader body when she shows (and WebGL is there); the <img> layers stay as the fallback.
     ensureGL() {
-        if (this.glBody || this._glOff || !this.el || !this.el.glSlot || !DirectorMascotGL.supported()) return this.glOn();
-        if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
-        const canvas = document.createElement('canvas');
-        canvas.className = 'dm-gl';
+        if (this.glBody) return this.glOn();
+        if (!this.glWanted()) return false;
+        const { body, canvas } = this.makeGL(this.manifest);
         this.el.glSlot.replaceChildren(canvas);
-        const body = new DirectorMascotGL(canvas, this.manifest.size, () => {
-            // lost context or a sheet that would not load: back to the pictures, for good this session
-            this._glOff = true;
-            this.dropGL();
-            this.render();
-        });
         if (!body.ok) { this._glOff = true; canvas.remove(); return false; }
         this.glBody = body;
         this._glId = null;
         return true;
+    }
+
+    // Can she have a shader body now (WebGL there, not lost this session, motion allowed)?
+    glWanted() {
+        if (this._glOff || !this.el || !this.el.glSlot || !DirectorMascotGL.supported()) return false;
+        return !(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    // A shader body for a manifest on a new canvas (not yet on the stage). Lost context or a sheet that would
+    // not load: back to the pictures, for good this session; a body not on the stage yet only says so
+    // (offLost) and the switch building it reads that.
+    makeGL(manifest) {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'dm-gl';
+        const body = new DirectorMascotGL(canvas, manifest.size, () => {
+            if (this.glBody !== body) { body.offLost = true; return; }
+            this._glOff = true;
+            this.dropGL();
+            this.render();
+        });
+        return { body, canvas };
     }
 
     dropGL() {
@@ -2127,6 +2375,9 @@ class DirectorMascot {
         this.el.dialogSuggest.replaceChildren();
         this._resultFor = '';
         this._result = null;
+        // the log gets back the room the box took
+        this._boxPlace = '';
+        this.refitLog();
         this.paintChrome();
     }
 
@@ -2366,16 +2617,26 @@ class DirectorMascot {
         const bottom = c && c.height ? Math.max(0, Math.round(l.bottom - c.top + 8)) : 12;
         // The quick bar sits on the box's bottom edge: lift the box by half the bar.
         box.style.bottom = `${bottom + 16}px`;
+        let place = `${bottom}|${this._tab}`;
         if (this._tab === 'card') {
             // Report card: a full view from under the banner row down to the quick bar (Yukimi 2026-11-06).
             const top = (parseInt(this.layer.style.getPropertyValue('--dm-top'), 10) || 12) + 70;
             box.style.top = `${top}px`;
             box.style.maxHeight = 'none';
+            place += `|${top}`;
         } else {
             box.style.top = 'auto';
             // Small hosts (the Studio-docked Director) give the box a larger share of the height.
             const share = l.height < 640 ? 0.55 : 0.42;
-            box.style.maxHeight = `${Math.round(Math.max(160, Math.min(l.height * share, 380)))}px`;
+            const most = Math.round(Math.max(160, Math.min(l.height * share, 380)));
+            box.style.maxHeight = `${most}px`;
+            place += `|${most}`;
+        }
+        // With the log open the log ends above the box: refit it when the box moved, changed tab or showed
+        // (hideResult clears the mark). A box that only grows is seen by the resize observer (mount).
+        if (this._boxPlace !== place) {
+            this._boxPlace = place;
+            this.fitLogPanel(composer);
         }
         this.paintPager();
     }
@@ -2427,6 +2688,8 @@ class DirectorMascot {
     applyGrowth(messages) {
         const m = this.manifest; const st = this.stageState;
         if (!m || !st || !m.behaviour || !m.behaviour.growth) return;
+        // a persona switch is building: the chat that came is hers, the manifest on stage is not; read it after the swap
+        if (this._holding) { this._growthLate = true; return; }
         const total = directorMascotGrowthPoints(messages, this.persona);
         this.growthPoints = total;
         const target = directorMascotStageFor(m, total);
@@ -2646,6 +2909,12 @@ class DirectorMascot {
         });
     }
 
+    // The picture file of an expression in a face set: the nearest one the set has, else neutral.
+    static faceFile(set, want) {
+        const near = (DIRECTOR_MASCOT_FACE_FALLBACK[want] || []).find((key) => set.expressions[key]);
+        return set.expressions[want] || (near && set.expressions[near]) || set.expressions.neutral || Object.values(set.expressions)[0];
+    }
+
     // ms: a pose change is under way: when it brings another face set (the mask), the old face
     // fades out over the new one instead of cutting. Expression changes inside a set stay instant.
     renderFace(expr, ms) {
@@ -2654,9 +2923,7 @@ class DirectorMascot {
         if (!set) return;
         const setChanged = this._faceSet && this._faceSet !== set;
         this._faceSet = set;
-        const want = expr || this.shownExpression();
-        const near = (DIRECTOR_MASCOT_FACE_FALLBACK[want] || []).find((key) => set.expressions[key]);
-        const file = set.expressions[want] || (near && set.expressions[near]) || set.expressions.neutral || Object.values(set.expressions)[0];
+        const file = DirectorMascot.faceFile(set, expr || this.shownExpression());
         const url = file ? this.manifest.base + file : '';
         if (this.el.face.getAttribute('src') !== url) {
             if (setChanged && ms > 0) this.fadeSwap(this.el.face, this.el.facePrev, url, ms);

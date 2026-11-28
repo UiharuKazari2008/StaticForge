@@ -478,6 +478,9 @@ function assignTrimmedDirectorSessionMessages(session, messages) {
 class Director {
     // The first seconds of a turn this page started: the server's status can come before it has registered the run.
     static STATUS_ARM_GRACE_MS = 3000;
+    // A live paint that came before the status armed its turn (flushLivePaint, holdLivePaint) waits this long for the
+    // arming (applyDirectorStatus / continueAfterReconnect); a payload older than that belongs to a turn that is over.
+    static LIVE_HOLD_MS = 10000;
 
     // Every Director action that failed or could not be done now: told once, in words, where it happened (N10). The toast
     // policy (toastManager.js) makes it a message box, or a balloon on the Director tray icon when titled 'Director'; the
@@ -507,6 +510,30 @@ class Director {
             return !!xi.running && (!xi.sessionId || xi.sessionId === sid);
         }
         return !!st.running || (Array.isArray(st.runningSessions) && st.runningSessions.includes(sid));
+    }
+
+    // The sessions a status says run, for the working mark on the list rows: { ids, complete } or null when the packet
+    // says nothing about this side. Yozora (xi) lists every run (xi.runningSessions). The cursor Director's packet names
+    // the first run only (running + sessionId) unless it carries runningSessions, so with a run that is not
+    // the whole list (complete false) a row already marked keeps its mark until its own turn ends.
+    static runningSessionIds(status, isXi) {
+        const st = status && typeof status === 'object' ? status : {};
+        if (isXi) {
+            const xi = st.xi && typeof st.xi === 'object' ? st.xi : null;
+            if (!xi) return null;
+            if (Array.isArray(xi.runningSessions)) return { ids: new Set(xi.runningSessions.map(String)), complete: true };
+            if (typeof xi.running !== 'boolean') return null;
+            return { ids: new Set(xi.running && xi.sessionId ? [String(xi.sessionId)] : []), complete: true };
+        }
+        const ids = new Set();
+        if (Array.isArray(st.runningSessions)) {
+            st.runningSessions.forEach((id) => ids.add(String(id)));
+            if (st.running && st.sessionId) ids.add(String(st.sessionId));
+            return { ids, complete: true };
+        }
+        if (typeof st.running !== 'boolean') return null;
+        if (st.running && st.sessionId) ids.add(String(st.sessionId));
+        return { ids, complete: !st.running };
     }
 
     constructor() {
@@ -556,6 +583,10 @@ class Director {
         this._running = false;
         this._runningSessionId = null;
         this._settledSessionId = null;
+        // a live paint kept because its turn was not armed yet (holdLivePaint), when it was kept (a time, not a timer)
+        this._liveHeldAt = null;
+        // the sessions the list rows are marked running for (paintRunningSessions), to repaint only a change
+        this._runningRowsKey = null;
         this._outgoingQueue = [];
         this._steer = null;
         this.SESSION_MODEL_KEY = 'staticforge_director_session_models';
@@ -590,6 +621,11 @@ class Director {
         window.addEventListener('pagehide', () => this.saveReopenState());
         this.persona = 'wren';
         this._personaSession = { wren: null, kabuki: null, xi: null };
+        // a persona switch that has not landed its chat yet (setPersona / landPersonaChat): the tab whose chat still shows,
+        // the newest switch's number, and its pending landing
+        this._switchFrom = null;
+        this._personaTicket = 0;
+        this._personaLanding = null;
         // director_settings_get (modules/cursorDirector.js): defaults per tab, Auto-Repair, repair engines
         this.directorSettings = null;
         this.directorSettingsEngines = [];
@@ -2651,8 +2687,9 @@ class Director {
         return this.personaServer(this.packetPersona(body)) !== this.personaServer(this.persona);
     }
 
-    // Wren | Kabuki | Xi. Xi is the desktop window only and needs xi.enabled; Kabuki shows
-    // wherever Wren does once a provider has Obliterated Memories.
+    // Wren | Kabuki | Xi, the segmented control in the Director's menu bar (#directorCommonHeader, public/app.html; always
+    // reachable on the desktop, Yukimi Nov 26 2026, #1319). Xi is the desktop window only and needs xi.enabled; Kabuki shows
+    // wherever Wren does once a provider has Obliterated Memories. With only Wren there is nothing to choose: it hides.
     paintPersonaToggle() {
         const group = this.directorPersonaGroup;
         const persona = this.persona === 'xi' || this.persona === 'kabuki' ? this.persona : 'wren';
@@ -2667,6 +2704,7 @@ class Director {
             group.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
                 btn.classList.toggle('hidden', !shown.includes(btn.dataset.persona));
                 btn.classList.toggle('active', btn.dataset.persona === persona);
+                if (typeof btn.setAttribute === 'function') btn.setAttribute('aria-pressed', btn.dataset.persona === persona ? 'true' : 'false');
             });
         }
         [this.directorCommonHeader, this.directorContainer, this.directorWindow].forEach((el) => {
@@ -2746,7 +2784,13 @@ class Director {
             return;
         }
         this.saveChatPrefs();
-        this._personaSession[this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
+        // The chat on screen keeps the stage until the new tab's chat is ready (Yukimi, Nov 26 2026, #1319: a switch
+        // blanked the chat and showed an empty draft in between). It belongs to the tab the switch started from, also
+        // when a second switch comes before the first has landed (_switchFrom).
+        const shown = this.currentSession;
+        this._personaSession[this._switchFrom || this.persona] = shown && !shown.draft ? shown.id : null;
+        if (!this._switchFrom) this._switchFrom = this.persona;
+        // the tab first, so packets of the tab left are told apart (packetFromOtherServer); the chat follows in one step
         this.persona = next;
         this.rememberPersona(next);
         if (this.mascot) void this.mascot.setPersona(next);
@@ -2756,14 +2800,38 @@ class Director {
         this.loadModelCache();
         this.paintChatPrefs();
         this.paintPersonaToggle();
-        this.currentSession = null;
-        window.currentSession = null;
         this.syncEngineChrome();
-        try { await this.loadDirectorSessions(); } catch (_) { /* list refresh is best effort */ }
-        const remembered = this._personaSession[next];
-        const found = remembered && (this.directorSessions || []).find((item) => item.id === remembered);
-        if (found) await this.showSessionChat(found);
-        else this.showNewSessionDraft();
+        const ticket = (this._personaTicket = (this._personaTicket || 0) + 1);
+        const landing = this.landPersonaChat(next, ticket, shown);
+        this._personaLanding = landing;
+        try { await landing; } finally { if (this._personaLanding === landing) this._personaLanding = null; }
+    }
+
+    // The second half of setPersona: the new tab's list is fetched (the list overlay repaints itself; the chat is not
+    // touched), then the remembered chat of that tab, or a new draft, takes the chat's place in ONE synchronous step.
+    // currentSession is never null on the way. A newer switch lands the chat itself; a chat opened by someone else
+    // meanwhile is left alone.
+    async landPersonaChat(next, ticket, shown) {
+        const same = (a, b) => (!a && !b) || (!!a && !!b && !!a.draft === !!b.draft && (a.id || null) === (b.id || null));
+        try {
+            // back on the tab whose chat never left the screen: nothing to swap, only its model and its list
+            if (next === this._switchFrom) {
+                this._switchFrom = null;
+                if (this.currentSession) this.applySessionModel(this.currentSession);
+                try { await this.loadDirectorSessions(); } catch (_) { /* list refresh is best effort */ }
+                return;
+            }
+            try { await this.loadDirectorSessions(); } catch (_) { /* list refresh is best effort */ }
+            if (ticket !== this._personaTicket) return;
+            if (this.persona !== next || !same(this.currentSession, shown)) return;
+            this._switchFrom = null;
+            const remembered = this._personaSession[next];
+            const found = remembered && (this.directorSessions || []).find((item) => item.id === remembered);
+            if (found) await this.showSessionChat(found);
+            else this.showNewSessionDraft();
+        } finally {
+            if (ticket === this._personaTicket) this._switchFrom = null;
+        }
     }
 
     async openToolPayload(row) {
@@ -2819,6 +2887,8 @@ class Director {
         this._turnPrints = 0;
         this._running = false;
         this._runningSessionId = null;
+        // its row stops showing the working mark now, not at the next status
+        this.markSessionRunning(this._settledSessionId, false);
         // First-send handoff is over: an empty reload can replace the local bubble.
         this._skipQuickStart = false;
         this.updateTrayChrome();
@@ -3195,6 +3265,8 @@ class Director {
             });
         }
 
+        // The persona control of the menu bar: one element, bound here once (_directorEventsWired); the listener is on the
+        // element itself, so it goes with it, and the header keeps it when the window and Studio take the header over.
         if (this.directorPersonaGroup) {
             this.directorPersonaGroup.addEventListener('click', (e) => {
                 const button = e.target.closest('.gallery-toggle-btn');
@@ -3700,6 +3772,13 @@ class Director {
             const sid = this._runningSessionId;
             if (!Director.serverRunsSession(status, sid, this.persona === 'xi') && status.success !== false) this.finishTurn(sid);
         }
+        // the session list rows wear the working mark for the runs this status lists (in place, no re-render)
+        this.paintRunningSessions(status);
+        // a live paint kept for a turn this status does not run, or for a chat that is no longer open, belongs to a turn that is over
+        const kept = this._livePayload;
+        if (kept && this._liveHeldAt != null && !this._running
+            && (kept.sessionId !== window.currentSession?.id
+                || !Director.serverRunsSession(status, kept.sessionId, this.persona === 'xi'))) this.dropLivePaint();
         this.updateTrayChrome();
         this.noteCursorLogin(status.cursorLogin);
         const personaChanged = !!(status.xi && typeof status.xi.enabled === 'boolean' && this.noteXiEnabled(status.xi.enabled));
@@ -3748,6 +3827,8 @@ class Director {
             this._runningSessionId = xiRunningId && openId === xiRunningId ? xiRunningId : status.sessionId;
             this.updateTrayChrome();
             this.showTypingIndicator();
+            // the streaming update that came before this status waited for the turn to be armed: it paints now
+            this.releaseHeldLivePaint();
         }
     }
 
@@ -3809,6 +3890,7 @@ class Director {
                 // a turn goes on in another chat: the open one is brought up to date all the same
                 load(openId);
             }
+            this.releaseHeldLivePaint();
             return;
         }
         this._creatingChat = false;
@@ -4829,7 +4911,8 @@ class Director {
     // Switch tab without opening a chat: the caller shows one next.
     takePersona(want) {
         this.saveChatPrefs();
-        this._personaSession[this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
+        // the chat on screen is the tab's it was opened under, also while a switch (setPersona) has not landed its chat yet
+        this._personaSession[this._switchFrom || this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
         this.persona = want;
         this.rememberPersona(want);
         // Yozora's list has no pictures for a rail (#1148)
@@ -5204,6 +5287,8 @@ class Director {
 
         // Safely clear content while preserving scrollbar structure
         this.clearDirectorSessionsList();
+        // the rows are new: the next status paints its runs on them again
+        this._runningRowsKey = null;
 
         const sessions = this.directorSessions || [];
 
@@ -5249,6 +5334,61 @@ class Director {
         this.directorSessionList.querySelectorAll('.director-session-item[data-session-id]').forEach((item) => {
             if (currentId && item.dataset.sessionId === currentId) item.dataset.current = '1';
             else delete item.dataset.current;
+        });
+    }
+
+    // The working mark of a session row: in every row, shown by [data-running] (director.css), so a turn that starts or
+    // ends flips one attribute on the row that is there. The words and the glyph are the tray icon's.
+    sessionRunningMarkHtml() {
+        const words = DIRECTOR_TRAY_STATES.working;
+        return `<span class="director-session-running" role="img" aria-label="${words}" title="${words}"><i class="${DIRECTOR_TRAY_ICONS.working}" aria-hidden="true"></i></span>`;
+    }
+
+    setSessionRowRunning(item, on) {
+        if (!item) return;
+        if (on) {
+            if (item.dataset.running === '1') return;
+            item.dataset.running = '1';
+            item.setAttribute('aria-busy', 'true');
+        } else if (item.dataset.running) {
+            delete item.dataset.running;
+            item.removeAttribute('aria-busy');
+        }
+    }
+
+    // One session's row (and its entry in the list the page holds) shows or loses the working mark.
+    markSessionRunning(sessionId, on) {
+        if (sessionId == null || sessionId === '') return;
+        const id = String(sessionId);
+        (this.directorSessions || []).forEach((row) => {
+            if (row && String(row.id) === id) row.running = !!on;
+        });
+        const list = this.directorSessionList;
+        if (!list) return;
+        list.querySelectorAll('.director-session-item[data-session-id]').forEach((item) => {
+            if (item.dataset.sessionId === id) this.setSessionRowRunning(item, on);
+        });
+    }
+
+    // The list rows follow the runs a status packet lists (applyDirectorStatus): marks go on and off in place, the
+    // list is not drawn again and keeps its scroll position. Painted only when the set of runs changed.
+    paintRunningSessions(status) {
+        const seen = Director.runningSessionIds(status, this.persona === 'xi');
+        if (!seen) return;
+        const ids = new Set(seen.ids);
+        // the turn this page runs is on, whatever a status from before it began says
+        if (this._running && this._runningSessionId != null) ids.add(String(this._runningSessionId));
+        const rows = Array.isArray(this.directorSessions) ? this.directorSessions : [];
+        // a packet that names only the first run keeps the marks of the runs it does not name
+        if (!seen.complete) rows.forEach((row) => { if (row && row.running === true && row.id != null) ids.add(String(row.id)); });
+        const key = Array.from(ids).sort().join('|');
+        if (key === this._runningRowsKey) return;
+        this._runningRowsKey = key;
+        rows.forEach((row) => { if (row && row.id != null) row.running = ids.has(String(row.id)); });
+        const list = this.directorSessionList;
+        if (!list) return;
+        list.querySelectorAll('.director-session-item[data-session-id]').forEach((item) => {
+            this.setSessionRowRunning(item, ids.has(item.dataset.sessionId));
         });
     }
 
@@ -5305,9 +5445,11 @@ class Director {
             ${preview}
             <div class="director-session-info">
                 <div class="director-session-name">${this.engineIconHtml(engine)}<span>${this.escapeHtml(session.name)}</span></div>
-                <div class="director-session-date"><span class="director-session-date-text">${formattedDate}</span><span class="director-session-marks">${accountBadge}${this.workspaceDot(session)}</span></div>
+                <div class="director-session-date"><span class="director-session-date-text">${formattedDate}</span><span class="director-session-marks">${this.sessionRunningMarkHtml()}${accountBadge}${this.workspaceDot(session)}</span></div>
             </div>
         `;
+        // a turn runs in this chat (the list packet says, the status packets keep it up to date)
+        this.setSessionRowRunning(item, session.running === true);
         if (this.persona !== 'xi') this.bindSessionPreviewFallback(item.querySelector('.director-session-preview'), session.filename || '');
         // what its turns cost, on hover (the server adds them up: xiDirector sessionCost)
         const cost = session.cost;
@@ -8515,29 +8657,74 @@ class Director {
     // director_streaming_update: the latest payload wins and the live turn paints at most
     // every DIRECTOR_LIVE_PAINT_MS, never while the chat is out of sight (#511).
     queueLivePaint(payload) {
-        // An update that was never painted (the 500 ms window, the log out of sight) folds into the next:
-        // its rows count as changed from the first row either changed (renderLiveTrace leaves the rows
-        // before rowsFrom as they are; a row that grew in a skipped update stayed as first drawn)
+        this.foldHeldLive(payload);
+        this._livePayload = payload;
+        this._liveHeldAt = null;
+        if (this._livePaintTimer) return;
+        const since = Date.now() - (this._livePaintedAt || 0);
+        this._livePaintTimer = setTimeout(() => this.flushLivePaint(), Math.max(0, DIRECTOR_LIVE_PAINT_MS - since));
+    }
+
+    // An update that was never painted (the 500 ms window, the log out of sight) folds into the next:
+    // its rows count as changed from the first row either changed (renderLiveTrace leaves the rows
+    // before rowsFrom as they are; a row that grew in a skipped update stayed as first drawn)
+    foldHeldLive(payload) {
         const held = this._livePayload;
         if (held && held !== payload && held.sessionId === payload.sessionId && Number.isInteger(payload.rowsFrom)) {
             const from = Number.isInteger(held.rowsFrom) ? held.rowsFrom : 0;
             if (from < payload.rowsFrom) payload.rowsFrom = from;
         }
+    }
+
+    // A streaming update for the open chat that came before the status armed its turn: kept, no timer, and painted by
+    // releaseHeldLivePaint when applyDirectorStatus / continueAfterReconnect arm it (dropped when a status says the turn
+    // does not run, when it settles, when another chat opens, or when it is older than LIVE_HOLD_MS).
+    holdLivePaint(payload) {
+        if (!payload || payload.sessionId !== window.currentSession?.id || payload.sessionId === this._settledSessionId) return;
+        this.foldHeldLive(payload);
         this._livePayload = payload;
-        if (this._livePaintTimer) return;
-        const since = Date.now() - (this._livePaintedAt || 0);
-        this._livePaintTimer = setTimeout(() => this.flushLivePaint(), Math.max(0, DIRECTOR_LIVE_PAINT_MS - since));
+        this._liveHeldAt = Date.now();
+    }
+
+    // The turn was armed: paint the update that waited for it (once, now - a timer is already on its way if one is set).
+    releaseHeldLivePaint() {
+        const payload = this._livePayload;
+        const heldAt = this._liveHeldAt;
+        if (heldAt == null || !payload || !this._running) return;
+        this._liveHeldAt = null;
+        if (payload.sessionId !== this._runningSessionId || payload.sessionId !== window.currentSession?.id
+            || Date.now() - heldAt > Director.LIVE_HOLD_MS) {
+            this._livePayload = null;
+            return;
+        }
+        if (!this._livePaintTimer) this.flushLivePaint();
     }
 
     flushLivePaint() {
         this._livePaintTimer = null;
         const payload = this._livePayload;
         if (!payload) return;
-        // The turn settled, or another chat opened, while the paint waited
-        if (!this._running || payload.sessionId !== this._runningSessionId || payload.sessionId !== window.currentSession?.id) {
+        // Another chat opened, or the turn settled, while the paint waited
+        if (payload.sessionId !== window.currentSession?.id || (!this._running && payload.sessionId === this._settledSessionId)) {
             this._livePayload = null;
+            this._liveHeldAt = null;
             return;
         }
+        // Not armed yet: applyDirectorStatus has not said this turn runs (the update came with the chat's messages, before
+        // the status). Keep it; releaseHeldLivePaint paints it once the status arms the turn. No timer.
+        if (!this._running) {
+            if (this._liveHeldAt == null) this._liveHeldAt = Date.now();
+            return;
+        }
+        // another chat's turn is the one that runs, or the update kept while unarmed is older than any turn it could belong to
+        // (a turn started here meanwhile paints its own updates)
+        if (payload.sessionId !== this._runningSessionId
+            || (this._liveHeldAt != null && Date.now() - this._liveHeldAt > Director.LIVE_HOLD_MS)) {
+            this._livePayload = null;
+            this._liveHeldAt = null;
+            return;
+        }
+        this._liveHeldAt = null;
         if (!this.directorChatVisible()) {
             // a print on the way still marks the prints strip, which can be on screen beside her scene
             if (this._pendingNotedFor !== payload) {
@@ -8602,6 +8789,7 @@ class Director {
         if (this._livePaintTimer) clearTimeout(this._livePaintTimer);
         this._livePaintTimer = null;
         this._livePayload = null;
+        this._liveHeldAt = null;
         this._pendingNotedFor = null;
     }
 
@@ -9001,6 +9189,8 @@ class Director {
     }
 
     async sendMessage(presetContent) {
+        // a persona switch (setPersona) still lands its chat: the message goes to the chat that shows after it
+        while (this._personaLanding) await this._personaLanding.catch(() => {});
         const fromPreset = typeof presetContent === 'string';
         const typed = fromPreset ? '' : (this.directorChatInput ? this.directorChatInput.value : '').trim();
         const content = this.outgoingText(presetContent);
@@ -9683,10 +9873,16 @@ class Director {
                 if (!window.directorInstance._running || window.directorInstance._runningSessionId !== payload.sessionId) {
                     // the server's last status says no turn runs for this chat: a late flush must not start the indicator (#1150)
                     const known = window.directorInstance._status;
-                    if (known && !Director.serverRunsSession(known, payload.sessionId, window.directorInstance.persona === 'xi')) return;
+                    if (known && !Director.serverRunsSession(known, payload.sessionId, window.directorInstance.persona === 'xi')) {
+                        // not armed, but not lost: the status that arms this turn (it may be on its way, the server
+                        // sends the run's update with the chat's messages) paints it (applyDirectorStatus)
+                        window.directorInstance.holdLivePaint(payload);
+                        return;
+                    }
                     window.directorInstance._running = true;
                     window.directorInstance._runningArmedAt = Date.now();
                     window.directorInstance._runningSessionId = payload.sessionId;
+                    window.directorInstance.markSessionRunning(payload.sessionId, true);
                     window.directorInstance.updateTrayChrome();
                 }
                 if (payload.context && window.currentSession) {

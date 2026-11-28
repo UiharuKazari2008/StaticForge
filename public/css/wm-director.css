@@ -414,8 +414,21 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     display: none;
 }
 
-.wm-director .wmd-page-sessions,
 .wm-director .wmd-page-prints {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Sessions: the persona tabs (the shell's .wm-tabs strip, wm-programs.css / wm65.css; the 6.5.1 pivot takes it to the
+   top itself) stay put over the list, which scrolls on its own */
+.wm-director .wmd-page-sessions {
+    overflow: hidden;
+}
+
+.wm-director .wmd-page-sessions > .wmd-sessions-list {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -794,7 +807,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
 }
 
 /* ---- WM scroll bars on the pages (wm-shell.css draws the same for .wm-page) ---- */
-.wm-director .wmd-page-sessions::-webkit-scrollbar,
+.wm-director .wmd-sessions-list::-webkit-scrollbar,
 .wm-director #directorComposer #directorAttachChips::-webkit-scrollbar,
 .wm-director .wmd-page-prints::-webkit-scrollbar,
 .wm-director .wmd-history-list::-webkit-scrollbar,
@@ -805,7 +818,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     height: 0;
 }
 
-.wm-director .wmd-page-sessions::-webkit-scrollbar-track,
+.wm-director .wmd-sessions-list::-webkit-scrollbar-track,
 .wm-director #directorComposer #directorAttachChips::-webkit-scrollbar-track,
 .wm-director .wmd-page-prints::-webkit-scrollbar-track,
 .wm-director .wmd-history-list::-webkit-scrollbar-track,
@@ -816,7 +829,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     border-left: calc(1 * var(--wm-px)) solid #000;
 }
 
-.wm-director .wmd-page-sessions::-webkit-scrollbar-thumb,
+.wm-director .wmd-sessions-list::-webkit-scrollbar-thumb,
 .wm-director #directorComposer #directorAttachChips::-webkit-scrollbar-thumb,
 .wm-director .wmd-page-prints::-webkit-scrollbar-thumb,
 .wm-director .wmd-history-list::-webkit-scrollbar-thumb,
@@ -829,7 +842,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     border-radius: 0;
 }
 
-.wm-director .wmd-page-sessions::-webkit-scrollbar-button:single-button,
+.wm-director .wmd-sessions-list::-webkit-scrollbar-button:single-button,
 .wm-director #directorComposer #directorAttachChips::-webkit-scrollbar-button:single-button,
 .wm-director .wmd-page-prints::-webkit-scrollbar-button:single-button,
 .wm-director .wmd-history-list::-webkit-scrollbar-button:single-button,
@@ -842,7 +855,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     border-left: calc(1 * var(--wm-px)) solid #000;
 }
 
-.wm-director .wmd-page-sessions::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-director .wmd-sessions-list::-webkit-scrollbar-button:single-button:vertical:decrement,
 .wm-director #directorComposer #directorAttachChips::-webkit-scrollbar-button:single-button:vertical:decrement,
 .wm-director .wmd-page-prints::-webkit-scrollbar-button:single-button:vertical:decrement,
 .wm-director .wmd-history-list::-webkit-scrollbar-button:single-button:vertical:decrement,
@@ -855,7 +868,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
 }
 
-.wm-director .wmd-page-sessions::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-director .wmd-sessions-list::-webkit-scrollbar-button:single-button:vertical:increment,
 .wm-director #directorComposer #directorAttachChips::-webkit-scrollbar-button:single-button:vertical:increment,
 .wm-director .wmd-page-prints::-webkit-scrollbar-button:single-button:vertical:increment,
 .wm-director .wmd-history-list::-webkit-scrollbar-button:single-button:vertical:increment,
@@ -1161,6 +1174,13 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
 /* the frame before her first show after a load (wmDirector.js show): bars and the wait cursor only */
 .wm-director.wmd-prepaint > .wmd-host {
     display: none !important;
+}
+
+/* a hand-off that lands on a chat (wmDirector.js handOff cover: the status icon's Open Director, Messaging's Director
+   accounts): nothing of the chat she last had, a new draft or another persona's shows on the way (hidden, not
+   removed: her scene still lays out). The "starting" note is not covered */
+.wm-director.wmd-cover > :is(.wmd-host, .wmd-dock, .wmd-page) {
+    visibility: hidden;
 }
 
 /* ======================================================================
