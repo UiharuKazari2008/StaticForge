@@ -1,0 +1,19 @@
+== intent:#Intent;action=com.google.android.youtube.action.open.subscriptions;package=com.google.android.youtube;end
+Status: ok
+Activity: com.google.android.permissioncontroller/com.android.permissioncontroller.permission.ui.GrantPermissionsActivity
+== intent:#Intent;action=com.google.android.youtube.action.open.shorts;package=com.google.android.youtube;end
+Status: ok
+Activity: com.google.android.youtube/com.google.android.apps.youtube.app.watchwhile.MainActivity
+== intent://www.youtube.com/playlist?list=WL#Intent;scheme=https;package=com.google.android.youtube;end
+Status: ok
+Activity: com.google.android.youtube/com.google.android.apps.youtube.app.application.Shell_UrlActivity
+== intent:#Intent;action=com.google.android.youtube.action.open.search;package=com.google.android.youtube;end
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+Activity: com.google.android.youtube/com.google.android.apps.youtube.app.watchwhile.MainActivity
+== intent://www.youtube.com/account#Intent;scheme=https;package=com.google.android.youtube;end
+Status: ok
+Activity: com.google.android.youtube/com.google.android.apps.youtube.app.application.Shell_UrlActivity
+== intent://www.youtube.com/feed/history#Intent;scheme=https;package=com.google.android.youtube;end
+Status: ok
+Activity: com.google.android.youtube/com.google.android.apps.youtube.app.application.Shell_UrlActivity

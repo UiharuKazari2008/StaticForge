@@ -83,3 +83,29 @@ Bars over programs needed the lane's `enabled` + "Extend Status Bar" settings sw
 
 `unit-tests/summary.txt`: DSApp `testDebugUnitTest` on Ruiko at 4ad0dea, 725 tests, 0 failures (SoftKeyProbeTest 32); the build of
 release 43 / 44 compiled the same sources (plus 31888aa, a manifest-open fix, and 5ec7bb3, the two-line `softDo` branch).
+
+## The A53 hardware phone (Nov 27 2026, 19:0x-19:3x, `h-*` and `i-*`)
+
+The A53 (192.168.100.233:5555 through Ruiko's adb, release 44 = 3632992, Android 16, 3 Google accounts) **has no YouTube app** (only YT Music;
+`pm list packages | grep youtube`), and YouTube cannot be put on it from the lane image: that APK is x86_64
+(`INSTALL_FAILED_NO_MATCHING_ABIS`, nothing installed or changed). So Shorts / Watch Later / My Account with a signed-in YouTube could not
+be shown on it. What the A53 hardware did show, with a program it has (Discord, a stub test app `com.discord`):
+
+| file | what it shows |
+| --- | --- |
+| `h-2`..`h-5` | Start > Settings > Personal > Buttons > Soft Key Bar on the A53 (6.5 look) |
+| `h-9`, `h-10` | **Generate with AI...** is on the A53's page (the client update reached it) |
+| `h-11`, `h-12` | first run with a big probe: "TokenRouter did not answer within 90 s" shown as plain text in the dialog (the prompt listed hundreds of activities); fixed in `6f5d2eb85` (only the activities other programs can start, at most 40; 100 s) |
+| `h-13` | the run after the fix: proposal from Discord's own link filters (Home, a 3-item menu, by link) and a visible "Could not make" list (Notifications, Settings: no link declared) |
+| `i-1`..`i-3` | a second run, Use, OK: the bar over Discord reads **Discord / Menu** |
+| `i-4` | after `am force-stop` + restart of the app: the bar still reads Discord / Menu and the Menu lists the generated rows (Quick settings, Show/hide keyboard, divider, Back, Home, Recents, divider, Screenshot, Flashlight) |
+| `i-8` | the manager still holds the stored profile after the restart (Left: Discord, Right: Menu, 8 items) |
+| `i-9` | the test profile removed again (the A53 is left as it was) |
+
+Wart seen: for a left key that is `open:android:<package>` the manager's "Program:" combo shows empty (its list holds `android:<package>/<activity>` ids); the key works and shows its name.
+The first row of the right menu (Notifications) drew no text in `i-4` (a rendering oddity of that run, not looked into).
+
+## Do the stored YouTube links start YouTube? (lane `aemu-a53-2`, `links-resolve-yt.txt`)
+
+`am start -W` of each stored link: all six answer `Status: ok` with a YouTube activity: Subscriptions (via the permission dialog first run), Shorts ->
+`watchwhile.MainActivity`, Watch Later / My Account / History -> `Shell_UrlActivity`, Search -> `watchwhile.MainActivity`. What the pages then show needs an account.
