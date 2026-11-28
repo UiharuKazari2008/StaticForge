@@ -201,7 +201,9 @@ function settings(gr) {
         maxAskMinutes: Number.isFinite(cfg.maxAskMinutes) && cfg.maxAskMinutes >= 1 ? Math.min(240, cfg.maxAskMinutes) : 15,
         yozoraRepos: Array.isArray(cfg.yozoraRepos) ? cfg.yozoraRepos.filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)) : ['DreamScape/StaticForge'],
         notify: cleanNotify(cfg.notify),
-        reviewer: cleanReviewer(cfg.reviewer)
+        reviewer: cleanReviewer(cfg.reviewer),
+        // where new Fleet sessions run (config fleet.sessionHost, modules/claudeFleetSettings.js): dreamscape | misaka
+        sessionHost: (() => { try { return require('./claudeFleetSettings').sessionHost(g); } catch (_) { return 'dreamscape'; } })()
     };
 }
 
@@ -262,6 +264,7 @@ async function saveSettings(gr, next) {
     // the maintenance settings live under the same key (modules/fleetMaintenance.js): assign() replaces the whole object
     try { const m = (gr.getConfig().agentSupervisor || {}).maintenance; if (m) s.maintenance = m; } catch (_) { /* none */ }
     await gr.modifyConfig('config').assign(['agentSupervisor'], s);
+    if (next.sessionHost === 'misaka' || next.sessionHost === 'dreamscape') await require('./claudeFleetSettings').setSessionHost(gr, next.sessionHost);
     // a switch turned off takes its live notices off the phone now
     if (next.notify !== undefined) { try { require('./fleetNotices').sweepRoutine(gr); } catch (_) { /* best effort */ } }
     return settings(gr);

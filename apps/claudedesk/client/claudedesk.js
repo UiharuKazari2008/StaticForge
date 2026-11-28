@@ -1638,6 +1638,9 @@
     const POLICY_MODELS = ['haiku', 'sonnet', 'opus', 'fable'];
     const POLICY_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
     const POLICY_FALLBACK = { sweep: { model: 'sonnet', effort: 'low', maxModel: 'sonnet', maxEffort: 'medium' }, part: { model: 'sonnet', effort: 'medium', maxModel: 'sonnet', maxEffort: 'high' }, tricky: { model: 'sonnet', effort: 'high', maxModel: 'opus', maxEffort: 'high' }, plan: { model: 'opus', effort: 'high', maxModel: 'opus', maxEffort: 'xhigh' }, large: { model: 'opus', effort: 'xhigh', maxModel: 'opus', maxEffort: 'xhigh' }, huge: { model: 'fable', effort: 'xhigh', maxModel: 'fable', maxEffort: 'xhigh' }, max: { model: 'fable', effort: 'max', maxModel: 'fable', maxEffort: 'max' } };
+    // where a session runs (Fleet setting sessionHost; docs/fleet/sessions-on-misaka.md)
+    const HOSTS = [['misaka', 'Fat Misaka (own replica, pushes its work)'], ['dreamscape', 'Dreamscape (the live tree)']];
+    const hostName = (v) => ((HOSTS.find((h) => h[0] === v) || [])[1] || '').replace(/ \(.*\)$/, '');
     const SUP_DEFAULT = { enabled: false, engine: 'tokenrouter', model: '', delivery: 'inbox', manageLocks: false, trackArtifacts: false, maxConcurrent: 3, autoStart: true, yozoraRepos: ['DreamScape/StaticForge'] };
     const SUP_FALLBACK_ENGINES = [{ id: 'tokenrouter', name: 'TokenRouter', defaultModel: 'deepseek/deepseek-v4.1-flash' }];
     const DELIVERY = [['inbox', 'Inbox only'], ['steer', 'Type into the session'], ['off', 'Off']];
@@ -1898,6 +1901,7 @@
             <label data-sup-other hidden><span>Model ID:</span><input type="text" data-sup="modelOther" value="" placeholder="A full model ID" spellcheck="false" autocomplete="off"></label>
             <label><span>Reviews:</span><select class="vdt-select" data-sup="reviewScope">${[['supervised', 'Supervised sessions only'], ['all', 'Every session']].map(([v, t]) => `<option value="${v}"${v === (st.reviewScope || 'supervised') ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
             <label><span>Delivery:</span><select class="vdt-select" data-sup="delivery">${DELIVERY.map(([v, t]) => `<option value="${v}"${v === st.delivery ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+            <label title="Where Fleet starts new sessions. Fat Misaka: each session works in its own replica and pushes its work; Dreamscape is used when Fat Misaka cannot be. A session can still choose its host in New Session."><span>New sessions run on:</span><select class="vdt-select" data-sup="sessionHost">${HOSTS.map(([v, t]) => `<option value="${v}"${v === (st.sessionHost || 'dreamscape') ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
             <label><span>Max concurrent sessions:</span><input type="text" data-sup="maxConcurrent" value="${esc(st.maxConcurrent == null ? 3 : st.maxConcurrent)}" inputmode="numeric" autocomplete="off"></label>
             <label class="cd-opt"><input type="checkbox" data-sup="autoStart"${st.autoStart === false ? '' : ' checked'}><span>Start queued work automatically</span></label>
             <label class="cd-opt"><input type="checkbox" data-sup="manageLocks"${st.manageLocks ? ' checked' : ''}><span>Manage busy locks for agents</span></label>
@@ -6134,6 +6138,7 @@
                 if (d.ruleCheck !== undefined) extra.ruleCheck = !!d.ruleCheck;
                 if (d.reviewer && typeof d.reviewer === 'object') extra.reviewer = { engine: d.reviewer.engine === 'claude' ? 'claude' : '', model: d.reviewer.model || 'opus', effort: d.reviewer.effort || '' };
                 if (d.reviewScope) extra.reviewScope = d.reviewScope === 'all' ? 'all' : 'supervised';
+                if (d.sessionHost === 'misaka' || d.sessionHost === 'dreamscape') extra.sessionHost = d.sessionHost;
                 if (String(d.maxAskMinutes == null ? '' : d.maxAskMinutes).trim() !== '') extra.maxAskMinutes = Math.max(1, Math.min(1440, Math.round(Number(d.maxAskMinutes)) || 15));
                 await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), effort: d.effort || '', delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, modelPolicy: d.modelPolicy || undefined, notify: d.notify && typeof d.notify === 'object' ? Object.keys(d.notify).reduce((o, k) => { o[k] = d.notify[k] === true; return o; }, {}) : undefined, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');
                 return true;
@@ -6559,7 +6564,9 @@
                 <label><span>Model:</span><select class="vdt-select" data-cd="model">${modelOptions(W.model || 'sonnet')}</select></label>
                 <label><span>Or model ID:</span><input type="text" data-cd="modelId" value="${esc(W.modelId || '')}" spellcheck="false" autocomplete="off" placeholder="A full model ID (optional)"></label>
                 <label><span>Effort:</span><select class="vdt-select" data-cd="effort">${effortOptions(W.effort)}</select></label>` : '';
-            return `${acct}${modelRows}
+            const defHost = (S.sup.data && S.sup.data.settings && S.sup.data.settings.sessionHost) || 'dreamscape';
+            const hostRow = `<label title="Fat Misaka: the session works in its own replica and pushes its work instead of editing the live tree."><span>Host:</span><select class="vdt-select" data-cd="host"><option value=""${W.host ? '' : ' selected'}>Default (${esc(hostName(defHost))})</option>${HOSTS.map(([v, t]) => `<option value="${v}"${W.host === v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
+            return `${acct}${hostRow}${modelRows}
                 <label><span>Folder:</span><input type="text" data-cd="cwd" value="${esc(W.cwd)}" spellcheck="false" autocomplete="off"></label>
                 <label class="cd-top"><span>Request:</span><textarea data-cd="prompt" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do?">${esc(W.prompt)}</textarea></label>${modelRows2}
                 ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : `<label><span>Link to issue:</span><input type="text" data-cd="issue" value="${esc(W.issue || '')}" spellcheck="false" autocomplete="off" placeholder="owner/repo#N, several = one run; blank: new issue" title="owner/repo#N or issue URLs, separated by spaces or commas; several run as one. Blank: a new issue is made."></label>`}
@@ -6592,7 +6599,7 @@
                 rows.push(['Account', acctLabel(W.account)], ['Folder', W.cwd], ['Shape', (TOPO.find((x) => x[0] === W.topology) || [])[1] || '']);
                 Object.keys(STAGES).filter((k) => STAGES[k].uses.includes(W.topology)).forEach((k) => rows.push([`${STAGES[k].label} stage`, stageText(W.stages[k])]));
             } else {
-                rows.push(['Account', acctLabel(W.account)], ['Engine', engineName(W.engine)], ['Folder', W.cwd], ['Model', other ? (wizModel(W) || (engineOf(W.engine) || {}).defaultModel || 'The engine\'s default') : ((MODEL_CHOICES.find((m) => m[0] === modelOf(W)) || [])[1] || modelOf(W) || 'Sonnet')], ['Effort', (EFFORTS.find((e) => e[0] === (W.effort || '')) || [])[1] || 'Default']);
+                rows.push(['Account', acctLabel(W.account)], ['Host', W.host ? hostName(W.host) : `Default (${hostName((S.sup.data && S.sup.data.settings && S.sup.data.settings.sessionHost) || 'dreamscape')})`], ['Engine', engineName(W.engine)], ['Folder', W.cwd], ['Model', other ? (wizModel(W) || (engineOf(W.engine) || {}).defaultModel || 'The engine\'s default') : ((MODEL_CHOICES.find((m) => m[0] === modelOf(W)) || [])[1] || modelOf(W) || 'Sonnet')], ['Effort', (EFFORTS.find((e) => e[0] === (W.effort || '')) || [])[1] || 'Default']);
             }
             if (W.path === 'direct') rows.push(['Permissions', (MODES.find((m) => m[0] === W.mode) || [])[1] || W.mode]);
             rows.push(['Remote Control', W.remoteControl ? 'On' : 'Off']);
@@ -6674,6 +6681,7 @@
         else if (page === 'plaud') { W.all = !!fields.plaudAll; W.picked = new Set(Object.keys(fields).filter((k) => k.startsWith('rec:') && fields[k] === true).map((k) => k.slice(4))); }
         else if (page === 'supervised' || page === 'direct') {
             W.account = fields.account; W.cwd = String(fields.cwd || '').trim(); W.prompt = String(fields.prompt || '').trim();
+            W.host = fields.host === 'misaka' || fields.host === 'dreamscape' ? fields.host : '';
             if (page === 'direct') { W.model = fields.model; W.modelId = String(fields.modelId || '').trim(); W.effort = fields.effort || ''; W.engine = fields.engine || 'claude'; }
             W.issue = String(fields.issue || '').trim();
             W.remoteControl = fields.remoteControl === true;
@@ -6734,6 +6742,7 @@
                     if (refs.length > 1) job.issues = refs; else if (refs.length) job.issue = refs[0];
                     job.remoteControl = !!W.remoteControl;
                     if (acct !== 'auto') job.account = acct;
+                    if (W.host) job.host = W.host;
                     const rr = await send('claude_desk_supervisor', job);
                     if (rr.settings) supTake(rr);
                     const list = supWork();
@@ -6748,6 +6757,7 @@
                 }
                 const payload = { action: 'start', cwd: W.cwd, prompt: W.prompt, account: acct, model: wizModel(W), effort: W.effort || undefined, supervised: false, engine: W.engine || 'claude', remoteControl: !!W.remoteControl };
                 if (W.path === 'direct') payload.mode = W.mode;
+                if (W.host) payload.host = W.host;
                 const r = await send('claude_desk_session', payload);
                 const res = r.result || {};
                 if (res.state === 'failed') { c.note(''); W.err = `The session did not start. ${res.message || ''}`.trim(); return false; }

@@ -311,7 +311,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'pause') { await supervisor.pauseSession(String(message.sessionId || ''), { mode: message.mode, reason: message.reason, by: 'Fleet' }); return supervisorStatus(gr); }
     if (action === 'resume') { await supervisor.resumeSession(String(message.sessionId || ''), { note: message.note }); return supervisorStatus(gr); }
     if (action === 'enqueue') {
-        supervisor.enqueue({ title: message.title, prompt: message.prompt, cwd: message.cwd, account: message.account === 'auto' ? null : message.account, model: message.model, effort: message.effort, engine: message.engine, topology: message.topology, stages: message.stages, issue: message.issue, issues: message.issues, remoteControl: message.remoteControl === true, startNow: message.startNow === true, source: 'fleet' }, { gr });
+        supervisor.enqueue({ title: message.title, prompt: message.prompt, cwd: message.cwd, account: message.account === 'auto' ? null : message.account, model: message.model, effort: message.effort, engine: message.engine, topology: message.topology, stages: message.stages, issue: message.issue, issues: message.issues, remoteControl: message.remoteControl === true, startNow: message.startNow === true, host: message.host === 'misaka' || message.host === 'dreamscape' ? message.host : undefined, source: 'fleet' }, { gr });
         return supervisorStatus(gr);
     }
     // work_start / work_hold take one id or ids (several picked in the list); work_start now:false waits for a slot
@@ -508,6 +508,7 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
             : message.prompt;
         result = await launcher.start(gr, {
             cwd: message.cwd || path.join(__dirname, '..', '..', '..'), prompt, title: message.title, account, remoteControl: message.remoteControl === true,
+            host: message.host === 'misaka' || message.host === 'dreamscape' ? message.host : undefined, // unset: Fleet's default (sessionHost)
             mode: message.mode || defaults.defaultMode, engine: message.engine && message.engine !== 'claude' ? message.engine : undefined,
             model: message.model || (message.engine && message.engine !== 'claude' ? undefined : defaults.defaultModel) || undefined, effort: message.effort || defaults.defaultEffort || undefined
         });
