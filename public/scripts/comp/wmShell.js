@@ -849,8 +849,15 @@
             const vc = shell.querySelector('.wm-volume');
             // (a message box over it - the Output's error, #1016 - keeps the volume box)
             if (!vc.hidden && !vc.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon, #wmShell .wm-msgbox-layer'))) closeVolume();
-            // the notification tray closes on a tap elsewhere
-            if (noteTrayOpen && !(e.target.closest && e.target.closest('#wmShell .wm-notify-tray, #wmShell [data-role="notify"]'))) { noteTrayOpen = false; renderNotes(); }
+            // the notification tray closes on a tap elsewhere - the notify icon and a soft key that IS the
+            // notification key are its own controls (the key's own action then toggles the tray: closing it
+            // here first made one press close and reopen it, so the key could never put the tray away)
+            const noteKeyTap = (() => {
+                const sk = e.target.closest ? e.target.closest('#wmShell .wm-softkey') : null;
+                const key = sk ? softKeys[sk.dataset.side] : null;
+                return !!(key && key.notify);
+            })();
+            if (noteTrayOpen && !noteKeyTap && !(e.target.closest && e.target.closest('#wmShell .wm-notify-tray, #wmShell [data-role="notify"]'))) { noteTrayOpen = false; renderNotes(); }
             // a tap anywhere else hides a notification on screen, as on 6.1 (Yukimi, Nov 14): it waits in
             // the title bar; its soft keys (Hide / Dismiss / Menu) and the title bar icons keep their own taps
             const nb = shell.querySelector('.wm-notify');
@@ -8353,7 +8360,25 @@
         return true;
     }
 
+    /**
+     * One tap, one answer (Yukimi, Nov 27 2026, Fold: "press the left soft key for notifications and if its
+     * also set to notifications it would just loop opening then closing, and clicking the ... in the status bar
+     * also open/close it"). The notification answer is a toggle (the tray, or the bubble: show then hide), so
+     * when one physical press is answered twice it cancels itself out and the tray or the box flickers
+     * open-closed. Two answers arrive for one press when the app's bar and this page both hear it: the app
+     * forwards the tap for the role it drew (notify) while the page still holds a soft key whose action is the
+     * same notification answer (#1343, the keys over the keyboard). A second answer within 150 ms cannot be a
+     * second tap by hand, so it is dropped.
+     */
+    const NOTE_TAP_GUARD_MS = 150;
+    let noteTapAt = -Infinity;
+
     function noteIconTap() {
+        const now = (window.performance && typeof performance.now === 'function') ? performance.now() : Date.now();
+        // not guarded while the app asks for a popup's layout to draw (barsPopupOpen / barsOpening): that is
+        // the app copying the answer, not a second answer to the same press
+        if (!barsOpening && now - noteTapAt < NOTE_TAP_GUARD_MS) return;
+        noteTapAt = now;
         closeMenus(true);
         // read the notifications again first: a list left from a notice already gone kept the bubble up with nothing
         // behind it ("Notification: Dreamscape", the tap showing nothing - Fold7, Nov 18); now the icon goes instead
@@ -12504,8 +12529,8 @@
                 // which keys were chosen in Settings > Buttons (6.5's clock panel keeps its "Set" until the right one is, #796)
                 keys.custom = todaySoftKeysChosen();
                 // a notification is waiting: the device's left soft key on Today reads "Notification"
-                // and opens it, whatever the key is set to
-                if (notes.length) keys.left = { label: 'Notification', badge: notes.length, action: () => noteIconTap() };
+                // and opens it, whatever the key is set to (notify: see the tap-elsewhere rule)
+                if (notes.length) keys.left = { label: 'Notification', badge: notes.length, notify: true, action: () => noteIconTap() };
                 if (todayView && typeof todayView.softKeys === 'function') {
                     try { return todayView.softKeys(keys) || keys; } catch (err) { console.warn('[wmShell] today view keys', err); }
                 }
@@ -13574,6 +13599,9 @@
         if (v === 'notifications') {
             return {
                 label: 'Notifications',
+                // notify: this key IS the notification control, so a tap on it must not count as a tap
+                // outside the tray (the tap-elsewhere rule closed it just before the key reopened it)
+                notify: true,
                 action: () => {
                     if (notes.length || statusFolded.length) noteIconTap();
                 }
