@@ -357,6 +357,7 @@
      */
     let patchedDirector = null;
     let patchedToggle = null;
+    let patchedRuns = null;
     function patchDirector() {
         const d = dir();
         if (!d) return false;
@@ -373,6 +374,25 @@
                 try { paintPersonaTabs(); } catch (err) { console.warn('[wmDirector] persona tabs', err); }
                 return out;
             };
+        }
+        // the rows that are running change with a status packet (paintRunningSessions) or a turn's end (markSessionRunning):
+        // the open Sessions page draws "Working..." again only when that set moved (#1319); nothing polls
+        if (patchedRuns !== d && typeof d.paintRunningSessions === 'function' && typeof d.markSessionRunning === 'function') {
+            patchedRuns = d;
+            const runKey = () => (d.directorSessions || []).filter((r) => r && r.running === true).map((r) => String(r.id)).sort().join('|');
+            let drawn = runKey();
+            ['paintRunningSessions', 'markSessionRunning'].forEach((name) => {
+                const orig = d[name].bind(d);
+                d[name] = function (...args) {
+                    const out = orig(...args);
+                    const now = runKey();
+                    if (now !== drawn) {
+                        drawn = now;
+                        try { renderSessions(); } catch (err) { console.warn('[wmDirector] running rows', err); }
+                    }
+                    return out;
+                };
+            });
         }
         if (patchedDirector !== d && typeof d.saveReopenState === 'function') {
             patchedDirector = d;
@@ -677,10 +697,15 @@
         return handOff(async (d) => {
             if (!d) return false;
             if (!d.directorWindowIsOpen()) await d.openDirectorWindow();
-            if (p && d.persona !== p && !(await choosePersona(p))) return false;
+            // the chat the switch lands on is the named one (director.js landPersonaChat takes the tab's remembered chat), so
+            // neither her last chat nor a new draft is ever put up on the way (#1319)
+            const switching = !!p && d.persona !== p;
+            if (switching && d._personaSession) d._personaSession[p] = id;
+            if (switching && !(await choosePersona(p))) return false;
             if (!sessionById(id)) { try { await busyOf(() => d.loadDirectorSessions()); } catch (_) { /* below */ } }
             if (!sessionById(id)) return false;
-            await openSession(id);
+            // the switch has put that chat up with its messages (landPersonaChat awaits them): only the page is left to do
+            await openSession(id, { shown: switching && !!d.currentSession && !d.currentSession.draft && String(d.currentSession.id) === String(id) });
             return true;
         }, { cover: !onScreen });
     }
@@ -1152,7 +1177,8 @@
         } else {
             thumb = '<img class="wmd-session-thumb is-icon" src="/static_images/app_icons/director.webp" alt="">';
         }
-        const busy = d._running && d._runningSessionId === s.id;
+        // a turn runs in this chat: this page's own, or one the server lists as running (the row's `running`, #1319)
+        const busy = (d._running && d._runningSessionId === s.id) || s.running === true;
         // the workspace the chat belongs to (the desktop row's colour dot): its colour and name
         let ws0 = null;
         try { ws0 = d.sessionWorkspaceMeta(s); } catch (_) { ws0 = null; }
@@ -1320,13 +1346,13 @@
         });
     }
 
-    async function openSession(id) {
+    async function openSession(id, opts) {
         const d = dir();
         const s = sessionById(id);
         if (!s) return;
         while (stack.length) popPage();
         try {
-            await busyOf(() => {
+            if (opts && opts.shown) { /* already up, with its messages */ } else await busyOf(() => {
                 const arrived = messagesArrived(s.id);
                 return Promise.resolve(d.showSessionChat(s)).then(() => arrived);
             });

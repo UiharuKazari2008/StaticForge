@@ -297,11 +297,14 @@ async function wmDirectorChecks() {
     };
     const remembered = { wren: 'w1', kabuki: null, xi: null };
     const d = {
-        persona: 'wren', _xiEnabled: false, _kabuki: false, _windowOpen: true, currentSession: { id: 'w1' }, directorSessions: lists_.wren.slice(), _running: false, pendingAttachments: [],
+        _personaSession: { wren: 'w1', kabuki: null, xi: null }, persona: 'wren', _xiEnabled: false, _kabuki: false, _windowOpen: true, currentSession: { id: 'w1' }, directorSessions: lists_.wren.slice(), _running: false, pendingAttachments: [],
         kabukiAvailable() { return this._kabuki; },
         directorWindowIsOpen() { return this._windowOpen; },
         async openDirectorWindow() { log.push('openDirectorWindow'); this._windowOpen = true; },
         paintPersonaToggle() { log.push('paintPersonaToggle'); },
+        // director.js: the status packet and a turn's end flip a row's `running` (the app redraws the open Sessions page on a change)
+        paintRunningSessions(ids) { (this.directorSessions || []).forEach((r) => { r.running = ids.includes(r.id); }); },
+        markSessionRunning(id, on) { (this.directorSessions || []).forEach((r) => { if (r.id === id) r.running = !!on; }); },
         async loadDirectorSessions() { this.directorSessions = lists_[this.persona].slice(); log.push(`load:${this.persona}`); },
         async setPersona(p) {
             if (p === 'kabuki' && !this._kabuki) return;
@@ -310,7 +313,7 @@ async function wmDirectorChecks() {
             this.paintPersonaToggle();
             this.currentSession = null;
             await this.loadDirectorSessions();
-            const found = remembered[p] && this.directorSessions.find((s) => s.id === remembered[p]);
+            const found = this._personaSession[p] && this.directorSessions.find((s) => s.id === this._personaSession[p]);
             if (found) await this.showSessionChat(found); else { this.currentSession = { draft: true }; log.push(`draft:${p}`); }
         },
         async showSessionChat(s) { log.push(`show:${s.id}@${this.persona}@${pageEl.classList.contains('wmd-cover') ? 'covered' : 'visible'}`); this.currentSession = s; },
@@ -360,7 +363,8 @@ async function wmDirectorChecks() {
     assert.strictEqual(d.currentSession.id, 'k1', 'the named chat is the one on screen');
     const shows = log.filter((x) => x.startsWith('show:'));
     assert.deepStrictEqual(shows, ['show:k1@kabuki@covered'], 'the only chat shown is the target, on its persona, with the page covered');
-    assert.ok(log.indexOf('openDirectorWindow') < log.indexOf('draft:kabuki'), 'her window opens first, the persona then');
+    assert.ok(!log.some((x) => x.startsWith('draft:')), 'no new-session draft is put up on the way to the named chat');
+    assert.ok(log.indexOf('openDirectorWindow') < log.indexOf('show:k1@kabuki@covered'), 'her window opens first, the persona then');
     assert.ok(!pageEl.classList.contains('wmd-cover'), 'the cover is lifted once the chat is there');
 
     // ---- openSession while the app is in front on another chat: covered, lands on the chat, cover lifted
@@ -423,6 +427,13 @@ async function wmDirectorChecks() {
     assert.strictEqual(strip.style.display, 'none', 'one persona: no strip');
     assert.deepStrictEqual(plain(api.personaTabs().map((t) => t.key)), ['wren']);
     assert.ok(/Wren one/.test(list.innerHTML), "the list is Wren's chats");
+
+    // #1319 (finding 1 on the phone): a chat the server lists as running reads "Working...", live from the status / turn end hooks
+    assert.ok(!/Working\.\.\./.test(list.innerHTML), 'nothing runs: no row says Working');
+    d.paintRunningSessions(['w2']);
+    assert.ok(/Working\.\.\.[^]*Wren two|Wren two[^]*Working\.\.\./.test(list.innerHTML) && (list.innerHTML.match(/Working\.\.\./g) || []).length === 1, 'the running chat\'s row says Working, only that one');
+    d.markSessionRunning('w2', false);
+    assert.ok(!/Working\.\.\./.test(list.innerHTML), 'the turn ended: the row clears at once');
 
     // Chiyo gets an engine: director.js paints its toggle, the tab appears (no polling: the hook)
     d._kabuki = true;

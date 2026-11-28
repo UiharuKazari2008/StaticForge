@@ -361,6 +361,14 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     padding-bottom: calc(30 * var(--wm-px)) !important;
 }
 
+/* #1319 finding 5: with the log open over her scene (Menu > Log) and the composer up, the log is the higher layer, so it
+ * covered the text entry. The log ends above the composer (and above the reply box when that stands over it):
+ * directorMascot.js fitLogPanel measures it into --dm-composer-space, which the fixed 6 px margin above ignored. Only
+ * while composing; a closed composer leaves the log its full page. */
+.wm-director.wmd-composing #directorSessionChat.director-mascot-view .director-chat-messages-container {
+    margin-bottom: var(--dm-composer-space, 6px) !important;
+}
+
 /* her scene with the log hidden: the log's rows are not laid out (~490 ms of layout on every open
  * at 4x throttle, and director.js's scroll reads after each render forced it again, Yozora #723).
  * The box keeps its space (the composer stays put); Menu > Log lays the rows out and scrolls to the
