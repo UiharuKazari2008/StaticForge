@@ -334,6 +334,16 @@ t('an https link is stored as an intent link that names the app, so it opens in 
     assert.strictEqual(v.via, 'link');
 });
 
+t('the prompt lists only the activities other programs can start, at most 40, so a large app does not slow the AI', () => {
+    const many = { pkg: PKG, label: 'Big', activities: Array.from({ length: 150 }, (_, i) => ({ name: `${PKG}.A${i}`, exported: i % 3 === 0 })), links: [], shortcuts: [], keyboardShortcuts: [], routes: [], notes: [] };
+    const p = sk.sanitizeProbe(many, PKG);
+    const { user } = sk.buildPrompt({ pkg: PKG, label: 'Big', probe: p, wish: '', design: null });
+    const listed = user.split('\n').filter((l) => /^- \.A\d+/.test(l));
+    assert.ok(listed.length <= 40 && listed.length > 0, `listed ${listed.length}`);
+    assert.ok(listed.every((l) => / x/.test(l)));
+    assert.ok(/150 in all/.test(user));
+});
+
 async function main() {
     await ta('generate: a good answer comes back as profile, items, problems, engine, model, ms; the call is JSON mode with the key only in the header', async () => {
         stub(() => reply(JSON.stringify(youtubeAnswer)));

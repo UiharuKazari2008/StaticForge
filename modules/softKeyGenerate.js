@@ -24,7 +24,7 @@ const os = require('os');
 const path = require('path');
 const keycodes = require('./androidKeycodes');
 
-const CALL_TIMEOUT_MS = 90 * 1000;
+const CALL_TIMEOUT_MS = 100 * 1000;
 const MAX_TOKENS = 16000;
 const CAPS = { activities: 200, links: 150, shortcuts: 60, keyboardShortcuts: 60, notes: 20, routes: 10, str: 300, wish: 2000, label: 100 };
 const LIMITS = { keyLabel: 24, menuLabel: 40, menuRows: 24, uri: 600 };
@@ -504,8 +504,11 @@ function probeText(probe) {
     const routes = asArr(probe.routes).map((r) => `${r.route}:${r.ok ? 'ok' : `failed${r.error ? ` (${r.error})` : ''}`}`).join(', ');
     L.push(`Read by the phone through: ${routes || 'unknown'}`);
     if (probe.versionName) L.push(`Version: ${probe.versionName}`);
-    L.push(`Activities (${probe.activities.length}; x = exported):`);
-    probe.activities.forEach((a) => L.push(`- ${a.name.startsWith(`${probe.pkg}.`) ? a.name.slice(probe.pkg.length) : a.name}${a.exported ? ' x' : ''}${a.label ? ` "${a.label}"` : ''}`));
+    // (only the activities another program can start matter for a target; the rest, often hundreds, only slow the AI down)
+    const reachable = probe.activities.filter((a) => a.exported !== false && (a.exported === true || a.label));
+    const shown = reachable.slice(0, 40);
+    L.push(`Activities: ${probe.activities.length} in all, ${shown.length} listed (those other programs can start${reachable.length > shown.length ? `, first ${shown.length} of ${reachable.length}` : ''}; x = exported):`);
+    shown.forEach((a) => L.push(`- ${a.name.startsWith(`${probe.pkg}.`) ? a.name.slice(probe.pkg.length) : a.name}${a.exported ? ' x' : ''}${a.label ? ` "${a.label}"` : ''}`));
     L.push(`Link filters (${probe.links.length}):`);
     probe.links.forEach((l) => {
         const path = [l.path && `path=${l.path}`, l.pathPrefix && `pathPrefix=${l.pathPrefix}`, l.pathPattern && `pathPattern=${l.pathPattern}`, l.pathAdvancedPattern && `pathRegex=${l.pathAdvancedPattern}`, l.pathSuffix && `pathSuffix=${l.pathSuffix}`].filter(Boolean).join(' ');
