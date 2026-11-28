@@ -189,14 +189,55 @@ function showAgentSessionTrayNotice(action, messageOrData) {
     mcpLastNoticeAt = now;
     mcpLastNoticeActor = actorName || '';
     mcpLastNoticeGroup = noticeGroup;
+    // the popover writes its body as HTML, and so does a Melaton Mobile notification: actor names and Fleet titles (a work
+    // item's title can come from a Yozora issue) go in as text
+    const safeMessage = String(message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Melaton Mobile has no taskbar to hang a balloon on (#1199): the same words as one phone notification, kept in
+    // showAgentSessionTrayNotice.phoneNote (state on the function, not on the page). DeX is the desktop shell: it keeps the balloon.
+    const phone = window.uiShell === 'mobile' && window.wmShell && typeof window.wmShell.appNote === 'function' ? window.wmShell : null;
+    if (phone) {
+        const held = showAgentSessionTrayNotice.phoneNote;
+        const heldEl = held ? document.getElementById(held.id) : null;
+        // one note at a time (N9): while it is up a newer notice from the same agent changes its words in place (update never
+        // sounds or pops); another agent taking the session is news, so its note replaces this one and pops
+        if (heldEl && !heldEl.classList.contains('removing') && showAgentSessionTrayNotice.phoneNoteActor === (actorName || '')) {
+            held.update({ html: safeMessage });
+            return;
+        }
+        if (held) held.close();
+        showAgentSessionTrayNotice.phoneNote = null;
+        // notice: remote-access-phone
+        const note = phone.appNote({
+            title: 'Remote Access',
+            html: safeMessage,
+            // the class "Other notifications": its Display message on screen decides whether this one pops or waits in the title bar
+            event: 'notification',
+            silent: true,
+            // Disconnect (the tray icon's right-click on the desktop: this client stops being driven) only while an agent is bound
+            actions: () => ((mcpSessionBound || (typeof window.isAgentSessionBound === 'function' && window.isAgentSessionBound()))
+                && typeof window.agentSessionUnbindRequest === 'function'
+                ? [{
+                    text: 'Disconnect',
+                    action: () => {
+                        // agentSessionUnbindRequest: public/scripts/comp/agentClientBridge.js
+                        Promise.resolve().then(() => window.agentSessionUnbindRequest()).then(() => {
+                            const mine = showAgentSessionTrayNotice.phoneNote;
+                            if (mine) mine.close();
+                            showAgentSessionTrayNotice.phoneNote = null;
+                        }).catch((err) => console.warn('[mcpActivityClient] disconnect', err));
+                    }
+                }]
+                : [])
+        });
+        showAgentSessionTrayNotice.phoneNote = note || null;
+        showAgentSessionTrayNotice.phoneNoteActor = actorName || '';
+        return;
+    }
     const anchor = document.getElementById('mcpActivityIndicator');
     if (!anchor) return;
     // Remote Access's own image for every notice, the physics reads too (vista-icons-not-fa)
     const icon = '<img src="/static_images/vista-icons/remote-access-32.png" alt="" width="32" height="32">';
     // showPopover: public/scripts/comp/popoverManager.js
-    // the popover writes its body as HTML: actor names and Fleet titles (a work item's title can come from a Yozora
-    // issue) go in as text
-    const safeMessage = String(message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     // notice: remote-access
     showPopover(anchor, 'info', 'Remote Access', safeMessage, false, 8000, icon, null, {
         position: 'top',

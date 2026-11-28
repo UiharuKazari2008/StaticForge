@@ -1,12 +1,20 @@
 {
   "sources": {
     "remote-access": {
-      "area": "public/scripts/comp/mcpActivityClient.js showAgentSessionTrayNotice: the Remote Access tray balloon on #mcpActivityIndicator when an agent's MCP key reads, opens or updates this client's session, or reads its location",
+      "area": "public/scripts/comp/mcpActivityClient.js showAgentSessionTrayNotice: the Remote Access tray balloon on #mcpActivityIndicator (desktop and DeX; Melaton Mobile has its own note, 'remote-access-phone') when an agent's MCP key reads, opens or updates this client's session, or reads its location",
       "trigger": "server-push",
       "action": "a click on the balloon opens the Remote Access log in Periscope (openMcpActivityInPeriscope); right-click on the tray icon unbinds the agent",
       "sound": false,
       "switch": "Taskbar and Start Menu Properties > Notification Area > Customize Notifications > Remote Access (trayRegistry popup 'remote-access', trayPopupHidden)",
-      "note": "N1 ok: data she asked for (Yukimi, #1199): who has the machine, by name; a Fleet agent reads Fleet access \"<session>\" or Fleet access, work item #<id> \"<item>\", other keys their own name. N3/N9: one balloon per actor and kind, a burst from the same actor within 2 s coalesces (MCP_NOTICE_COALESCE_MS), popupId remote-access replaces the last one. N7: silent (popoverManager plays no sound). Registered in #1199; text only changed there, no new emit site."
+      "note": "N1 ok: data she asked for (Yukimi, #1199): who has the machine, by name; a Fleet agent reads Fleet access \"<session>\" or Fleet access, work item #<id> \"<item>\", other keys their own name. N3/N9: one balloon per actor and kind, a burst from the same actor within 2 s coalesces (MCP_NOTICE_COALESCE_MS), popupId remote-access replaces the last one. N7: silent (popoverManager plays no sound). On Melaton Mobile (uiShell 'mobile') the same words are the phone note 'remote-access-phone', not this balloon (there is no taskbar there); DeX is the desktop shell and keeps the balloon. Registered in #1199."
+    },
+    "remote-access-phone": {
+      "area": "public/scripts/comp/mcpActivityClient.js showAgentSessionTrayNotice (window.uiShell === 'mobile'): the same Remote Access message as one Melaton Mobile notification (wmShell.appNote, title 'Remote Access') when an agent's MCP key reads, opens or updates this client's session, or reads its location",
+      "trigger": "server-push",
+      "action": "Disconnect (agent_session_unbind, the tray icon's right-click Disconnect on the desktop) while an agent is bound to this client, else Hide | Dismiss only; the access log (Periscope) is desktop only, so no action opens it",
+      "sound": false,
+      "switch": "Settings > Sounds & Notifications > Notifications > Other notifications > Display message on screen (off: the note waits in the title bar, no bubble; wmShell.js noteDisplays / refreshNotes)",
+      "note": "N1 ok: data she asked for (Yukimi, #1199): who has the machine, by name; a Fleet agent reads Fleet access \"<session>\" or Fleet access, work item #<id> \"<item>\", other keys their own name. N7: silent (silent: true; an agent's access is no sound event). N9: one note at a time; a newer notice from the same agent updates it in place (never sounds or pops) while it is up; another agent's access, or any notice after it is gone, closes the old one and makes a new one (that one shows, as the class's Display message on screen says); a burst from the same actor within 2 s still coalesces (MCP_NOTICE_COALESCE_MS). No status bar icon of its own (status-icon-tables: Yukimi decides). Text escaped like the balloon's. The desktop path is 'remote-access'."
     }
   }
 }

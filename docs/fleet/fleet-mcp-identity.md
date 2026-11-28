@@ -69,6 +69,18 @@ two Fleet keys and only as a lowercase UUID. On any other key it is ignored. It 
   looked up again after 3 seconds (the Supervisor writes `session_id` only after the launch returns). It never throws; a failing lookup gives the generic label.
 - Yukimi's own sessions (Remote Control sessions she starts, her terminal) keep the key "Claude Code" and the label "Claude Code".
 
+## On the phone
+
+Melaton Mobile (`window.uiShell === 'mobile'`) has no taskbar, so the notice is not the tray balloon there: `showAgentSessionTrayNotice`
+(`public/scripts/comp/mcpActivityClient.js`) raises the same message, escaped the same way, as one Melaton Mobile notification
+(`wmShell.appNote`, title "Remote Access", silent; registry source `remote-access-phone`, the desktop balloon is `remote-access`).
+There is one note at a time: a newer notice from the same agent updates it in place (it never sounds or pops again) while it is up;
+another agent taking the session, or any notice after the note is gone, closes the old one and makes a new one. The 2-second coalescing of a burst from the same actor applies first. It belongs to the class "Other
+notifications", so Settings > Sounds & Notifications > Notifications > Other notifications > Display message on screen decides whether it
+pops or waits in the title bar. Its soft keys are Hide | Dismiss, and Disconnect (the tray icon's right-click item on the desktop,
+`agent_session_unbind`) while an agent is bound to the client. There is no access log on the phone (Periscope is a desktop program) and no
+status bar icon of its own. DeX is the desktop shell on the phone: it keeps the balloon.
+
 ## Label or raw name
 
 The label is for display. Identity and ownership decisions keep the raw key name (`resolveActorName`).
