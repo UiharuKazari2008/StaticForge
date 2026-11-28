@@ -124,3 +124,5 @@ the Director bridge and other engines, resumed sessions, work on any repository 
 ## Proof runs
 
 (One line per run, written by the proof session from inside its replica.)
+
+- 2026-11-28 session d47001ea: ran on fat-misaka, folder /srv/rack/replicas/fleet-d47001ea/src, Claude Code 2.1.332 (Claude Code)
