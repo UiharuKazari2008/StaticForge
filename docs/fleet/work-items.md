@@ -58,6 +58,34 @@ Where it is set: Fleet's New Session wizard (`claude_desk_session` `start`: `rem
   into another) does not become its own item. An item whose PRIMARY closes on Yozora ends as before; one of the others
   closing does not end it. An item created from the issue side stays one issue, one item.
 
+## An issue the hook already carded (#1276)
+
+`pullIssues` is the issue hook: every open `fleet` issue with no item becomes a Waiting item (`source` yozora, `sourceRef`
+`issue:<repo>#<n>`). When a dispatch (`claude_dispatch`) or the New Session wizard then names that same issue, `enqueue`
+does not make a second item for it. The lookup covers the hook's items only (source yozora with an `issue:` sourceRef, not
+a part, not joined, not a planned run) whose PRIMARY issue is one of the named ones; items of any other source, parts
+(`parentId`), `source: 'yozora'` callers and `separate: true` behave as before, and so does a hook item that is done, failed or
+cancelled (a new item is made).
+
+- **Not started** (held or queued, no session, its start not in flight): the hook's item is ADOPTED. Same id, same
+  `createdAt`; every field is the caller's, as a new item would have had it (title when one is given, else the item's own;
+  brief, folder, account, model, effort, engine, source, `sourceRef`, shape, Remote Control, host, git identity, Start Now,
+  and Waiting or queued with its usual message). The Supervisor's maintenance check is cleared (it was about the old brief).
+  Its issues become exactly the named ones, the first named is the primary. The result carries `adopted: true` and
+  `joined: [ids]`. The issue gets one comment: "Fleet item N took over the dispatched brief (the issue's waiting item was
+  reused, no second item was made): <brief>".
+- Several issues named, several carded: the item of the first named issue that has one is adopted; every other waiting
+  hook item on a named issue ends as `cancelled` with `joinedInto` the adopted item (written straight to the row, as
+  `mergeWork` does: no cancel comment, no close).
+- **Already started** (starting, running, waiting, input, or queued with its start in flight) and no waiting item to adopt:
+  nothing is made or changed. The result is the running item with `existing: true` and a `note` ("Work item N already runs
+  <repo>#<n>: no second item was made. Steer its session instead.").
+- The other order (the dispatch first) needed nothing: the hook finds the item by its primary issue, or in the
+  `issue_refs` of a several-issue item, and adds none.
+- An empty or too long brief throws before anything is changed. The queue pass re-reads each item when its turn comes, so
+  an item adopted or folded while the pass waits on another start runs with its new brief, or not at all.
+- `mergeWork` and the Supervisor's own follow-up item (`handOffGaps`) pass `separate: true`.
+
 ## Queue as one run (`mergeWork(ids, opts)`, WS `work_merge`)
 
 `{ ids: [workIds], title?, remoteControl?, startNow? }` -> `{ work, joined: [ids] }`. Every id must be `held`, `queued`,
@@ -78,7 +106,7 @@ already carries the issue (primary or other), else null. One request when asked,
 
 ## WS shapes (`claude_desk_supervisor`, `claude_desk_session`)
 
-- `enqueue`: `{ title, prompt, cwd, account, model, effort, engine, topology, stages, issue?, issues?, remoteControl?, startNow? }` -> the status object (as before)
+- `enqueue`: `{ title, prompt, cwd, account, model, effort, engine, topology, stages, issue?, issues?, remoteControl?, startNow? }` -> the status object (as before; naming an issue the hook already carded reuses its item, see above)
 - `work_update`: `{ id, prompt?, remoteControl?, issues? }` -> the status object
 - `work_merge`: `{ ids, title?, remoteControl?, startNow? }` -> `{ work, joined }` (the list follows through the status push)
 - `issues_open`: `{ repo?, q? }` -> `{ repo, repos, issues }`

@@ -1383,6 +1383,321 @@ sup._test.setFetch(async (url, opts) => {
         assert.strictEqual(sup.getWork(mid).state, 'cancelled', 'the primary closing ends it, as today');
     });
 
+    // ------------------------------------------------------------ #1276: a dispatch / the wizard that names an issue the hook already carded
+    // makes no second item: the hook's Waiting item is adopted, a running one is answered for
+    const FQ = 'DreamScape/StaticForge';
+    const rowsOn = (n) => RAW().prepare('SELECT * FROM supervisor_work WHERE issue_repo = ? AND issue_number = ?').all(FQ, n);
+    const totalRows = () => RAW().prepare('SELECT COUNT(*) AS n FROM supervisor_work').get().n;
+    const rowOf = (id) => RAW().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(id);
+    // an issue filed on Yozora with the fleet label, pulled by the hook: its one item
+    const hookIn = async (n, extra) => {
+        putIssue(n, Object.assign({ external: true, title: `Hook issue ${n}`, body: `hook body ${n}` }, extra || {}));
+        const r = await sup.pullIssues(gr, { force: true });
+        assert.strictEqual(r.added, 1, `the hook carded #${n}: ${JSON.stringify(r)}`);
+        const rows = rowsOn(n);
+        assert.strictEqual(rows.length, 1, `one hook row on #${n}`);
+        return rows[0];
+    };
+    const with1276 = async (fn) => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart;
+        const realStart = launcher.start;
+        const starts = [];
+        let sid = 0;
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        launcher.start = async (g, o) => { starts.push(o); sid += 1; return { id: `eeeeeeee-1276-0000-0000-00000000${String(sid).padStart(4, '0')}`, state: 'connected', link: 'https://claude.ai/code/session_1276' }; };
+        settingsCfg.agentSupervisor = Object.assign(settingsCfg.agentSupervisor, { maxConcurrent: 10, autoStart: false });
+        try {
+            await sup.pullIssues(gr, { force: true }); // issues earlier tests left on Yozora are carded first: a test's own pull adds exactly its issue
+            await fn({ fleetMcp, starts });
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; settingsCfg.agentSupervisor.autoStart = false; }
+    };
+
+    await test('#1276 a: hook first, then dispatch: the issue\'s Waiting item is adopted (same id, one row), holding the dispatch\'s brief; the hook does not card it again', async () => {
+        await with1276(async () => {
+            const hook = await hookIn(2761);
+            assert.deepStrictEqual([hook.state, hook.source, hook.source_ref], ['held', 'yozora', `issue:${R(2761)}`]);
+            RAW().prepare('UPDATE supervisor_work SET check_json = ? WHERE id = ?').run('{"verdict":"stale"}', hook.id);
+            const before = totalRows();
+            const mark = yzCalls.length;
+            const w = sup.enqueue({ title: 'Dispatch A', prompt: 'dispatch brief a', source: 'director', issues: [R(2761)], model: 'sonnet', effort: 'medium', cwd: tmp, startNow: false }, { gr });
+            assert.strictEqual(w.id, hook.id, 'the same item');
+            assert.strictEqual(w.adopted, true);
+            assert.deepStrictEqual(w.joined, []);
+            assert.strictEqual(totalRows(), before, 'no second row');
+            assert.strictEqual(rowsOn(2761).length, 1);
+            const row = rowOf(hook.id);
+            assert.deepStrictEqual([row.title, row.prompt, row.source, row.source_ref, row.model, row.effort, row.cwd, row.state, row.start_now, row.message, row.check_json, row.created_at],
+                ['Dispatch A', 'dispatch brief a', 'director', null, 'sonnet', 'medium', tmp, 'held', 0, 'Waiting to be started', null, hook.created_at]);
+            assert.deepStrictEqual([row.issue_repo, row.issue_number, row.topology], [FQ, 2761, 'planner']);
+            const again = await sup.pullIssues(gr, { force: true });
+            assert.strictEqual(again.added, 0, JSON.stringify(again));
+            assert.strictEqual(rowsOn(2761).length, 1);
+            await settle(120);
+            const sent = yzCalls.slice(mark);
+            const said = sent.filter((c) => c.method === 'POST' && /issues\/2761\/comments$/.test(c.url));
+            assert.strictEqual(said.length, 1, JSON.stringify(said));
+            assert.strictEqual(said[0].body.body, `**Fleet:** Fleet item ${hook.id} took over the dispatched brief (the issue's waiting item was reused, no second item was made): dispatch brief a`);
+            assert.ok(!sent.some((c) => c.method === 'PATCH' && c.body && c.body.state === 'closed'), 'nothing closed');
+            assert.strictEqual(sent.filter((c) => /\/comments$/.test(c.url)).length, 1, 'no other comment');
+            // a brief over 1500 characters is cut in the comment, kept whole on the item
+            const h2 = await hookIn(2762);
+            const m2 = yzCalls.length;
+            sup.enqueue({ prompt: 'z'.repeat(1700), source: 'director', issues: [R(2762)] }, { gr });
+            await settle(120);
+            const cut = yzCalls.slice(m2).find((c) => /issues\/2762\/comments$/.test(c.url) && /took over/.test(c.body.body));
+            assert.ok(cut && cut.body.body.endsWith(`${'z'.repeat(1500)}...`) && !cut.body.body.includes('z'.repeat(1501)), 'cut at 1500 characters');
+            assert.strictEqual(sup.workPrompt(h2.id).length, 1700);
+            assert.strictEqual(rowOf(h2.id).title, 'Hook issue 2762', 'no title given: the row keeps its own');
+        });
+    });
+
+    await test('#1276 b: hook first, then dispatch with startNow: still one row, and it leaves Waiting (started with the dispatch\'s brief, not the issue text)', async () => {
+        await with1276(async ({ starts }) => {
+            const hook = await hookIn(2763);
+            const before = totalRows();
+            const w = sup.enqueue({ title: 'Dispatch B', prompt: 'dispatch brief b', source: 'director', issues: [R(2763)], model: 'sonnet', startNow: true }, { gr });
+            assert.deepStrictEqual([w.id, w.adopted], [hook.id, true]);
+            assert.strictEqual(totalRows(), before);
+            await waitFor(() => sup.getWork(hook.id).state === 'running', 'the adopted item starts');
+            assert.strictEqual(rowsOn(2763).length, 1);
+            const s = starts.find((o) => o.workId === hook.id);
+            assert.ok(s && s.prompt.startsWith('dispatch brief b') && !s.prompt.includes('hook body 2763'), s && s.prompt.slice(0, 80));
+            assert.strictEqual(s.title, 'Dispatch B');
+            assert.strictEqual((await sup.pullIssues(gr, { force: true })).added, 0);
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(hook.id);
+        });
+    });
+
+    await test('#1276 c: dispatch first, then the hook: the hook finds the item by its issue and adds none', async () => {
+        await with1276(async () => {
+            const w = sup.enqueue({ title: 'Dispatch C', prompt: 'dispatch brief c', source: 'director', issues: [R(2764)] }, { gr });
+            assert.ok(!w.adopted && !w.existing, 'nothing to take over: a new item as before');
+            putIssue(2764, { external: true, title: 'Hook issue 2764', body: 'hook body 2764' });
+            const r = await sup.pullIssues(gr, { force: true });
+            assert.strictEqual(r.added, 0, JSON.stringify(r));
+            assert.strictEqual(rowsOn(2764).length, 1);
+            assert.strictEqual(rowsOn(2764)[0].id, w.id);
+        });
+    });
+
+    await test('#1276 d: several issues in one dispatch, each carded by the hook: one adopted item carrying all (primary = first named), the others joined into it with no close and no cancel comment', async () => {
+        await with1276(async () => {
+            const a = await hookIn(2765);
+            const b = await hookIn(2766);
+            const c = await hookIn(2767);
+            const before = totalRows();
+            const mark = yzCalls.length;
+            // named in another order than carded: the first NAMED issue's item is the one adopted
+            const w = sup.enqueue({ title: 'Dispatch D', prompt: 'dispatch brief d', source: 'director', issues: [R(2766), R(2765), R(2767)] }, { gr });
+            assert.deepStrictEqual([w.id, w.adopted, w.joined], [b.id, true, [a.id, c.id]]);
+            assert.strictEqual(totalRows(), before);
+            assert.deepStrictEqual(w.issues.map((i) => [i.number, i.primary]), [[2766, true], [2765, false], [2767, false]]);
+            [a, c].forEach((x) => {
+                const g = sup.getWork(x.id);
+                assert.deepStrictEqual([g.state, g.joinedInto, g.message, g.startNow], ['cancelled', b.id, `Joined into item ${b.id} (one run)`, false]);
+                assert.ok(rowOf(x.id).ended_at, 'ended');
+            });
+            assert.strictEqual(sup.getWork(b.id).state, 'held');
+            assert.strictEqual(sup.workPrompt(b.id), 'dispatch brief d');
+            await settle(150);
+            const sent = yzCalls.slice(mark);
+            assert.ok(!sent.some((x) => x.method === 'PATCH'), 'no close');
+            assert.ok(!sent.some((x) => /\/comments$/.test(x.url) && /cancelled in Fleet/.test(x.body.body)), 'no cancel comment');
+            assert.strictEqual(sent.filter((x) => /\/comments$/.test(x.url)).length, 1, 'one comment: the take-over, on the primary');
+            assert.ok(/issues\/2766\/comments$/.test(sent.find((x) => /\/comments$/.test(x.url)).url));
+            assert.strictEqual((await sup.pullIssues(gr, { force: true })).added, 0, 'the hook does not card the carried issues again');
+            assert.strictEqual(totalRows(), before);
+            // the first named issue has no item: the earliest named issue that has one is adopted and takes the first as its primary
+            const e = await hookIn(2769);
+            putIssue(2768);
+            const w2 = sup.enqueue({ title: 'Dispatch D2', prompt: 'dispatch brief d2', source: 'director', issues: [R(2768), R(2769)] }, { gr });
+            assert.deepStrictEqual([w2.id, w2.adopted, w2.joined], [e.id, true, []]);
+            assert.deepStrictEqual(w2.issues.map((i) => [i.number, i.primary]), [[2768, true], [2769, false]]);
+            assert.strictEqual((await sup.pullIssues(gr, { force: true })).added, 0);
+        });
+    });
+
+    await test('#1276 e: the hook\'s item already runs: no second item and nothing changed; the answer says so', async () => {
+        await with1276(async () => {
+            const hook = await hookIn(2770);
+            const sess = 'eeeeeeee-1276-1111-0000-000000000001';
+            RAW().prepare("UPDATE supervisor_work SET state = 'running', session_id = ?, message = 'Running on Main' WHERE id = ?").run(sess, hook.id);
+            const frozen = rowOf(hook.id);
+            const before = totalRows();
+            const w = sup.enqueue({ title: 'Dispatch E', prompt: 'dispatch brief e', source: 'director', issues: [R(2770)], startNow: true }, { gr });
+            assert.deepStrictEqual([w.id, w.existing, w.adopted], [hook.id, true, undefined]);
+            assert.strictEqual(w.note, `Work item ${hook.id} already runs ${R(2770)}: no second item was made. Steer its session instead.`);
+            assert.strictEqual(totalRows(), before);
+            assert.deepStrictEqual(rowOf(hook.id), frozen, 'the running item is untouched');
+            assert.strictEqual(sup.workPrompt(hook.id), `Yozora issue ${R(2770)}: Hook issue 2770\nhttps://yozora.bluesteel.737.jp.net/${FQ}/issues/2770\n\nhook body 2770`);
+            // every started state answers the same; with a waiting item on another named issue that one is adopted (the running one is left alone)
+            ['waiting', 'input', 'starting'].forEach((st) => {
+                RAW().prepare('UPDATE supervisor_work SET state = ? WHERE id = ?').run(st, hook.id);
+                assert.deepStrictEqual([sup.enqueue({ prompt: 'again', source: 'director', issues: [R(2770)] }, { gr }).existing, totalRows()], [true, before], st);
+            });
+            const other = await hookIn(2771);
+            const mix = sup.enqueue({ prompt: 'dispatch brief e2', source: 'director', issues: [R(2770), R(2771)] }, { gr });
+            assert.deepStrictEqual([mix.id, mix.adopted], [other.id, true]);
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id IN (?, ?)").run(hook.id, other.id);
+        });
+    });
+
+    await test('#1276 f: a plain new issue still gets exactly one Waiting item with the hook\'s brief', async () => {
+        await with1276(async () => {
+            const before = totalRows();
+            const row = await hookIn(2772, { title: 'Plain 2772', body: 'plain body' });
+            assert.strictEqual(totalRows(), before + 1);
+            assert.deepStrictEqual([row.state, row.source, row.source_ref, row.title, row.start_now, row.message, row.issue_id], ['held', 'yozora', `issue:${R(2772)}`, 'Plain 2772', 0, 'Waiting to be started', 1]);
+            assert.strictEqual(row.prompt, `Yozora issue ${R(2772)}: Plain 2772\nhttps://yozora.bluesteel.737.jp.net/${FQ}/issues/2772\n\nplain body`);
+            assert.strictEqual((await sup.pullIssues(gr, { force: true })).added, 0);
+            assert.strictEqual(totalRows(), before + 1);
+        });
+    });
+
+    await test('#1276 g: everything else behaves as before: deliberate duplicates, separate, other sources, parts, finished hook items', async () => {
+        await with1276(async () => {
+            // two items that are not the hook's on one issue are still two items
+            const p = sup.enqueue({ title: 'P', prompt: 'p', issue: R(2773) }, { gr });
+            const q = sup.enqueue({ title: 'Q', prompt: 'q', issue: R(2773), source: 'director' }, { gr });
+            assert.ok(p.id !== q.id && !p.adopted && !q.adopted && !q.existing);
+            assert.strictEqual(rowsOn(2773).length, 2);
+            // separate: true beside a hook item
+            const h = await hookIn(2774);
+            const s = sup.enqueue({ title: 'S', prompt: 's', issues: [R(2774)], source: 'director', separate: true }, { gr });
+            assert.ok(s.id !== h.id && !s.adopted);
+            assert.strictEqual(rowsOn(2774).length, 2);
+            assert.strictEqual(rowOf(h.id).prompt, h.prompt, 'the hook item is as it was');
+            // a source yozora item that names the issue, and a part (parentId), are never taken for an adoption
+            const h2 = await hookIn(2775);
+            const y = sup.enqueue({ title: 'Y', prompt: 'y', issues: [R(2775)], source: 'yozora', sourceRef: 'maint-error:1276-g' }, { gr });
+            assert.ok(y.id !== h2.id && !y.adopted && !y.existing);
+            const part = sup.enqueue({ title: 'Part', prompt: 'part', issues: [R(2775)], source: 'fleet', parentId: p.id }, { gr });
+            assert.ok(part.id !== h2.id && !part.adopted && !part.existing && part.parentId === p.id);
+            assert.strictEqual(rowsOn(2775).length, 3);
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id IN (?, ?)").run(part.id, y.id);
+            // a finished hook item (done / failed / cancelled) is not adopted: a new item is made
+            for (const [n, st] of [[2776, 'done'], [2777, 'failed'], [2778, 'cancelled']]) {
+                const hk = await hookIn(n);
+                RAW().prepare('UPDATE supervisor_work SET state = ? WHERE id = ?').run(st, hk.id);
+                const nw = sup.enqueue({ title: `New ${n}`, prompt: `new ${n}`, issues: [R(n)], source: 'director' }, { gr });
+                assert.ok(nw.id !== hk.id && !nw.adopted && !nw.existing, st);
+                assert.strictEqual(rowOf(hk.id).state, st);
+                assert.strictEqual(rowOf(hk.id).prompt, hk.prompt);
+                assert.strictEqual(rowsOn(n).length, 2, st);
+            }
+            // a hook item that is a planned run (groups) or was joined into another is not a candidate either
+            const hj = await hookIn(2779);
+            RAW().prepare("UPDATE supervisor_work SET topology = 'groups' WHERE id = ?").run(hj.id);
+            assert.ok(!sup.enqueue({ prompt: 'groups', issues: [R(2779)], source: 'director' }, { gr }).adopted);
+            const hm = await hookIn(2790);
+            RAW().prepare('UPDATE supervisor_work SET joined_into = ? WHERE id = ?').run(hj.id, hm.id);
+            const nm = sup.enqueue({ prompt: 'joined', issues: [R(2790)], source: 'director' }, { gr });
+            assert.ok(nm.id !== hm.id && !nm.adopted && !nm.existing);
+            // an item of another source on the issue (the hook never carded it)
+            const o = sup.enqueue({ title: 'O', prompt: 'o', issue: R(2780), source: 'fleet' }, { gr });
+            const o2 = sup.enqueue({ title: 'O2', prompt: 'o2', issues: [R(2780)], source: 'director' }, { gr });
+            assert.ok(o2.id !== o.id && !o2.adopted && !o2.existing);
+        });
+    });
+
+    await test('#1276 h: an empty or too long brief naming a carded issue throws before anything is changed', async () => {
+        await with1276(async () => {
+            const hook = await hookIn(2781);
+            const frozen = rowOf(hook.id);
+            const before = totalRows();
+            const mark = yzCalls.length;
+            assert.throws(() => sup.enqueue({ title: 'T', prompt: '   ', issues: [R(2781)], source: 'director' }, { gr }), /needs a prompt/);
+            assert.throws(() => sup.enqueue({ title: 'T', prompt: 'x'.repeat(60001), issues: [R(2781)], source: 'director' }, { gr }), /too long/);
+            assert.deepStrictEqual(rowOf(hook.id), frozen);
+            assert.strictEqual(totalRows(), before);
+            await settle(80);
+            assert.strictEqual(yzCalls.length, mark, 'nothing sent to Yozora');
+        });
+    });
+
+    await test('#1276 i: mergeWork over a hook item and a director item still makes one new run and ends both as joined (its picks are never adopted)', async () => {
+        await with1276(async ({ fleetMcp }) => {
+            fleetMcp.pickForStart = async () => { throw new Error('no account in this test'); };
+            const hook = await hookIn(2782);
+            const dir = sup.enqueue({ title: 'Dir', prompt: 'dir brief', issues: [R(2783)], source: 'director' }, { gr });
+            const mark = yzCalls.length;
+            const r = sup.mergeWork([hook.id, dir.id], { gr });
+            const nw = r.work;
+            assert.ok(![hook.id, dir.id].includes(nw.id) && !nw.adopted && !nw.existing, JSON.stringify(nw));
+            assert.deepStrictEqual(r.joined, [hook.id, dir.id]);
+            assert.deepStrictEqual(nw.issues.map((i) => i.number), [2782, 2783]);
+            [hook, dir].forEach((x) => { const g = sup.getWork(x.id); assert.deepStrictEqual([g.state, g.joinedInto, g.message], ['cancelled', nw.id, `Joined into item ${nw.id} (one run)`]); });
+            await settle(120);
+            const sent = yzCalls.slice(mark);
+            assert.ok(!sent.some((x) => x.method === 'PATCH'), 'no close');
+            assert.ok(!sent.some((x) => /\/comments$/.test(x.url) && /cancelled in Fleet|took over/.test(x.body.body)), 'no cancel or take-over comment');
+            assert.strictEqual((await sup.pullIssues(gr, { force: true })).added, 0);
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(nw.id);
+        });
+    });
+
+    await test('#1276 j: a queued hook item whose start is in flight (its account is being picked) is not taken over: the answer says it runs, and it starts with its own brief', async () => {
+        await with1276(async ({ fleetMcp, starts }) => {
+            let release = null;
+            fleetMcp.pickForStart = () => new Promise((res) => { release = () => res({ index: 0, name: 'Main', settings: {} }); });
+            const hook = await hookIn(2784, { now: true });
+            await waitFor(() => release, 'the pump is picking an account');
+            assert.strictEqual(sup.getWork(hook.id).state, 'queued', 'still queued in the row while the account is picked');
+            assert.ok(sup._test.startsInFlight.has(hook.id), 'but its start is in flight');
+            const before = totalRows();
+            const w = sup.enqueue({ prompt: 'dispatch brief j', source: 'director', issues: [R(2784)] }, { gr });
+            assert.deepStrictEqual([w.id, w.existing, w.adopted], [hook.id, true, undefined]);
+            assert.strictEqual(totalRows(), before);
+            assert.ok(sup.workPrompt(hook.id).includes('hook body 2784'), 'its brief is as it was');
+            release();
+            await waitFor(() => sup.getWork(hook.id).state === 'running', 'it starts');
+            assert.ok(starts.find((o) => o.workId === hook.id).prompt.includes('hook body 2784'));
+            assert.ok(!sup._test.startsInFlight.has(hook.id), 'nothing left in flight');
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(hook.id);
+        });
+    });
+
+    await test('#1276 k: an item in the pump\'s snapshot that is taken over or folded before its turn starts with the new brief, a folded one never starts; a failed pick leaves nothing in flight', async () => {
+        await with1276(async ({ fleetMcp, starts }) => {
+            // park every other queued item so this pass sees only these
+            const made = [];
+            const parked = RAW().prepare("SELECT id FROM supervisor_work WHERE state = 'queued'").all().map((x) => x.id);
+            RAW().prepare("UPDATE supervisor_work SET state = 'held' WHERE state = 'queued'").run();
+            try {
+                fleetMcp.pickForStart = async () => { throw new Error('no account yet'); };
+                const x = sup.enqueue({ title: 'X', prompt: 'x brief 1276', startNow: true }, { gr });
+                const y = await hookIn(2785, { now: true });
+                const z = await hookIn(2786, { now: true });
+                made.push(x.id, y.id, z.id);
+                await settle(60);
+                assert.deepStrictEqual([x.id, y.id, z.id].map((i) => sup.getWork(i).state), ['queued', 'queued', 'queued']);
+                assert.ok([x.id, y.id, z.id].every((i) => !sup._test.startsInFlight.has(i)), 'a pick that failed leaves nothing in flight');
+                const picks = [];
+                fleetMcp.pickForStart = () => new Promise((res) => { picks.push(() => res({ index: 0, name: 'Main', settings: {} })); });
+                const pass = sup.pumpWork(gr);
+                await waitFor(() => picks.length === 1, 'the pass picks an account for the first item');
+                assert.ok(sup._test.startsInFlight.has(x.id) && !sup._test.startsInFlight.has(y.id) && !sup._test.startsInFlight.has(z.id));
+                // y and z are in the pass's snapshot, not reached yet: a dispatch takes y over and folds z into it
+                const w = sup.enqueue({ title: 'Dispatch K', prompt: 'dispatch brief k', source: 'director', issues: [R(2785), R(2786)], startNow: true, model: 'sonnet' }, { gr });
+                assert.deepStrictEqual([w.id, w.adopted, w.joined], [y.id, true, [z.id]]);
+                fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+                picks[0]();
+                await pass;
+                await waitFor(() => sup.getWork(y.id).state === 'running', 'the adopted item starts');
+                assert.deepStrictEqual(starts.map((o) => o.workId).sort(), [x.id, y.id].sort(), 'x and the adopted y started, the folded z never');
+                const sy = starts.find((o) => o.workId === y.id);
+                assert.ok(sy.prompt.startsWith('dispatch brief k') && !sy.prompt.includes(`Yozora issue ${R(2785)}: Hook issue 2785`), sy.prompt.slice(0, 60));
+                assert.deepStrictEqual([sy.title, sy.model], ['Dispatch K', 'sonnet']);
+                assert.strictEqual(sup.getWork(z.id).state, 'cancelled');
+                assert.strictEqual(sup._test.startsInFlight.size, 0);
+            } finally {
+                made.forEach((i) => RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(i));
+                parked.forEach((i) => RAW().prepare("UPDATE supervisor_work SET state = 'queued' WHERE id = ? AND state = 'held'").run(i));
+            }
+        });
+    });
+
     await test('issues_open: open issues of a watched repo newest first with the item carrying each; a title filter; an unwatched repo is refused', async () => {
         [1501, 1502, 1503].forEach((i) => putIssue(i, { listed: true }));
         const carrier = sup.enqueue({ title: 'Carries 1502', prompt: 'c', issue: R(1502) });

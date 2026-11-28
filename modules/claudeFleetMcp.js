@@ -53,7 +53,7 @@ const TOOLS = [
     tool('claude_fleet_status', 'Every Claude account: plan usage (current session / 5-hour and weekly percent used, resets), Remote Control (connected / stopped / error; own folder or the host\'s login), the sessions running on it (busy / idle, title, folder, link), and the coordination picture (agents, claims, open build gates). Read this before claude_dispatch.', {
         refresh: { type: 'boolean', description: 'Read usage now instead of the cached read (at most every 20 s)' }
     }),
-    tool('claude_dispatch', 'Hand work to the Supervisor: it becomes a work item that starts as a supervised Fleet session (Waiting until started; with startNow it starts when there is a slot and an account with room) on an account with a model and effort, in a folder, with a first prompt. The Supervisor checks each of its turns against the request. It runs in a Fleet terminal (steerable from Fleet) WITHOUT Remote Control unless you pass remoteControl: true (then Yukimi also sees it on claude.ai/code and can take it over from the phone); it always has the agent-coord MCP (claims, busy locks, build gates). Several related Yozora issues can be one run: pass them all in issues. Answers its session id, account and link. Give the prompt the whole task: the Yozora issue, the files, the acceptance check, and that it must coord_claim before editing and coord_build_request before any build.', {
+    tool('claude_dispatch', 'Hand work to the Supervisor: it becomes a work item that starts as a supervised Fleet session (Waiting until started; with startNow it starts when there is a slot and an account with room) on an account with a model and effort, in a folder, with a first prompt. The Supervisor checks each of its turns against the request. It runs in a Fleet terminal (steerable from Fleet) WITHOUT Remote Control unless you pass remoteControl: true (then Yukimi also sees it on claude.ai/code and can take it over from the phone); it always has the agent-coord MCP (claims, busy locks, build gates). Several related Yozora issues can be one run: pass them all in issues. Always name the issue in issues when the work has one: a Waiting item Fleet already made for that issue is then taken over with your brief (adopted: true) instead of a second item being added, and when that item already runs nothing is added (existing: true: steer its session with claude_session_send). Answers its session id, account and link. Give the prompt the whole task: the Yozora issue, the files, the acceptance check, and that it must coord_claim before editing and coord_build_request before any build.', {
         prompt: str('The task, complete (it starts with nothing else)'),
         account: str('Account name or index from claude_fleet_status, or "auto" (default): the account with the most headroom'),
         model: str('Model alias (sonnet, opus, haiku, fable) or a full model id. Default sonnet (subagents-sonnet rule): pick another only for a named reason (undecided design, a bug Sonnet already failed on, a security review, Yukimi asked) and say it in modelReason. A planner (topology planner) is sized by the Supervisor when its stages are left unset: opus / high, opus / xhigh for large requests, fable / xhigh for very large or hard ones'),
@@ -403,16 +403,18 @@ async function dispatch(gr, name, input) {
         // Director requests are Supervisor work (Yukimi, Nov 24 2026): queued and started as a supervised Fleet
         // session (steerable from Fleet), now when there is a slot and an account with room
         const sup = require('./agentSupervisor');
-        let w = sup.enqueue({
+        // #1276: naming an issue the hook already carded takes that item over (adopted) or, when it already runs, answers it (existing)
+        const first = sup.enqueue({
             title: input.title, prompt, cwd, account: input.account && String(input.account).toLowerCase() !== 'auto' ? acc.index : null,
             model: input.engine && input.engine !== 'claude' ? (input.model || undefined) : model, engine: input.engine, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, startNow: input.startNow === true, source: 'director',
             remoteControl: input.remoteControl === true, issues: input.issues, host: input.host, gitIdentity: input.gitIdentity
         }, { gr });
         await sup.pumpWork(gr);
-        w = sup.getWork(w.id);
+        const w = sup.getWork(first.id);
         return {
             work: w.id, state: w.state, session: w.sessionId || null, account: w.account || acc.name, model, effort: w.effort || null,
             link: w.link || '', message: w.message, remoteControl: !!w.remoteControl, issues: w.issues && w.issues.length ? w.issues.map((i) => `${i.repo}#${i.number}`) : undefined,
+            adopted: first.adopted === true ? true : undefined, existing: first.existing === true ? true : undefined, note: first.existing ? first.note : (first.adopted ? `The issue's waiting work item ${first.id} was taken over with this brief: no second item was made` : undefined),
             modelReason: input.modelReason ? String(input.modelReason).slice(0, 300) : undefined,
             usageBefore: acc.usage ? acc.usage.limits : []
         };

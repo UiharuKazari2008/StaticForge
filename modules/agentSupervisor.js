@@ -1320,7 +1320,8 @@ function handOffGaps(rv) {
         title: `Finish work item ${w.id}: ${String(w.title || '').slice(0, 80)}`,
         prompt: `Work item ${w.id} ("${String(w.title || '').slice(0, 200)}") is built but the Supervisor still finds these open after two rounds of notes:\n${gaps}\n\nIts brief, for context:\n${String(w.prompt || '').slice(0, 6000)}\n\nClose each gap with evidence (tests run, screenshots read, numbers measured). Decisions are yours or the Supervisor's, never Yukimi's. Commit, land on origin/main, and report on the issue.`,
         startNow: true, source: 'agent', sourceRef: `supervisor:gaps:${w.id}`, cwd: w.cwd || undefined,
-        issue: w.issue_repo && w.issue_number ? `${w.issue_repo}#${w.issue_number}` : undefined
+        issue: w.issue_repo && w.issue_number ? `${w.issue_repo}#${w.issue_number}` : undefined,
+        separate: true // a follow-up beside the item that still runs on that issue (#1276: never taken for the hook's item)
     }, {});
     setWork(w.id, { state: 'done', ended_at: Date.now(), message: `Remaining gaps handed to work item ${kid.id}` });
     commentIssue(w, `**Fleet / Supervisor:** after two rounds of notes these were still open, so work item ${kid.id} was started for them:\n${(rv.missed || []).map((m) => `- ${m.item}`).join('\n')}`);
@@ -1716,32 +1717,118 @@ const NO_MISTAKES = 'Make no mistakes.';
 const NO_MISTAKES_RULE = `End every brief you give a background agent or a part with the line "${NO_MISTAKES}"`;
 const SUPERVISED_NOTE = 'On Yozora you are Yozora (director.yozora), not claude: every Yozora API call uses the token in the file named by $YOZORA_TOKEN_FILE, and git pushes to Yozora with a plain `git push` (this session\'s git already signs in as director.yozora); never use ~/.secrets/yozora-claude.token or the claude credential helper from CLAUDE.md. You are a supervised Fleet session: claim files with agent-coord before editing (coord_claim), commit your own work at the end of every turn, open a build gate before any build / restart (a server change whose files are all reloadable modules goes live with `bash scripts/reload-server-module.sh <file...> --why "..."` / agent-coord server_reload_module instead of a restart: no phone drops, only that file\'s editors are asked; exit 50 names a file that still needs the restart), and before you say a multi-part request is done call coord_supervisor_check and address what it finds. Work you find that should be done by another session: coord_request_work (startNow when it should start now). Before testing on a shared device (A53, Fold, Ruiko\'s Chrome, the headless test browser) take it with coord_device_request and release it with coord_device_release when done. Notification discipline (rule notification-discipline.mdc, docs/design/notification-discipline.md): any notice, dialog, tray balloon, status icon behaviour or sound you add or change is reviewed against N1-N11 before it lands - a notice is a call to action or data the user asked for, has a click destination and a switch, carries a registered source id (`// notice: <id>`, scripts/notice-sources.json / notice-sources.d), never sounds without a user action, never tells her what she just did, and `node scripts/check-notifications.js` passes (its counts only go down); say in your report which line each one satisfies, and expect the Supervisor to call out bullshit / no action / no switch / duplicate / sound / stack / over the top / announces itself by file:line.';
 
-/** Adds a work item and moves the queue. item: { title, prompt, cwd?, account?, model?, effort?, startNow?, source?, sourceRef?, remoteControl? (default false: a new session starts without Remote Control), issue? / issues? (one or several: the first is the primary) } */
-function enqueue(item, opts = {}) {
+/**
+ * What a caller's item says, validated and cleaned: the one place enqueue (a new row) and an adopted hook item (#1276, the same
+ * fields written onto an existing row) read it from, so the two cannot drift. Throws before anything is written.
+ */
+function itemFields(item) {
     const prompt = String(item.prompt || '').trim();
     if (!prompt) throw new Error('A work item needs a prompt');
     if (prompt.length > 60000) throw new Error('That request is too long (60,000 characters at most): put the detail in a file and point to it');
     const src = ['fleet', 'plaud', 'director', 'agent', 'yozora'].includes(item.source) ? item.source : 'fleet';
+    // new items wait for Yukimi to pick them (held) unless they start now or are a part of a split item
+    const held = !item.startNow && !item.parentId && item.hold !== false;
+    return {
+        prompt, src,
+        title: String(item.title || prompt.split('\n')[0]).replace(/\s+/g, ' ').trim().slice(0, 120) || 'Work',
+        titleGiven: !!String(item.title || '').trim(),
+        engine: item.engine && item.engine !== 'claude' ? String(item.engine).slice(0, 60) : 'claude',
+        topology: TOPOLOGIES.includes(item.topology) ? item.topology : 'planner',
+        stages: JSON.stringify(cleanStages(item.stages)),
+        cwd: item.cwd || null,
+        account: item.account !== undefined && item.account !== null ? String(item.account) : null,
+        model: item.model || null,
+        effort: item.effort || null,
+        sourceRef: item.sourceRef || null,
+        remoteControl: item.remoteControl === true ? 1 : 0,
+        host: item.host === 'misaka' || item.host === 'dreamscape' ? item.host : null,
+        gitIdentity: item.gitIdentity === 'claude' ? 'claude' : null,
+        startNow: item.startNow ? 1 : 0,
+        state: held ? 'held' : 'queued',
+        message: held ? 'Waiting to be started' : 'Waiting for a slot'
+    };
+}
+
+/**
+ * The issue hook's items (source yozora, sourceRef issue:<repo>#<n>; not a part, a joined item or a planned run) whose PRIMARY
+ * issue is one of refs, in the order refs names them (then oldest first). Raw rows, any state that is still alive.
+ */
+function hookItemsFor(refs) {
+    const at = new Map(refs.map((x, n) => [issueKey(x), n]));
+    return db().prepare(`SELECT * FROM supervisor_work WHERE source = 'yozora' AND source_ref LIKE 'issue:%' AND parent_id IS NULL AND joined_into IS NULL
+        AND (topology IS NULL OR topology != 'groups') AND issue_repo IS NOT NULL AND issue_number IS NOT NULL
+        AND state IN ('held','queued','starting','running','waiting','input') ORDER BY id`).all()
+        .map((row) => ({ row, at: at.has(issueKey({ repo: row.issue_repo, number: row.issue_number })) ? at.get(issueKey({ repo: row.issue_repo, number: row.issue_number })) : -1 }))
+        .filter((h) => h.at >= 0)
+        .sort((a, b) => (a.at - b.at) || (a.row.id - b.row.id));
+}
+
+/**
+ * #1276: a caller that names an issue the hook already carded (pullIssues made a Waiting item of it) must not make a second item.
+ * Not started: the hook's item is ADOPTED (same id, created_at kept, every field the caller's) and any other waiting hook item on the
+ * named issues is folded into it as mergeWork folds its picks. Already started: nothing is made or changed, the running item is
+ * returned. Else null: enqueue goes on as it always did. One synchronous run (no await between the lookup and the writes): a
+ * pullIssues pass that awaits Yozora cannot interleave, and afterwards its `have` check finds the adopted row by its primary issue
+ * and its `carried` set covers the other refs, so the hook does not card them again.
+ */
+function adoptHookItem(item, f, refs, opts) {
+    if (!refs.length || f.src === 'yozora' || item.parentId || item.separate === true) return null;
+    const hits = hookItemsFor(refs);
+    // a queued row whose start is in flight (startsInFlight, set by pumpWork before its account is picked) has started
+    const waiting = hits.filter((h) => ['held', 'queued'].includes(h.row.state) && !h.row.session_id && !startsInFlight.has(h.row.id));
+    if (!waiting.length) {
+        const ran = hits.find((h) => ['starting', 'running', 'waiting', 'input'].includes(h.row.state) || (h.row.state === 'queued' && startsInFlight.has(h.row.id)));
+        if (!ran) return null;
+        return Object.assign(getWork(ran.row.id), { existing: true, note: `Work item ${ran.row.id} already runs ${issueKey({ repo: ran.row.issue_repo, number: ran.row.issue_number })}: no second item was made. Steer its session instead.` });
+    }
+    const keep = waiting[0].row;
+    const id = keep.id;
+    // the primary's Yozora id stays when the caller named the same issue without one
+    const named = refs.map((x, n) => (n === 0 && !x.id && keep.issue_repo === x.repo && keep.issue_number === x.number ? Object.assign({}, x, { id: keep.issue_id || null }) : x));
+    setWork(id, {
+        title: f.titleGiven ? f.title : keep.title, prompt: f.prompt, cwd: f.cwd, account: f.account, model: f.model, effort: f.effort, engine: f.engine, source: f.src,
+        source_ref: f.sourceRef, topology: f.topology, stages: f.stages, remote_control: f.remoteControl, host: f.host, git_identity: f.gitIdentity,
+        start_now: f.startNow, check_json: null, state: f.state, message: f.message
+    });
+    setIssues(id, named);
+    // the other waiting hook items end as mergeWork ends its picks: straight to the row, no Yozora cancel comment and no close
+    const joined = waiting.slice(1).map((h) => h.row.id);
+    const upd = db().prepare('UPDATE supervisor_work SET state = ?, ended_at = ?, joined_into = ?, message = ?, start_now = ? WHERE id = ?');
+    joined.forEach((j) => upd.run('cancelled', Date.now(), id, `Joined into item ${id} (one run)`, 0, j));
+    yz().comment(named[0].repo, named[0].number, `**Fleet:** Fleet item ${id} took over the dispatched brief (the issue's waiting item was reused, no second item was made): ${f.prompt.length > 1500 ? `${f.prompt.slice(0, 1500)}...` : f.prompt}`)
+        .catch((e) => noteIssue(id, `Brief comment failed: ${e.message}`));
+    try { require('./fleetDeps').detect(listWork({ limit: 300 }).filter((x) => ['held', 'queued', 'starting', 'running', 'waiting', 'input'].includes(x.state))); } catch (e) { console.warn(`[supervisor] deps: ${e.message}`); }
+    joined.forEach((j) => emit({ work: getWork(j) }));
+    emit({ work: getWork(id) });
+    pumpWork(opts.gr).catch((e) => console.warn(`[supervisor] queue: ${e.message}`));
+    return Object.assign(getWork(id), { adopted: true, joined });
+}
+
+/**
+ * Adds a work item and moves the queue. item: { title, prompt, cwd?, account?, model?, effort?, startNow?, source?, sourceRef?, remoteControl? (default false: a new session starts without Remote Control), issue? / issues? (one or several: the first is the primary), separate? }
+ * #1276: naming an issue the hook already carded (source yozora, not a part) makes no second item: the hook's waiting item is adopted
+ * (returned with adopted: true, joined: [ids folded in]) or, when it already runs, returned untouched (existing: true, note);
+ * separate: true (or a part, or source yozora) always makes its own item.
+ */
+function enqueue(item, opts = {}) {
+    const f = itemFields(item);
+    const { prompt, src } = f;
     if (item.sourceRef) {
         const dup = db().prepare("SELECT id FROM supervisor_work WHERE source_ref = ? AND state NOT IN ('failed','cancelled')").get(String(item.sourceRef));
         if (dup) return Object.assign(getWork(dup.id), { reused: true });
     }
-    const title = String(item.title || prompt.split('\n')[0]).replace(/\s+/g, ' ').trim().slice(0, 120) || 'Work';
-    const engine = item.engine && item.engine !== 'claude' ? String(item.engine).slice(0, 60) : 'claude';
-    const topology = TOPOLOGIES.includes(item.topology) ? item.topology : 'planner';
-    const stages = JSON.stringify(cleanStages(item.stages));
-    // new items wait for Yukimi to pick them (held) unless they start now or are a part of a split item
-    const held = !item.startNow && !item.parentId && item.hold !== false;
+    const refs = parseRefs(item.issue, item.issues);
+    const taken = adoptHookItem(item, f, refs, opts);
+    if (taken) return taken;
     const r = db().prepare(`INSERT INTO supervisor_work (title, prompt, cwd, account, model, effort, source, source_ref, state, start_now, created_at, message, engine)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, held ? 'held' : 'queued', item.startNow ? 1 : 0, Date.now(), held ? 'Waiting to be started' : 'Waiting for a slot', engine);
-    db().prepare('UPDATE supervisor_work SET topology = ?, stages = ?, parent_id = ?, remote_control = ?, host = ?, git_identity = ? WHERE id = ?').run(topology, stages, item.parentId || null, item.remoteControl === true ? 1 : 0, item.host === 'misaka' || item.host === 'dreamscape' ? item.host : null, item.gitIdentity === 'claude' ? 'claude' : null, r.lastInsertRowid);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(f.title, prompt, f.cwd, f.account, f.model, f.effort, src, f.sourceRef, f.state, f.startNow, Date.now(), f.message, f.engine);
+    db().prepare('UPDATE supervisor_work SET topology = ?, stages = ?, parent_id = ?, remote_control = ?, host = ?, git_identity = ? WHERE id = ?').run(f.topology, f.stages, item.parentId || null, f.remoteControl, f.host, f.gitIdentity, r.lastInsertRowid);
     if (item.issueFields && item.issueFields.repo && item.issueFields.number) {
         db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ? WHERE id = ?').run(item.issueFields.repo, item.issueFields.number, item.issueFields.id || null, r.lastInsertRowid);
     }
     const w = getWork(r.lastInsertRowid);
     // its Yozora issue(s): the ones it names (item.issue / item.issues: "owner/repo#N", URLs, several in one string or a list;
     // the first is the primary, the rest ride along in the same run), else one made in the background
-    const refs = parseRefs(item.issue, item.issues);
     if (refs.length) setIssues(w.id, refs, { rollback: refs.length === 1 });
     else if (item.issue) {
         yz().linkIssue(item.issue).then((iss) => {
@@ -2150,6 +2237,11 @@ function pumpWork(gr) {
         let queued = db().prepare("SELECT * FROM supervisor_work WHERE state = 'queued'").all();
         try { queued = require('./fleetDeps').orderQueued(queued); } catch (e) { console.warn(`[supervisor] deps: ${e.message}`); queued.sort((a, b) => (b.start_now - a.start_now) || (a.id - b.id)); }
         for (const w of queued) {
+            // #1276: `queued` is a snapshot and this loop awaits (account picks, issue fetches, other starts): an item changed since
+            // (taken over by a dispatch that named its issue, folded into another, held, cancelled) is read again, one no longer queued is left alone
+            const fresh = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(w.id);
+            if (!fresh || fresh.state !== 'queued') continue;
+            Object.assign(w, fresh);
             if (w.blocked && w.blocked.length) {
                 if (w.message !== w.blockedReason) setWork(w.id, { message: w.blockedReason });
                 continue;
@@ -2163,6 +2255,8 @@ function pumpWork(gr) {
             const forced = !!w.start_now;
             if (!set.autoStart && !forced) continue;
             if (!forced && activeCount() >= set.maxConcurrent) { setWork(w.id, { message: `Waiting for a slot (${set.maxConcurrent} supervised sessions at once)` }); continue; }
+            // #1276: its start is in flight from here (not only once it is 'starting'): enqueue must not take over a row whose brief this pass already holds
+            startsInFlight.add(w.id);
             let pick;
             try {
                 try { pick = await require('./claudeFleetMcp').pickForStart(g, w.account || 'auto', { admit: true }); } catch (e) {
@@ -2170,6 +2264,7 @@ function pumpWork(gr) {
                     if (w.account && w.account !== 'auto' && /Login expired/.test(e.message)) pick = await require('./claudeFleetMcp').pickForStart(g, 'auto', { admit: true }); else throw e;
                 }
             } catch (e) {
+                startsInFlight.delete(w.id);
                 if (loginTried.has(w.id)) { loginTried.delete(w.id); setWork(w.id, { state: 'failed', ended_at: Date.now(), message: `No account with a working login (${e.message.slice(0, 160)})` }); settleParent(w.parent_id); emit({ work: getWork(w.id) }); continue; }
                 setWork(w.id, { message: `Waiting for an account with room: ${e.message.slice(0, 160)}` });
                 if (/^Waiting for memory/.test(e.message) && !swept) {
@@ -2180,7 +2275,7 @@ function pumpWork(gr) {
                 continue;
             }
             // one try per account per item: an account that already failed this item's start on its login is not tried again
-            if ((loginTried.get(w.id) || new Set()).has(pick.index)) { loginTried.delete(w.id); setWork(w.id, { state: 'failed', ended_at: Date.now(), message: 'No account with a working login' }); settleParent(w.parent_id); emit({ work: getWork(w.id) }); continue; }
+            if ((loginTried.get(w.id) || new Set()).has(pick.index)) { startsInFlight.delete(w.id); loginTried.delete(w.id); setWork(w.id, { state: 'failed', ended_at: Date.now(), message: 'No account with a working login' }); settleParent(w.parent_id); emit({ work: getWork(w.id) }); continue; }
             setWork(w.id, { state: 'starting', message: `Starting on ${pick.name}`, account: pick.name });
             emit({ work: getWork(w.id) });
             startsInFlight.add(w.id);
@@ -3023,7 +3118,8 @@ function mergeWork(ids, opts = {}) {
     let made;
     try { made = enqueue({
         title, prompt, cwd: first.cwd || undefined, account: first.account, model: first.model || undefined, effort: first.effort || undefined, engine: first.engine || undefined,
-        topology: first.topology || undefined, stages, issues, remoteControl: opts.remoteControl === true, startNow: opts.startNow !== false, source: 'fleet'
+        topology: first.topology || undefined, stages, issues, remoteControl: opts.remoteControl === true, startNow: opts.startNow !== false, source: 'fleet',
+        separate: true // the picks are the run's requests: a hook item nobody picked is not taken over here, and a run that already started is never answered for it (#1276)
     }, { gr: opts.gr }); } catch (e) {
         rows.forEach((r) => upd.run(r.state, r.ended_at || null, r.joined_into || null, r.message || '', r.start_now || 0, r.id));
         throw e;
