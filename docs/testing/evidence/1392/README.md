@@ -24,7 +24,7 @@ linked seconds earlier.
 | `kill-*`, `reinstall-*`, `replay-crash-*`, `run-table.md` | release 39: 5 of 5 display-off starts stalled (main 10-31 s), 0 of 7 with the display on |
 | `lane-r42/README.md` | the fix, release 42 on `aemu-fold-2`: the acceptance runs, and the locked early wakes that missed 5 s |
 | `lane-d/README.md` | the user paths the change touched: PIN unlock, soft keys, volume key, popup, bars off/on, rotation, DeX in part |
-| `a53/README.md` | the real phone |
+| `a53/README.md` | the real phone: one screen-off start, no 5 s wait on it |
 
 ## Acceptance on the lane (release 42; limit 5 s after the process start)
 
@@ -46,6 +46,15 @@ not possible (the PC never went quiet); it is part of the lock-screen work hande
 **The old 26.85 s case** (display on, after `kill -9`, #1371): the whole emulator guest had stopped (the samplers and
 `system_server` too). Five kills and two replays did not bring it back. That it was a stall of the whole guest is an
 inference.
+
+## The A53 (one real-phone run, release 44, which has the fix)
+
+Screen switched off, then one reinstall of the installed APK: first `MelatonBars` line +1.33 s, `holder token linked`
++2.83 s (over local ADB), first window look applied after 430 ms with 1 window, no slow-read line. **The 5 s wait did not
+happen on this phone.** Its screen never went fully off (it dozed: `DOZE` / `DOZE_SUSPEND`), unlike the lane's `OFF`; that
+this is why is an inference. So **the stall has not been shown on a real phone**, and whether a phone whose screen goes
+fully off meets it was not tested. The blocking call itself is Android's accessibility code, not something added by the
+emulator, and the app no longer waits for it on main.
 
 ## Step 4: the early hold without the main thread (review `../1371/review-9085c00.md`, S7) - not done, on purpose
 

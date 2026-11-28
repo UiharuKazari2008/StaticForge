@@ -1,0 +1,27 @@
+ip=192.168.100.233 serial=192.168.100.233:5555 adb=device hostPing=yes
+tlsPorts=40677 
+boot=1 uptime=3386.40s
+persistTcp= serviceTcp=5555
+adbWifiEnabled=1 wifiOn=1 stayOn=15
+keyguard=isKeyguardShowing=false screen=mWakefulness=Awake
+ AC powered: true; USB powered: false; status: 2; level: 46;
+vol_ring=11 vol_music=7
+wifiIp=(LAN address)
+19:00:39 installed: versionCode=3632992
+19:00:39 apk file sha256: 3443b06ba98db4d985ef4a13b12fb5efa23593742d1d0389d02d52451069f86a
+19:00:39 phone's base.apk sha256: 3443b06ba98db4d985ef4a13b12fb5efa23593742d1d0389d02d52451069f86a
+19:00:40 a11y services enabled: jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService 
+19:00:40 displays: 1 ; wakefulness mWakefulness=Awake
+19:00:40 old pids: 18119
+19:00:41 PIN verifies
+19:00:41 device time T0 1795824041.219
+19:00:53 after sleep: mWakefulness=Dozing mState=DOZE
+19:00:53 install -r (once), device time 1795824053.750
+Performing Streamed Install
+Success
+19:02:08 after the start: mWakefulness=Dozing ; new pids: 19389
+19:02:09 logcat lines: 11035
+19:02:09 unlock:
+unlock: unlocked (try 1)
+19:02:26 end: isKeyguardShowing=false ; mWakefulness=Awake ; versionCode=3632992
+19:02:29 done

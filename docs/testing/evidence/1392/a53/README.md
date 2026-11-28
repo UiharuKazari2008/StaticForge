@@ -1,45 +1,53 @@
-# #1392 step 2 on the A53: NOT MEASURED, the phone cannot be reached (Nov 27 2026)
+# #1392 step 2 on the A53: measured once; the 5 s wait did not happen on it
 
-Lease `a53` held by claude-974b3227 (coord lease 276, about 15:01 local), released after the attempt. Nothing was
-installed or changed on the phone: no command reached it. This is neither a pass nor a fail.
+Nov 27 2026, about 19:00 local (coord lease 303 on `a53`, build gate 352). Galaxy A53, Android 16 / SDK 36, one display
+(1080x2400), no Shizuku server, `MelatonBarService` bound. App: release 44 = versionCode 3632992, which has the fix
+(built from `7d8a6d8`, contains `7bfd4d9e`). #1405 had installed it earlier the same evening.
 
-`A53_AGENT=claude-974b3227 scripts/aemu-lane/a53/a53.sh status`, then `up` (the whole recovery ladder):
+**The start** (`measure.sh`, one run): screen switched off with `KEYCODE_SLEEP`, then **one** `adb install -r` of the APK
+already installed (same sha256 as the phone's `base.apk`), which replaces the process as an update does. The A53 gives no
+root, so there is no `kill -9` and no `debuggerd`.
 
-| step | result |
-| --- | --- |
-| status | `ip=192.168.100.236 serial=192.168.100.236:5555 adb=none hostPing=no`, no TLS port |
-| rung 1, adb over Wi-Fi at 192.168.100.236:5555 | none |
-| rung 3, ping, then the phone's own mDNS name `adb-R5CT71TSEMZ` | no answer; not on the LAN |
-| rung 4, Custodian over Bluetooth, `wifi_enable --device dev` | `LinkDown: phone 'Marine' not reachable ... Custodian service not found on A8:79:8D:F7:CC:69`, SDP query failed (WSA 10108) |
-| rung 5, Custodian ensure-adb and unlock over Bluetooth | the same `LinkDown` |
-| end | `up: FAILED, adb is none` (exit 1) |
+| from ActivityManager's `Start proc` | A53 |
+|---|---|
+| first `MelatonBars` line (`early hold at process start`) | +1.33 s |
+| first window look applied | +1.79 s; the app's own figure for it: **430 ms, 1 window** |
+| `holder token linked` (over local ADB) | **+2.83 s** |
+| `window read took` (logged above 1000 ms) | no line |
+| ANR or crash of the app | none |
 
-The ladder's line `screen unlocked over Bluetooth` is wrong here: the call before it failed with `LinkDown`. That
-false success in `a53.sh` is already reported by #1379 (with their Fleet item 249).
+Both acceptance times are inside 5 s. After the wake (+61.19 s) Melaton's lock cover was drawn by +61.43 s; after the
+unlock both app bars were there (`bars-after-unlock.jpg`: cropped to the two bars, the rest of the picture showed unread
+counts).
 
-Also tried: ping of the phone's other known address 192.168.100.240 (down), `adb mdns services` (no A53 entry).
-The one other device in `adb devices` is not the A53 and was not touched.
+## What this says, and what it does not
 
-**Why** (read from records by #1379, `../../1379/a53/README.md`; it cannot be confirmed without the phone): the last
-ActiveSync status at 09:25:49 reported battery 0, not charging, and ActiveSync disconnected at 09:27:00.
-`docs/testing/emulator-lane.md` names a flat battery as the one case no software covers (it needs the power button).
+- **The screen never went fully off.** The phone reported `Dozing`, and the display alternated between `DOZE` and
+  `DOZE_SUSPEND` from before the install until the wake (`start-log.txt`). On the emulator lane the displays were `OFF`.
+- The first window look had a window to report, so the condition for Android's wait (a display with **no window list**
+  for a new accessibility connection) evidently did not hold. That the doze state is why is **inferred**.
+- The release has the fix, so this run could not have shown a main-thread stall either way. What it measures is how long
+  the first read itself took on a real phone: at most 430 ms, so **no 5 s wait**.
+- **So the stall has not been shown on any real phone.** The blocking call is Android's own accessibility code, not
+  something the emulator's translation adds, and the app no longer waits for it on main wherever it occurs. Whether it
+  occurs on a phone whose screen goes fully off was **not** tested.
+- Not done: a run on a release without the fix on this phone (going back to one would need an uninstall, which would wipe
+  the app's data), a second run, a run with the always-on or doze behaviour changed. The Fold was not touched.
 
-## Other real-phone evidence looked for
+The server's stored fault reports (`data/fault-reports/`, read only, searched earlier that day) held none naming
+`getWindows`, `scanWindows` or `ensureWindowsAvailable`. A 10 s block of a background service raises no ANR by itself,
+so this says nothing either way.
 
-The server's stored fault reports (`data/fault-reports/`, read only) hold no report that names `getWindows`,
-`scanWindows` or `ensureWindowsAvailable`. A 10 s block of a background service raises no ANR by itself, so this says
-nothing either way. The Fold was not touched.
+## Files
 
-## What to run once the A53 is back
+- `start-log.txt`: cut from logcat (the app's bar lines, CaféReady's start, the lock cover, display, wake and keyguard
+  lines). The full log stayed outside the repository and was deleted.
+- `run.txt`: what `measure.sh` printed. The phone's MAC and Wi-Fi address lines and a battery history the script printed
+  by mistake are left out (the script's battery line was narrowed afterwards; that edit has not run on the phone).
 
-One display (1080x2400), no Shizuku: the holder goes through local ADB. Release with the #1392 fix, and first, if the
-phone still has an older release, one start of that one for the before figure.
+## The earlier attempt the same day
 
-1. Display off (`input keyevent KEYCODE_SLEEP`; `a53.sh unlock` brings it back).
-2. `adb install -r` of the SAME installed APK, once (it replaces the process as an update does; the A53 gives no root,
-   so there is no `kill -9`).
-3. From logcat, against ActivityManager's `Start proc`: the first `MelatonBars` line, `holder token linked`, any
-   `Choreographer: Skipped`, and (new builds) `window read took N ms` and `first window look applied after N ms`.
-   An older build with this fault shows a main-thread gap of about 5 s per read on this one-display phone (inferred
-   from the 5 s per display in Android 17's `ensureWindowsAvailableTimedLocked`; the A53 runs Android 16).
-4. Screen on, unlock: the bars are right.
+About 15:01 local (lease 276) the phone could not be reached: Wi-Fi adb, ping, its own mDNS name, and Custodian over
+Bluetooth all failed (`LinkDown: phone 'Marine' not reachable`). #1379 read that the battery was probably flat
+(`../../1379/a53/README.md`). `a53.sh up` also printed `screen unlocked over Bluetooth` after that failure; that false
+success is reported by #1379.

@@ -1,0 +1,61 @@
+# A53 (Android 16 / SDK 36, one display), release 44 = versionCode 3632992, Nov 27 2026. Offsets in seconds from ActivityManager's Start proc.
+# Cut from logcat: the app's own MelatonBars lines, CafeTasks' start, the lock cover's visibility, Choreographer, and the system's display state, wake and keyguard lines. Nothing else is kept.
+# Start proc: 1795824068.724
+    -9.87 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    -8.70 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    -8.13 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    -5.27 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+     0.60 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+     0.92 app    CafeTasks: tasks drive-alerts, radio-mode, car-presence, status-bar, hour-chime (server ...), engine supported
+     0.94 app    Choreographer: Skipped 77 frames!  The application may be doing too much work on its main thread.
+     1.33 app    MelatonBars: early hold at process start (#1371)
+     1.68 app    Choreographer: Skipped 59 frames!  The application may be doing too much work on its main thread.
+     1.74 app    MelatonBars: ime probe live: visible=false bottom=0
+     1.76 app    CafeTasks: engine started (9 files, from the server)
+     1.79 app    MelatonBars: first window look applied after 430 ms (1 windows)
+     1.79 app    MelatonBars: show: on=false fits=true status=false bar=false top=true ext=true tray=true give=false
+     1.95 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+     2.61 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+     2.83 app    MelatonBars: holder token linked (#1331), started over local ADB
+     2.83 cover  VRI[MelatonLock]@d193c27: Not drawing due to not visible. Reason=View.INVISIBLE
+     2.83 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+     2.94 app    MelatonBars: holder start answered over local ADB [shizuku: not usable; adb: ok]
+     3.55 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+     3.57 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+     4.12 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+     4.73 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    10.23 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    11.86 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    12.24 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    12.27 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    12.69 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    14.80 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    20.32 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    24.89 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    30.40 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    34.96 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    40.47 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    45.06 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    50.58 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    51.31 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    51.90 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    55.11 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    60.62 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> DOZE_SUSPEND displayId=0
+    61.16 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE_SUSPEND -> DOZE displayId=0
+    61.19 system PowerManagerService: Waking up from Dozing (uid=1000, reason=wake_key, details=android.policy:KEY(224):Virtual)...
+    61.20 system wm_set_keyguard_shown: [0,1,0,0,0,setKeyguardShown]
+    61.21 system DisplayManagerService: !@display_state requestDisplayStateInternal: DOZE -> ON displayId=0
+    61.37 cover  VRI[MelatonLock]@d193c27: Start draw after previous draw not visible
+    61.43 cover  VRI[MelatonLock]@d193c27: reportDrawFinished seqId=0
+    65.25 system KeyguardViewMediator: keyguardGoingAway requested for userId: 0
+    65.25 system KeyguardVisible: keyguardGoingAway true
+    65.26 system ActivityTaskManager: keyguardGoingAway d0, fl=0x4
+    65.26 system wm_set_keyguard_shown: [0,1,0,1,0,keyguardGoingAway]
+    65.28 system KeyguardViewMediator: keyguardGoingAway flags=0x4
+    65.44 app    MelatonBars: show: on=false fits=true status=false bar=false top=true ext=false tray=true give=false
+    65.45 system wm_set_keyguard_shown: [0,0,0,1,0,setKeyguardShown]
+    65.46 app    MelatonBars: home strip added
+    65.52 system KeyguardVisible: keyguardGoingAway false
+    65.53 cover  VRI[MelatonLock]@d193c27: Not drawing due to not visible. Reason=View.INVISIBLE
+    66.01 app    MelatonBars: show: on=true fits=true status=false bar=false top=true ext=false tray=false give=false
+    66.85 app    MelatonBars: show: on=false fits=true status=false bar=false top=true ext=false tray=false give=false

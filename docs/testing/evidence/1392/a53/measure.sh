@@ -1,7 +1,8 @@
 #!/bin/bash
 # StaticForge #1392: ONE display-off start of Dreamscape on the A53 (the agents' own phone; never the Fold).
-# The start: `adb install -r` of the APK that is already installed, once, with the display off - it replaces the process
-# as an update does (the A53 gives no root, so there is no kill -9). Never loops, never installs twice.
+# The start: `adb install -r` of the APK that is already installed, once, with the screen switched off (KEYCODE_SLEEP; the
+# A53 then dozes, DOZE / DOZE_SUSPEND, not OFF) - it replaces the process as an update does (the A53 gives no root, so
+# there is no kill -9). Never loops, never installs twice.
 # Needs the coord lease "a53" (a53.sh refuses without it). The PIN is read by a53.sh and here only to run
 # `locksettings verify` before the screen is locked; it is never printed.
 #   bash measure.sh <apk> <raw output dir outside the repo>
@@ -31,7 +32,7 @@ say "phone's base.apk sha256: $(a shell sha256sum "$BASE" | cut -c1-64)"
 say "a11y services enabled: $(a shell settings get secure enabled_accessibility_services | tr -d '\r' | grep -o "$PKG[^:]*" | tr '\n' ' ')"
 say "displays: $(a shell dumpsys display | grep -cE '^  Display [0-9]+:') ; wakefulness $(a shell dumpsys power | grep -m1 -o 'mWakefulness=[A-Za-z]*')"
 OLD=$(a shell pidof $PKG | tr -d '\r'); say "old pids: $OLD"
-a shell dumpsys battery | grep -E 'level|powered' | tr -d '\r' | tr '\n' ' '; echo
+a shell dumpsys battery | grep -E '^  (level|AC powered|USB powered):' | tr -d '\r' | tr '\n' ' '; echo
 
 # the PIN must be right before the screen is locked (a53.sh unlock brings it back)
 PIN=$(tr -d '[:space:]' < "$HOME/.secrets/ruiko-windows-pin.token")
