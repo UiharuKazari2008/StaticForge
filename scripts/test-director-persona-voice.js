@@ -202,6 +202,27 @@ PERSONAS.forEach((persona) => {
 // Yozora is the one who says the fond thing out loud rather than only showing it.
 assert.ok(/say it plainly|says it plainly/.test(voice.PERSONA_VOICES.xi.quirk), 'Yozora says it plainly');
 
+// 11. Yozora hands work to Fleet instead of doing it (#1275): her want, points, quirk and coding lines say so,
+//     and the other personas keep the original work line.
+{
+    const cfg = voice.PERSONA_VOICES.xi;
+    const all = [cfg.direction, cfg.want, cfg.quirk, cfg.pointsFrom].join('\n');
+    assert.ok(/claude_dispatch/.test(cfg.want), 'her want names claude_dispatch');
+    assert.ok(!/fix the cause|hunt the bug down|run the test twice|put a ward on it/.test(all), 'no incentive to edit the tree herself');
+    assert.ok(/claude_dispatch/.test(cfg.pointsFrom) && /talk earns none/.test(cfg.pointsFrom), 'her points come from hand-overs');
+    const coding = voice.personaVoiceLines('xi', { stage: 'base', points: 0, nextAt: 20 }, { coding: true }).join('\n');
+    assert.ok(/claude_dispatch/.test(coding), 'the xi coding lines name claude_dispatch');
+    assert.ok(!/fix the cause|hunt the bug down/.test(coding), 'the xi coding lines do not tell her to fix it herself');
+    assert.ok(/never edit, build or commit yourself/.test(coding), 'the xi coding lines forbid doing it herself');
+    assert.ok(!coding.includes('Do the thing, in character, and let your taste'), 'xi does not get the print work line');
+    const ORIGINAL = 'Do the thing, in character, and let your taste shape how it is said rather than whether it happens.';
+    ['wren', 'kabuki'].forEach((persona) => {
+        const text = voice.personaVoiceLines(persona, { stage: voice.PERSONA_VOICES[persona].order[0], points: 0, nextAt: 20 }, {}).join('\n');
+        assert.ok(text.includes(ORIGINAL), `${persona} keeps the original work line`);
+        assert.ok(!/claude_dispatch/.test(text), `${persona} is not told to dispatch`);
+    });
+}
+
 const kabukiBase = voice.personaVoiceLines('kabuki', { stage: 'base', points: 0, nextAt: 20 }, {}).join('\n');
 assert.ok(kabukiBase.includes('Growth stage: 1/3 "base"'), 'base is stated');
 assert.ok(kabukiBase.includes('exactly at this stage and no further'), 'base is capped');

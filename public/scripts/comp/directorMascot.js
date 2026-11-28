@@ -49,6 +49,12 @@ function directorMascotCardPoints(ratio) {
 // hard and correct bugs). A turn that changed files or took real digging earns 1; one that also
 // corrected a bug, verified its change (tests, a check, a lint run) or was a large change earns 2.
 // Talk earns nothing, and nothing is ever taken away.
+// #1275 (Yukimi 26.11.2026: "the director keeps trying to do work directly instead of handing it to
+// Fleet"): she no longer edits the tree, she hands the work to the Supervisor, so a hand-over pays too.
+// A turn with a tool row named claude_dispatch, fleet_work_update, fleet_work_start or claude_session_send
+// (any mcp__<server>__ prefix stripped) earns at least 1; 2 when that row (or her reply) names a file and an
+// acceptance / verify word, or the asked text has a bug word (a bug she diagnosed and handed over). It is
+// combined with the edit-based result by max(), so turns that earned before still earn exactly the same.
 const DIRECTOR_MASCOT_EDIT_TOOL = /^(edit|write|multiedit|notebookedit|str_?replace\w*|search_replace|apply_patch|edit_file|create_file|delete_file)$/i;
 const DIRECTOR_MASCOT_BUG_WORD = /\b(fix(ed|es|ing)?|bug|broken|breaks?|crash(es|ed)?|regression|error|wrong|fails?|failing|not working|doesn'?t work|corrected?)\b/i;
 const DIRECTOR_MASCOT_VERIFY_WORD = /\b(test|tests|spec|lint|typecheck|tsc|--check|pytest|jest|verify)\b/i;
@@ -57,11 +63,25 @@ function directorMascotWorkPoints(message, asked) {
     const rows = (message && (message.trace || (message.data && message.data.trace))) || [];
     const tools = (Array.isArray(rows) ? rows : []).filter((row) => row && row.type === 'tool');
     if (!tools.length) return 0;
+    const bug = DIRECTOR_MASCOT_BUG_WORD.test(String(asked || ''));
+    // the edit-based result, exactly as before #1275
     const edits = tools.filter((row) => DIRECTOR_MASCOT_EDIT_TOOL.test(String(row.name || '')) || row.hasDiff === true || row.hasDiff === 'True').length;
-    if (!edits && tools.length < 8) return 0;
-    const verified = tools.some((row) => /^(bash|shell|run_terminal\w*)$/i.test(String(row.name || '')) && DIRECTOR_MASCOT_VERIFY_WORD.test(`${row.detail || ''} ${row.text || ''}`));
-    const bug = DIRECTOR_MASCOT_BUG_WORD.test(String(asked || '')) || DIRECTOR_MASCOT_BUG_WORD.test(String((message && message.content) || '').slice(0, 600));
-    return edits && (bug || verified || edits >= 5) ? 2 : 1;
+    let earned = 0;
+    if (edits || tools.length >= 8) {
+        const verified = tools.some((row) => /^(bash|shell|run_terminal\w*)$/i.test(String(row.name || '')) && DIRECTOR_MASCOT_VERIFY_WORD.test(`${row.detail || ''} ${row.text || ''}`));
+        const bugged = bug || DIRECTOR_MASCOT_BUG_WORD.test(String((message && message.content) || '').slice(0, 600));
+        earned = edits && (bugged || verified || edits >= 5) ? 2 : 1;
+    }
+    // the hand-over result (#1275)
+    const hand = tools.filter((row) => /^(claude_dispatch|fleet_work_update|fleet_work_start|claude_session_send)$/i.test(String(row.name || '').replace(/^mcp__.*?__/, '')));
+    if (hand.length) {
+        const brief = hand.map((row) => `${row.detail || ''} ${row.text || ''} ${typeof row.args === 'string' ? row.args : ''}`).join(' ')
+            + ` ${String((message && message.content) || '').slice(0, 1200)}`;
+        const named = /(?:[\w.-]+\/)+[\w.-]+\.\w{1,6}\b|\b[\w-]+\.(?:js|ts|tsx|jsx|css|html|json|kt|java|md|py|sh|mdc)\b/i.test(brief)
+            && /\b(accept(ance)?|verif(y|ied|ies)|check(s|ed)?|tests?|passes|pass|lint|done when|criteria)\b/i.test(brief);
+        earned = Math.max(earned, named || bug ? 2 : 1);
+    }
+    return earned;
 }
 
 function directorMascotGrowthPoints(messages, persona) {

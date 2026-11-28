@@ -17,6 +17,7 @@ const director = require('./cursorDirector');
 const xiLaunch = require('./xiLaunch');
 const tokenRouter = require('./tokenRouterBridge');
 const customProviders = require('./customModelProviders');
+const workGate = require('./directorWorkGate');
 
 // Xi runs as long as its log keeps growing; 10 minutes of silence stops it. No total cap.
 const RUN_IDLE_MS = 10 * 60 * 1000;
@@ -583,15 +584,15 @@ function directorClientId(clientInfo, message) {
 function xiIdentityLine(runtime) {
     if (customProviders.isEngine(runtime)) {
         const name = customProviders.displayName(boundGr, runtime);
-        return `You are Yozora, the host Claude Code agent for this repo, running through ${name}. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host with the same access as a host Claude Code session.`;
+        return `You are Yozora, the host Claude Code agent for this repo, running through ${name}. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host as the front of the Director for this repo. You read, plan, brief and follow up; Fleet sessions under the Supervisor change the code.`;
     }
     if (runtime === 'tokenrouter') {
-        return 'You are Yozora, the host Claude Code agent for this repo, running through TokenRouter. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host with the same access as a host Claude Code session.';
+        return 'You are Yozora, the host Claude Code agent for this repo, running through TokenRouter. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host as the front of the Director for this repo. You read, plan, brief and follow up; Fleet sessions under the Supervisor change the code.';
     }
     if (runtime === 'claude') {
-        return 'You are Yozora, the host Claude Code agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host with the same access as a host Claude Code session.';
+        return 'You are Yozora, the host Claude Code agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host as the front of the Director for this repo. You read, plan, brief and follow up; Fleet sessions under the Supervisor change the code.';
     }
-    return 'You are Yozora, the host Cursor agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host with the same access as a host Claude Code session.';
+    return 'You are Yozora, the host Cursor agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host as the front of the Director for this repo. You read, plan, brief and follow up; Fleet sessions under the Supervisor change the code.';
 }
 
 /**
@@ -616,13 +617,16 @@ function standingPrompt(chat, options) {
     const runtime = sanitizeRuntime(chat.runtime);
     const lines = [
         xiIdentityLine(runtime),
+        // The hand-over is a structural fact (#1275): her tools are cut to the read-only set and a hook refuses the rest, so it sits right after who she is.
+        'You read and diagnose so you can brief well. Your shell and file tools are read-only: a hook refuses edits, commits, builds, restarts and anything else that changes the tree. Code changes, builds, restarts and multi-step technical work go to the Supervisor as a work item (claude_dispatch for new work, fleet_work_update for an existing item), and your reply names the item (work item #N and its Yozora issue link). Do not do that work in this chat.',
+        'Claude fleet: Fleet is Yukimi\'s desktop app for her Claude accounts, their sessions and the Supervisor, which runs the work; you are the friendly front. Code changes, builds and multi-step technical work go to the Supervisor as work items, not into this chat; you plan, brief, follow up and report with links. Work queue states: Waiting (held until Yukimi or you start it; maintenance marks each with a verdict: valid, done, outdated with a suggested brief, duplicate, unclear), Queued, Running, Sent Back (gaps sent back to the session), Done, Failed, Cancelled. Each item has a Yozora issue labelled fleet. Tools: fleet_work_list / fleet_work_get read the queue (never hunt for an item by hand); fleet_work_update edits an item that is not running; fleet_work_start / _hold / _cancel move items (start only what Yukimi asked for or clearly agreed to). claude_dispatch adds NEW work, landing in Waiting unless startNow: account (or auto), model and effort (Sonnet, subagents-sonnet rule: opus only with a modelReason), folder, and a complete prompt (issue, files, acceptance check; coord_claim before editing, coord_build_request before any build or restart, commit every turn); no two sessions own the same files. claude_fleet_status shows usage, sessions, claims and build gates; claude_session_read / _send / _stop steer a running session. A chat that starts "About Fleet work item #N: ..." (Ask Yozora in Fleet): fleet_work_get N first. Only you have these tools.',
         'Be short. A few sentences. Do not explain the obvious. Do not paste large code blocks or long examples. Name the file and the change.',
         'clientLink.clientGeneration no-go means generate_image on the server, show_chat_image, and open_in_studio only if Studio is already open. Resolution stays normal unless they name a size. Wallpaper is finish, not the wallpaper resolution preset. Over 1 megapixel needs userApprovedPaidRequest after they agree.',
         `Detail belongs on a Yozora issue. File or update the issue, then link it (${YOZORA_ISSUE}<number>). The issue is the write-up.`,
         `On Yozora you are ${xiLaunch.YOZORA_LOGIN}, not claude: every Yozora API call (issues, comments, labels, stopwatch, board cards) reads its token at call time from ~/${xiLaunch.YOZORA_TOKEN_FILE}, never yozora-claude.token or another account's. CLAUDE.md's Yozora access section is for Claude Code sessions, not you. git to Yozora already signs in as ${xiLaunch.YOZORA_LOGIN} (no credential helper needed). Sign comments "— Yozora".`,
-        'Dreamscape tools are on MCP server dreamscape when the task needs the app. Coding, diagnostics, and debugging are the job. Explore scans use search_explore (compact), count_explore, get_explore_post, and get_explore_image in the Laboratory workspace. Commands are already approved. Do not ask permission to run them.',
+        'Dreamscape tools are on MCP server dreamscape when the task needs the app. Reading code, diagnostics and debugging to find the cause and write the brief are the job. Explore scans use search_explore (compact), count_explore, get_explore_post, and get_explore_image in the Laboratory workspace. Read-only commands need no permission.',
         'To ask the user anything, call request_form with chatId. AskQuestion is skipped in this window and they never see it. If it returns pending with a formId, call request_form again with only that formId until values come back.',
-        'Claude fleet: Fleet is Yukimi\'s desktop app for her Claude accounts, their sessions and the Supervisor, which runs the work; you are the friendly front. Code changes, builds and multi-step technical work go to the Supervisor as work items, not into this chat; you plan, brief, follow up and report with links. Work queue states: Waiting (held until Yukimi or you start it; maintenance marks each with a verdict: valid, done, outdated with a suggested brief, duplicate, unclear), Queued, Running, Sent Back (gaps sent back to the session), Done, Failed, Cancelled. Each item has a Yozora issue labelled fleet. Tools: fleet_work_list / fleet_work_get read the queue (never hunt for an item by hand); fleet_work_update edits an item that is not running; fleet_work_start / _hold / _cancel move items (start only what Yukimi asked for or clearly agreed to). claude_dispatch adds NEW work, landing in Waiting unless startNow: account (or auto), model and effort (Sonnet, subagents-sonnet rule: opus only with a modelReason), folder, and a complete prompt (issue, files, acceptance check; coord_claim before editing, coord_build_request before any build or restart, commit every turn); no two sessions own the same files. claude_fleet_status shows usage, sessions, claims and build gates; claude_session_read / _send / _stop steer a running session. A chat that starts "About Fleet work item #N: ..." (Ask Yozora in Fleet): fleet_work_get N first. Only you have these tools.',        'A client reload is normal. Continue this chat. Do not redo a finished step.',
+        'A client reload is normal. Continue this chat. Do not redo a finished step.',
         `Director chat id: ${chat.id}. Pass chatId on session tools.`,
         'Each message carries only what changed for that turn (her state, the client, attachments, the request); these standing rules hold for every turn.',
         `Workspace: ${workspacePath(boundGr)}`
@@ -665,6 +669,10 @@ function turnPrompt(chat, userText, files, clientId, options) {
     if (files.length) {
         lines.push('Attached files:');
         files.forEach((file) => lines.push(`- ${file}`));
+    }
+    // #1275: a work request is handed to the Supervisor in the turn it arrives (the Stop hook holds her to it)
+    if (workGate.classifyRequest(userText).work) {
+        lines.push('This request is work for the Supervisor: hand it over in this turn with claude_dispatch (the Yozora issue, the files, the acceptance check) or fleet_work_update an existing item, and name the item (work item #N, its issue link) in finish_turn.summary. Do not start the work here.');
     }
     lines.push('', 'User request:', userText || 'Look at the attached files.');
     return lines.join('\n');
@@ -732,7 +740,8 @@ function claudeProjectPrompt(workspace) {
     const { MCP_INSTRUCTIONS, ENSHUTSUKA_MODES } = require('./mcpInstructions');
     const rules = readProjectCursorRules(workspace);
     return [
-        rules,
+        // #1275: these rules bind the Fleet sessions she briefs; she does not edit, build or commit under them
+        rules ? `## Project rules (what the Fleet sessions you brief work under)\nThese rules bind the sessions you hand work to; name the ones that apply in each brief. They do not make you the one who edits, builds or commits.\n\n${rules}` : '',
         '## Shared Dreamscape rules (from Enshutsuka)',
         MCP_INSTRUCTIONS,
         ENSHUTSUKA_MODES
@@ -751,6 +760,49 @@ function writeProjectPromptFile(sessionId, workspace, standing) {
     try { prior = fs.readFileSync(file, 'utf8'); } catch (_) { prior = null; }
     if (prior !== text) fs.writeFileSync(file, text, { mode: 0o600 });
     return file;
+}
+
+// Her Claude tools are cut to the read-only set (#1275: with bypassPermissions and every tool she did code work inline
+// instead of handing it to the Supervisor). MCP tools (dreamscape: claude_dispatch, finish_turn, ...) are not built-ins and stay.
+const CLAUDE_TOOLS = 'Read,Grep,Glob,Bash,WebFetch,WebSearch,ToolSearch';
+
+/**
+ * This turn's work gate: turn-gate.json says what was asked and whether it is work (written fresh each turn, before the
+ * spawn); the --settings hooks (modules/directorWorkGate.js) refuse write-shaped tool calls and, once per turn, stop her
+ * ending a work request without a hand-over. Hooks run where the CLI runs: `node` inside the sandbox, this binary on the host.
+ */
+function writeTurnGate(sessionId, userText) {
+    const dir = path.join(layout().chats, sessionId);
+    fs.mkdirSync(dir, { recursive: true });
+    const gateFile = path.join(dir, 'turn-gate.json');
+    const request = String(userText || '').slice(0, 20000);
+    fs.writeFileSync(gateFile, JSON.stringify({ request, work: workGate.classifyRequest(request).work, at: new Date().toISOString() }), { mode: 0o600 });
+    return gateFile;
+}
+
+function claudeCliArgs(sessionId, workspace, prepared, runtime, claudeEffort) {
+    const gateFile = writeTurnGate(sessionId, prepared.userText);
+    const hooks = workGate.hookSettings({
+        gateFile,
+        nodeBin: xiSandboxed() ? 'node' : process.execPath,
+        gateScript: path.join(__dirname, 'directorWorkGate.js')
+    });
+    return [
+        '-p',
+        '--output-format', 'stream-json',
+        '--verbose',
+        '--permission-mode', 'bypassPermissions',
+        '--tools', CLAUDE_TOOLS,
+        '--settings', JSON.stringify(hooks),
+        '--strict-mcp-config',
+        '--mcp-config', claudeMcpConfigArg(),
+        // a file: the rules + shared MCP text outgrew one argv string (128 KB, E2BIG, Nov 23 2026)
+        '--append-system-prompt-file', writeProjectPromptFile(sessionId, workspace, prepared.standing),
+        ...(runtime === 'tokenrouter' || customProviders.isEngine(runtime) ? ['--model', prepared.model] : ['--effort', claudeEffort]),
+        prepared.claudeFirstTurn ? '--session-id' : '--resume', prepared.claudeSessionId,
+        '--',
+        prepared.prompt
+    ];
 }
 
 // Same Dreamscape MCP server Cursor loads from .cursor/mcp.json, passed inline
@@ -1087,6 +1139,20 @@ function claudeToolDetail(name, input) {
     if (name === 'Agent' || name === 'Task') return one(i.description, 200);
     if (name === 'WebFetch') return one(i.url, 300);
     if (name === 'WebSearch' || name === 'ToolSearch') return one(i.query, 200);
+    // a hand-over (#1275): what went to the Supervisor, so the log (and her growth points) can see the brief
+    const bare = String(name || '').replace(/^mcp__.*?__/, '');
+    if (/^(claude_dispatch|fleet_work_update|fleet_work_start|claude_session_send)$/.test(bare)) {
+        const brief = typeof i.prompt === 'string' ? i.prompt : (typeof i.text === 'string' ? i.text : (typeof i.appendNote === 'string' ? i.appendNote : ''));
+        const files = Array.from(new Set(brief.match(/\b[\w.-]+(?:\/[\w.-]+)*\.(?:js|mjs|cjs|ts|tsx|kt|java|css|html|json|md|mdc|py|sh)\b/g) || [])).slice(0, 6);
+        const accept = (/^.*\b(?:accept(?:ance)?|done when|verify)\b.*$/im.exec(brief) || [])[0] || '';
+        const ids = Array.isArray(i.ids) ? i.ids.join(', ') : (i.id != null ? String(i.id) : '');
+        return [
+            one(i.title, 160) || one(brief.split('\n')[0], 160) || (ids ? `item ${ids}` : ''),
+            Array.isArray(i.issues) && i.issues.length ? `issues: ${i.issues.slice(0, 4).map((x) => one(String(x), 80)).join(', ')}` : '',
+            files.length ? `files: ${files.join(', ')}` : '',
+            accept ? one(accept, 200) : ''
+        ].filter(Boolean).join('\n');
+    }
     return '';
 }
 
@@ -1783,7 +1849,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             const prompt = usesClaudeCli(runtime) ? built.turn : `${built.standing}\n${built.turn}`;
             const standing = built.standing;
             writeIndex(index);
-            return { prompt, standing, cursorId, claudeSessionId, claudeFirstTurn, model: chat.model, name: chat.name, round, runtime };
+            return { prompt, standing, userText, cursorId, claudeSessionId, claudeFirstTurn, model: chat.model, name: chat.name, round, runtime };
         });
         if (!prepared) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
@@ -1795,20 +1861,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         fs.writeFileSync(log, '');
         const metaPath = path.join(paths.runs, `${sessionId}.json`);
         const args = usesClaudeCli(runtime)
-            ? [
-                '-p',
-                '--output-format', 'stream-json',
-                '--verbose',
-                '--permission-mode', 'bypassPermissions',
-                '--strict-mcp-config',
-                '--mcp-config', claudeMcpConfigArg(),
-                // a file: the rules + shared MCP text outgrew one argv string (128 KB, E2BIG, Nov 23 2026)
-                '--append-system-prompt-file', writeProjectPromptFile(sessionId, workspace, prepared.standing),
-                ...(runtime === 'tokenrouter' || customProviders.isEngine(runtime) ? ['--model', prepared.model] : ['--effort', claudeEffort]),
-                prepared.claudeFirstTurn ? '--session-id' : '--resume', prepared.claudeSessionId,
-                '--',
-                prepared.prompt
-            ]
+            ? claudeCliArgs(sessionId, workspace, prepared, runtime, claudeEffort)
             : [
                 '--print',
                 '--output-format', 'stream-json',
@@ -2138,7 +2191,7 @@ module.exports = {
         shouldPark, markToolDiffs, readToolDiffText, buildPrompt, buildTurn, launchPlan,
         layout, readIndex, writeIndex, peekIndex, readProjectCursorRules,
         sanitizeRuntime, assertRuntimeUnchanged, publicXiSession, consumeClaudeStreamLine,
-        claudeProjectPrompt, writeProjectPromptFile, claudeMcpConfigArg, sanitizeClaudeEffort,
+        claudeProjectPrompt, writeProjectPromptFile, claudeMcpConfigArg, claudeCliArgs, writeTurnGate, sanitizeClaudeEffort,
         usesClaudeCli, xiIdentityLine, sweepAbortedRuns, reattachAll, XI_TOKENROUTER_DEFAULT_MODEL,
         startTail, pidAlive, TURN_END_GRACE_MS, setBoundGr: (gr) => { boundGr = gr; }
     }
