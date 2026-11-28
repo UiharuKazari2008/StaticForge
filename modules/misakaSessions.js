@@ -287,6 +287,57 @@ async function deleteReplica(name) {
     try { await rack({ op: 'role', server: SERVER, role: 'replicas', action: 'delete', params: { name, confirm: true } }, 120000); return true; } catch (e) { console.warn(`[misakaSessions] replica ${name} delete: ${e.message}`); return false; }
 }
 
+/** The replica's row in the replicas role listing ({ commit, startedAt, state, health, ... }) or null. */
+async function replicaRow(name, rackFn) {
+    const st = await (rackFn || rack)({ op: 'role', server: SERVER, role: 'replicas' }, 60000);
+    return (((st && st.data) || {}).replicas || []).find((r) => r.name === name) || null;
+}
+
+/** True when the commit the replica server started on and the commit its worktree now holds are two different commits (full or short hashes); an unknown start commit counts as moved. */
+function commitMoved(startedOn, head) {
+    const a = String(startedOn || '').trim().toLowerCase();
+    const b = String(head || '').trim().toLowerCase();
+    if (!b) return false; // no head to move to
+    if (!a) return true; // what the server started on is unknown: restart rather than trust it
+    return !(a.startsWith(b) || b.startsWith(a));
+}
+
+/**
+ * The replica server must run the code of the worktree the session is given. The container started on the image's commit; when
+ * the checkout moved the worktree to another commit, the server still holds the old modules (and the runtime asset cache), so it
+ * is restarted and waited for (a new startedAt and a healthy answer) before the launch goes on. deps: { rack, sleep, waitMs }
+ * for tests. Answers { restarted, startedOn, head, startedAt }.
+ */
+async function syncReplicaServer(name, startedOn, head, deps = {}) {
+    const rackFn = deps.rack || rack;
+    const nap = deps.sleep || sleep;
+    const waitMs = deps.waitMs || 4 * 60 * 1000;
+    if (!commitMoved(startedOn, head)) return { restarted: false, startedOn, head };
+    const before = await replicaRow(name, rackFn);
+    const prevStart = before ? String(before.startedAt || '') : '';
+    const r = await rackFn({ op: 'role', server: SERVER, role: 'replicas', action: 'restart', params: { name } }, 120000);
+    const jobId = r && r.job && (r.job.id || (r.job.job && r.job.job.id));
+    const until = Date.now() + waitMs;
+    if (jobId) {
+        for (;;) {
+            const j = await rackFn({ op: 'job', server: SERVER, id: jobId, tail: 8 }, 30000);
+            const job = (j && j.job && (j.job.job || j.job)) || {};
+            if (job.state && job.state !== 'running') {
+                if (job.state !== 'done') throw new Error(`The replica server could not be restarted onto ${String(head).slice(0, 9)}: ${String(job.log || '').split('\n').filter(Boolean).slice(-2).join(' / ').slice(0, 240)}`);
+                break;
+            }
+            if (Date.now() > until) throw new Error('The replica server restart took too long');
+            await nap(2000);
+        }
+    }
+    for (;;) {
+        const row = await replicaRow(name, rackFn).catch(() => null);
+        if (row && row.state === 'running' && row.health && row.health.ok && String(row.startedAt || '') !== prevStart) return { restarted: true, startedOn, head, startedAt: row.startedAt };
+        if (Date.now() > until) throw new Error(`The replica server did not come back healthy on ${String(head).slice(0, 9)}`);
+        await nap(2000);
+    }
+}
+
 // ---------------------------------------------------------------- the session's scripts
 
 const gateOptions = (c) => ['-q', '-T', '-i', c.gateKey, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', `UserKnownHostsFile=${c.gateKnown}`, '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=4', '-o', 'ConnectTimeout=10'];
@@ -355,6 +406,7 @@ function sessionFiles(o, ctx) {
 const MISAKA_NOTE = (ctx) => [
     '## You run on Fat Misaka (the rack host), not on Dreamscape',
     `Your working folder is your own replica worktree ${ctx.cwd} (branch work/${ctx.replica}, started from origin/main) with its own Dreamscape replica server (${ctx.replicaUrl}; its sign-in secrets: rack_role replicas action login {name:"${ctx.replica}"}). Edit, test and run only there.`,
+    ctx.serverCommit ? `The replica server runs commit ${ctx.serverCommit} (the worktree's commit when your session started${ctx.restarted ? '; it was restarted onto it' : ''}). After you change server files or pull, restart it (rack_role replicas restart) before you test server behaviour.` : 'Which commit the replica server runs is not known: restart it (rack_role replicas restart) before you test server behaviour.',
     'The live-tree rules change for you: there is no live tree to edit and no Dreamscape restart from here. Commit your work and push it to main on Yozora (git push origin HEAD:main after git pull --rebase origin main; the git credential is already set up, never ask for a token). Unpushed work is saved to a wip branch when the session ends, but pushed work is the deliverable.',
     'Where the brief below mentions the live tree, reload-server-module, a restart or the server\'s own paths, do it in your replica instead (restart its replica server through rack_role replicas restart; no Dreamscape restart, no live-tree edit).',
     'agent-coord, memory, Fleet and Yozora tools work as usual over a back-channel to Dreamscape (claims name paths in the StaticForge repo, so they conflict with agents editing the live tree). Phones, the Fold and the shared devices are reached through coord_device_request as always.',
@@ -390,6 +442,7 @@ async function launch(gr, o) {
             const rs = await rack({ op: 'role', server: SERVER, role: 'replicas' }, 60000);
             const mine = ((rs && rs.data && rs.data.replicas) || []).find((r) => r.name === replica);
             rec.replicaUrl = mine ? (mine.urlDirect || mine.url || '') : '';
+            rec.serverStartedOn = mine ? String(mine.commit || '') : '';
         } catch (_) { /* the note goes without it */ }
         const ch = await rackExec(`chown -R agents:agents ${shq(cwd)} && echo ok`, 'root', 120);
         if (!/ok/.test(ch.stdout || '')) throw new Error('Could not hand the replica worktree to the agent account');
@@ -399,15 +452,26 @@ async function launch(gr, o) {
         rec.accountName = login.name;
         rec.accountIndex = login.index;
         const projects = { [cwd]: { hasTrustDialogAccepted: true, allowedTools: [], mcpServers: {}, hasClaudeMdExternalIncludesApproved: true, hasClaudeMdExternalIncludesWarningShown: true } };
-        const args = launcher.buildArgs(o, { title: rec.title, mcpConfig: `${sshArgs.cfg().home}/fleet/sessions/${id}/mcp.json` });
-        args.splice(args.indexOf('--mcp-config') + 2, 0, '--strict-mcp-config');
-        if (args.includes('--') && o.prompt) args[args.length - 1] = `${MISAKA_NOTE({ cwd, replica, replicaUrl: rec.replicaUrl || 'its port on Fat Misaka', id })}\n\n${String(o.prompt).slice(0, 18000)}`;
-        const sf = sessionFiles(Object.assign({}, o, { title: rec.title, gitIdentity: rec.gitIdentity }), { login, cwd, replica, tmuxName: name, args });
+        const filesFor = (note) => {
+            const args = launcher.buildArgs(o, { title: rec.title, mcpConfig: `${sshArgs.cfg().home}/fleet/sessions/${id}/mcp.json` });
+            args.splice(args.indexOf('--mcp-config') + 2, 0, '--strict-mcp-config');
+            if (args.includes('--') && o.prompt) args[args.length - 1] = `${MISAKA_NOTE(Object.assign({ cwd, replica, replicaUrl: rec.replicaUrl || 'its port on Fat Misaka', id }, note))}\n\n${String(o.prompt).slice(0, 18000)}`;
+            return sessionFiles(Object.assign({}, o, { title: rec.title, gitIdentity: rec.gitIdentity }), { login, cwd, replica, tmuxName: name, args });
+        };
+        let sf = filesFor({});
         await install([...loginFiles(login, projects), ...sf.files]);
         // 5. the checkout moves to origin/main (the image the worktree came from may be older)
-        const co = await ssh(`. ${shq(`${sf.abs}/env.sh`)}; cd ${shq(cwd)} && git fetch -q origin main && git checkout -q -B work/${replica} origin/main && git log -1 --format=%h`, { timeout: 120000 });
+        const co = await ssh(`. ${shq(`${sf.abs}/env.sh`)}; cd ${shq(cwd)} && git fetch -q origin main && git checkout -q -B work/${replica} origin/main && git log -1 --format=%H`, { timeout: 120000 });
         if (co.code !== 0) throw new Error(`The replica worktree could not move to origin/main: ${String(co.stderr).trim().slice(0, 160)}`);
-        rec.baseCommit = String(co.stdout).trim();
+        const head = String(co.stdout).trim().split('\n').pop();
+        rec.baseCommit = head.slice(0, 9);
+        // the replica server started on the image's commit: when the checkout moved the commit it is restarted onto the worktree before the session starts
+        const synced = await syncReplicaServer(replica, rec.serverStartedOn, head);
+        rec.serverCommit = head.slice(0, 9);
+        rec.serverRestarted = synced.restarted;
+        // the preamble says which commit the replica server runs (the session's files are written again with it)
+        sf = filesFor({ serverCommit: rec.serverCommit, restarted: synced.restarted });
+        await install(sf.files);
         putRecord(rec);
         accessTimer(gr, login.index !== null ? login.index : (login.id === 'host' ? undefined : login.id), login.id);
         // 6. tmux there: the watcher first (it waits for the session's files), then the session
@@ -530,7 +594,7 @@ function describe(id) {
     return r ? { host: 'fat-misaka', replica: r.replica, cwd: r.cwd, lease: r.leaseId || '', replicaUrl: r.replicaUrl || '' } : null;
 }
 
-module.exports = { rearm, resolveHost, launch, tmux, ssh, recordOf, records, mirrorLive, end, endForWork, describe, loginOf, install, sshOptions: sshArgs.sshOptions, destination: sshArgs.destination, cfg: sshArgs.cfg, _test: { sessionFiles, MISAKA_NOTE, replicaName, srcOf, loginFiles } };
+module.exports = { rearm, resolveHost, launch, tmux, ssh, recordOf, records, mirrorLive, end, endForWork, describe, loginOf, install, sshOptions: sshArgs.sshOptions, destination: sshArgs.destination, cfg: sshArgs.cfg, _test: { syncReplicaServer, commitMoved, sessionFiles, MISAKA_NOTE, replicaName, srcOf, loginFiles } };
 
 require('./hotReload').mark(module, {
     dispose() { accessTimers.forEach((t) => { if (t && t.unref) clearTimeout(t); }); accessTimers.clear(); return { readyFor }; },

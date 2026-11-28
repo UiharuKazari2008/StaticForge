@@ -32,6 +32,9 @@ message, an explicit `misaka` fails with the reason. The Supervisor's default fl
    `create` builds an image for the ref it is given (12 minutes when that commit has none) and worktree mode only needs the image for `node_modules` and the container.
    Then the worktree is handed to `agents` (`chown -R` through `rack exec` as root; rackd's own git calls use `safe.directory=*`) and moved to `origin/main`
    (`git fetch origin main && git checkout -B work/<name> origin/main`). Do not use the role's `pull` on these.
+   The replica server started on the image's commit, so when the checkout moved the commit (`syncReplicaServer`) the replica is restarted through the role (`restart {name}`) and
+   waited for (a new `startedAt` and a healthy answer; no healthy server in 4 minutes fails the start) before the session's tmux starts. The preamble names the commit the server runs.
+   Test: `node scripts/test-fleet-misaka-replica-commit.js` (#1449).
 4. **Login and config:** `accounts/<account id>/config/` under the agent's home: `.credentials.json` (access token only, see below), `.claude.json` (onboarding, oauthAccount,
    folder trust), `settings.json` (bypass mode, the AskUserQuestion hook through the gate). Per session `fleet/sessions/<id>/`: `env.sh`, `mcp.json`, `run.sh`, `watch.sh`.
 5. **tmux:** `fleetwatch-<id8>` (the watcher) and `rc-<id8>` (the session; `run.sh` = clean CLAUDE* env, `env.sh`, `claude --session-id ... --mcp-config mcp.json --strict-mcp-config ...; sleep 3600`,
