@@ -206,7 +206,7 @@
             { t: 'What', w: 300, key: 'c', text: (u) => u.cmd || '' },
             { t: 'Why it is listed', w: 220, key: 'w', text: (u) => u.why || '' }
         ], rows, { sortId: 'rm-unmanaged', fit: true, empty: '' });
-        return { id: 'rm-unmanaged', title: 'Running outside Rack Manager', body: `<p class="rm-warn"><img src="${VI}/warning-16.png" alt=""> ${list.length} process${list.length === 1 ? '' : 'es'} run on this host that Rack Manager did not start and nothing there explains. Nobody can see or drive them, and they keep the host from shutting down by itself.</p>${l}`
+        return { id: 'rm-unmanaged', title: 'Running outside Rack Manager', body: `<p class="rm-warn"><img src="${VI}/warning-16.png" alt=""> ${list.length === 1 ? '1 process runs' : `${list.length} processes run`} on this host that Rack Manager did not start and nothing there explains. Nobody can see or drive ${list.length === 1 ? 'it' : 'them'}, and ${list.length === 1 ? 'it keeps' : 'they keep'} the host from shutting down by itself.</p>${l}`
             + '<p class="mmc-hint">To adopt one: stop it and start it again as a rackd job or a terminal exec, in a tmux session (Terminal, New session) so its output is visible, as a container, or as a rack service (Services, Define). A stray VM is created again through Virtual Machines; an emulator through Virtual Android Devices.</p>' };
     };
 }(typeof window !== 'undefined' ? window : globalThis));

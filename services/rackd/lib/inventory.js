@@ -120,7 +120,7 @@ async function scan() {
     const ex = await explain(pid, ctx);
     const item = { pid, user: userOf(pid), cmd: argv.join(' ').slice(0, 160), ...(f ? { cores: f.cores, forS: f.forS } : {}) };
     if (ex) { if (f) managed.push({ ...item, by: ex.by, why: ex.why }); continue; }
-    unmanaged.push({ ...item, why: f ? `${f.cores} cores for ${Math.round(f.forS / 60)} min` : 'a qemu process that is not a libvirt domain or a known emulator' });
+    unmanaged.push({ ...item, why: f ? `${f.cores} core(s) for ${Math.round(f.forS / 60)} min` : 'a qemu process that is not a libvirt domain or a known emulator' });
   }
   return { managed, unmanaged };
 }
@@ -136,7 +136,7 @@ async function busyExtras() {
   if (ct.code === 0) for (const n of ct.stdout.split('\n').filter(Boolean)) busy.push({ kind: 'container', id: n, why: 'running' });
   for (const j of jobs.list()) if (j.state === 'running') busy.push({ kind: 'job', id: j.id, why: j.title });
   for (const q of procsByName(/qemu-system/)) if (q.avd) busy.push({ kind: 'avd', id: q.avd, why: 'emulator process' });
-  for (const m of managed) busy.push({ kind: 'work', id: `pid ${m.pid}`, why: `${m.cores} cores for ${Math.round(m.forS / 60)} min: ${m.why}` });
+  for (const m of managed) busy.push({ kind: 'work', id: `pid ${m.pid}`, why: `${m.cores} core(s) for ${Math.round(m.forS / 60)} min: ${m.why}` });
   for (const u of unmanaged) busy.push({ kind: 'unmanaged', id: `pid ${u.pid}`, why: `${u.user}: ${u.cmd.slice(0, 80)} (${u.why})` });
   return { busy, unmanaged };
 }

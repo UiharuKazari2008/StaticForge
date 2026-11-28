@@ -156,6 +156,11 @@ the android role's own AVDs (which start at 5554).
   (`Invalid feature flag: android.security.aapm_feature_disable_insecure_wifi_autojoin` in `AdvancedProtectionService`, 29 restarts, a boot that never finished).
   A fresh AVD boots in about a minute; a clean `down` and cold `up` of kept data also boots (61 s on fold-m1, no crash). After such a boot: `lane.sh <id> delete --yes`, `create` again, and keep the lease / idle clock alive during the create.
 
+
+### Seeing and driving the Misaka instances (Rack Manager)
+
+Every running pool instance on Fat Misaka is listed in Rack Manager, Virtual Android Devices: a Screens grid (a picture every 5 s while the page is open) and a Device Connection window per instance (WS `/rack/misaka/android/<name>/screen`, scrcpy H.264, no audio). The window opens view only on an instance someone holds (coord lease on the instance name); Control asks for the input channel (administrator in the console, audited with the holder). Agents use the MCP tools `rack_screen`, `rack_input`, `rack_guest`, `rack_inventory` (docs/rack-manager/README.md, Fleet tools); on an instance another agent holds they are refused unless `confirm:true` and `force:true`. The instances run in their own systemd scope `lane-<name>.scope` and survive a rackd deploy.
+
 ## Check out an instance
 
 ```
