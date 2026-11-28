@@ -1639,7 +1639,7 @@
     const POLICY_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
     const POLICY_FALLBACK = { sweep: { model: 'sonnet', effort: 'low', maxModel: 'sonnet', maxEffort: 'medium' }, part: { model: 'sonnet', effort: 'medium', maxModel: 'sonnet', maxEffort: 'high' }, tricky: { model: 'sonnet', effort: 'high', maxModel: 'opus', maxEffort: 'high' }, plan: { model: 'opus', effort: 'high', maxModel: 'opus', maxEffort: 'xhigh' }, large: { model: 'opus', effort: 'xhigh', maxModel: 'opus', maxEffort: 'xhigh' }, huge: { model: 'fable', effort: 'xhigh', maxModel: 'fable', maxEffort: 'xhigh' }, max: { model: 'fable', effort: 'max', maxModel: 'fable', maxEffort: 'max' } };
     // where a session runs (Fleet setting sessionHost; docs/fleet/sessions-on-misaka.md)
-    const HOSTS = [['misaka', 'Fat Misaka (own replica, pushes its work)'], ['dreamscape', 'Dreamscape (the live tree)']];
+    const HOSTS = [['misaka', 'Fat Misaka'], ['dreamscape', 'Dreamscape']]; // the tooltips say what each means
     const hostName = (v) => ((HOSTS.find((h) => h[0] === v) || [])[1] || '').replace(/ \(.*\)$/, '');
     const SUP_DEFAULT = { enabled: false, engine: 'tokenrouter', model: '', delivery: 'inbox', manageLocks: false, trackArtifacts: false, maxConcurrent: 3, autoStart: true, yozoraRepos: ['DreamScape/StaticForge'] };
     const SUP_FALLBACK_ENGINES = [{ id: 'tokenrouter', name: 'TokenRouter', defaultModel: 'deepseek/deepseek-v4.1-flash' }];
