@@ -545,7 +545,7 @@ function buildPrompt({ pkg, label, probe, wish, design }) {
         ...GRAMMAR.map((g) => `- ${g}`),
         '',
         'Rules:',
-        '- Prefer a uri: deep link whenever the app declares a link filter that reaches the target. A uri: must be an Android intent link of the form',
+        '- Prefer a uri: deep link whenever the app declares a link filter that reaches the target. When the target has a web address (a page of the app\'s own site) use that https link (the app\'s link filter takes it, also while the app is already open); use an app shortcut action (intent:#Intent;action=...) only when no link reaches the target, because an app often ignores such an action while it is already on screen (measured on YouTube: the shorts shortcut action does nothing then, the https /shorts link works). A uri: must be an Android intent link of the form',
         `  intent://<host><path>#Intent;scheme=https;package=${pkg};end   (or, for a target reached by a custom action, intent:#Intent;action=<action>;package=${pkg};end)`,
         '  or an https:// URL. Its scheme, host and path must be accepted by a link filter in "Link filters" below (an intent link also needs package=' + pkg + '). Never use component=, extras, SEL; or any other package.',
         '- You may use your own knowledge of the app ONLY for URL patterns (which path opens which screen); every link is then checked against the link filters, and one the app does not declare is rejected.',

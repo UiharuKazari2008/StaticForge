@@ -109,3 +109,29 @@ The first row of the right menu (Notifications) drew no text in `i-4` (a renderi
 
 `am start -W` of each stored link: all six answer `Status: ok` with a YouTube activity: Subscriptions (via the permission dialog first run), Shorts ->
 `watchwhile.MainActivity`, Watch Later / My Account / History -> `Shell_UrlActivity`, Search -> `watchwhile.MainActivity`. What the pages then show needs an account.
+
+## YouTube on the A53 hardware phone (ARM build from Aurora Store, signed out; Nov 27 2026 19:2x-19:4x, `j-*`, `k-*`, `m-*`)
+
+The A53 got YouTube 21.47.483 through its own Aurora Store (anonymous; `j-0`..`j-3`; Android's own installer confirmed; no Google account of
+Yukimi's was used and YouTube stayed **signed out**, so no personal data is in these shots). Release 44 (3632992) is the app on the phone.
+
+| file | what it shows |
+| --- | --- |
+| `k-3-a53-youtube-proposal.png` | Generate with AI... for YouTube, design mode with her labels; first proposal (shortcut actions for Subscriptions / Shorts / Search) |
+| `k-4`, `k-5` | the bar over YouTube: **Subscriptions \| Menu**, the Menu |
+| `k-7-a53-shorts-by-intent-cold.png` | the same `open.shorts` shortcut action from a cold start with plain `adb am start`: a Short plays |
+| `k-8-a53-left-key-subscriptions.png` | the left key: YouTube's Subscriptions tab |
+| **finding** | the Shorts row (shortcut action) did nothing while YouTube was already open - and plain `adb am start` of that action does nothing either (Android: "delivered to currently running top-most instance"): the app ignores the action when it is on screen. The https link `https://www.youtube.com/shorts` through `Shell_UrlActivity` works warm and cold. |
+| fix | the generator prompt now prefers a declared https link over a shortcut action when the target has a web address, and says why (`softKeyGenerate.js`). |
+| `m-2-a53-youtube-proposal-links.png` | the new proposal: every entry "by link" through the app's own https filter (UrlActivity) |
+| `m-3`, `m-4-a53-menu-shorts-works.png` | the menu; **Shorts**: a Short plays with YouTube already open |
+| `m-5-a53-menu-wl.png` | **Watch Later**: YouTube's playlist page (empty: "No results found", signed out) |
+| `m-5-a53-menu-acct.png` | **My Account**: Google's sign-in for YouTube in Chrome (the account page needs an account; nothing was typed) |
+| `m-6-a53-menu-history.png` | **History**: YouTube's signed-out gate ("Don't miss new videos / Sign in") |
+| `m-7-a53-menu-home-row.png` | **Home** (first row): from a Short, back to YouTube's home feed |
+
+What a signed-in account would add is the content of Watch Later, History and My Account, not whether the links work: each reaches the YouTube (or Google sign-in) screen
+that asks for the account. That last step is the only thing not seen.
+
+Defect found on the way and handed on (Fleet work 263): in the 6.5 look the first row of a soft key's menu is drawn with no visible text (`m-3`, `k-5`); it works when tapped.
+The YouTube test profile was removed from the manager afterwards (the program list is back to the phone's own Chrome / Discord / My Files); YouTube itself stays installed, signed out.
