@@ -20,6 +20,10 @@ done, whatever else it achieves.
    `cafeready-background`. Never make a phone duty work only while the page runs or has been opened.
 0. **Never a manual install step** (Yukimi, Nov 27 2026): no install prompt left on a phone, no "please install" to her;
    a failed silent route is fixed or replaced by the next one in the same turn - `no-manual-install-step`.
+1. **Heavy work on the rack host** (Yukimi, Nov 27 2026): builds, emulator tests, browser sandboxes, Windows tests and development
+   servers run on Fat Misaka through Rack Manager (`dsapp_build`, coord's emulator grants, `rack_role` / `rack_exec`, a replica instead
+   of a live restart), with a lease, never as a bare background process; Dreamscape serves, Yukimi's PCs are the fallback -
+   `rack-host-first`.
 1. **Safety and the shared tree:** `fold-off-limits` (the Fold only for the final install step; the A53 is the agents' own phone; everything else on the emulator lane), `agent-busy-lock`, `no-dreamscape-restart` / `director-idle-before-restart`,
    `no-stash-to-pretty-commit`, `android-app-builds` (never loop installs).
 2. **Performance and power on every change** (Yukimi, Nov 17 2026, #890: "prevent the need to keep doing
@@ -62,6 +66,7 @@ done, whatever else it achieves.
 @.cursor/rules/phone-power-native.mdc
 @.cursor/rules/server-push-not-polling.mdc
 @.cursor/rules/app-scope-ownership.mdc
+@.cursor/rules/rack-host-first.mdc
 @.cursor/rules/no-base64-images.mdc
 @.cursor/rules/commit-each-turn.mdc
 @.cursor/rules/subagents-sonnet.mdc
