@@ -1,0 +1,18 @@
+lv28b4c-wide-qa-1 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-2 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-3 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-4 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-5 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-6 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-7 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-8 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-9 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-10 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-11 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-12 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-13 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-14 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-15 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+lv28b4c-wide-qa-16 {"W": 594, "shifted_diff": 0.0, "unmoved_diff": 4.82, "verdict": "pushed"}
+40.47 32.95 20.13 40/2657 15572
+LOADRUN-DONE

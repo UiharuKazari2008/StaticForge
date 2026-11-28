@@ -1,0 +1,31 @@
+--------- beginning of main
+11-27 19:49:08.418  4933  4933 I MelatonBars: panel push: still in time, ask -> got 20 ms
+11-27 19:49:08.472  4933  4933 I MelatonBars: bubble quickaccess drawn here
+11-27 19:49:15.706  4933  4933 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 19:49:19.746  4933  4933 I MelatonBars: panel push: still in time, ask -> got 41 ms
+11-27 19:49:19.802  4933  4933 I MelatonBars: bubble quickaccess drawn here
+11-27 19:49:26.941  4933  4933 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 19:49:30.865  4933  4933 I MelatonBars: panel push: still in time, ask -> got 19 ms
+11-27 19:49:30.913  4933  4933 I MelatonBars: bubble quickaccess drawn here
+11-27 19:49:38.214  4933  4933 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 19:49:42.069  4933  4933 I MelatonBars: panel push: still in time, ask -> got 21 ms
+11-27 19:49:42.092  4933  4933 I MelatonBars: bubble quickaccess drawn here
+11-27 19:49:49.181  4933  4933 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 19:49:53.812  4933  4933 I MelatonBars: panel push: still in time, ask -> got 38 ms
+11-27 19:49:53.867  4933  4933 I MelatonBars: bubble quickaccess drawn here
+11-27 19:50:01.377  4933  4933 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 19:50:05.300  4933  4933 I MelatonBars: panel push: still in time, ask -> got 45 ms
+11-27 19:50:05.361  4933  4933 I MelatonBars: bubble quickaccess drawn here
+11-27 19:50:12.370  4933  4933 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 19:50:16.370  4933  4933 I MelatonBars: panel push: still in time, ask -> got 45 ms
+11-27 19:50:16.408  4933  4933 I MelatonBars: bubble quickaccess drawn here
+11-27 19:50:23.553  4933  4933 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 19:50:27.371  4933  4933 I MelatonBars: panel push: still in time, ask -> got 24 ms
+11-27 19:50:27.410  4933  4933 I MelatonBars: bubble quickaccess drawn here
+11-27 19:50:34.495  4933  4933 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 19:50:38.385  4933  4933 I MelatonBars: panel push: still in time, ask -> got 23 ms
+11-27 19:50:38.429  4933  4933 I MelatonBars: bubble quickaccess drawn here
+11-27 19:50:45.563  4933  4933 I MelatonBars: popup tap 901,1100: outside: closed
+11-27 19:50:49.542  4933  4933 I MelatonBars: panel push: still in time, ask -> got 29 ms
+11-27 19:50:49.575  4933  4933 I MelatonBars: bubble quickaccess drawn here
+11-27 19:50:56.690  4933  4933 I MelatonBars: popup tap 901,1100: outside: closed

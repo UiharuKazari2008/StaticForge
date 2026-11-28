@@ -1,0 +1,179 @@
+### load2: loops=20 start 20:35:33
+adb answered 20:36:14.428
+20
+2.08 0.43 0.14 25/435 698
+load on 20:36:15.896
+up returned 20:38:00: {"ok": true, "id": "aemu-fold-1", "state": "stopped"} {"ok": true, "id": "aemu-fold-1", "state": "booted", "bootSecs": 92, "noAudio": true} 
+boot_completed 20:38:00  loadavg: 39.78 12.82 4.54 76/1120 1928
++25 s: 20:38:25 loadavg 50.47 17.47 6.30 68/1203 2125 pid 1541
+start-app at 20:38:27
+{"ok": true, "appPid": 1541, "display": "0"}
+end: 20:41:10 loadavg 69.23 34.77 14.38 66/1482 4035
+### done 20:41:19
+--- filtered log (DreamScapeFGS, system FGS lines, ANR/FATAL of any process)
+11-27 20:36:12.576   470   470 D AndroidRuntime: >>>>>> START com.android.internal.os.ZygoteInit uid 0 <<<<<<
+11-27 20:38:15.792  1012  1012 D AndroidRuntime: Shutting down VM
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: Process: com.android.systemui, PID: 1012
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: java.lang.RuntimeException: Unable to create service com.android.systemui.SystemUIService
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5655)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleCreateService(ActivityThread.java:0)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2804)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:296)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:397)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: Caused by: java.lang.IllegalStateException: Timed out waiting for 10000 ms
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3400)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.os.Parcel.createException(Parcel.java:3376)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3359)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3301)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.bluetooth.IBluetoothManager$Stub$Proxy.registerAdapter(IBluetoothManager.java:415)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.registerOrUnregisterAdapterLocked(BluetoothAdapter.java:3667)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.registerBluetoothManagerCallback(BluetoothAdapter.java:3597)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.<init>(BluetoothAdapter.java:1028)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.<init>(BluetoothAdapter.java:997)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.bluetooth.BluetoothAdapter.createAdapter(BluetoothAdapter.java:993)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.bluetooth.BluetoothManager.<init>(BluetoothManager.java:68)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.bluetooth.BluetoothFrameworkInitializer.lambda$registerServiceWrappers$0(BluetoothFrameworkInitializer.java:102)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.bluetooth.BluetoothFrameworkInitializer$$ExternalSyntheticLambda0.createService(D8$$SyntheticClass:0)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.SystemServiceRegistry$170.createService(SystemServiceRegistry.java:2679)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.SystemServiceRegistry$CachedServiceFetcher.getService(SystemServiceRegistry.java:2784)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.SystemServiceRegistry.getSystemService(SystemServiceRegistry.java:2297)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.ContextImpl.getSystemService(ContextImpl.java:2450)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.content.Context.getSystemService(Context.java:4916)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.settingslib.bluetooth.LocalBluetoothAdapter$$ExternalSyntheticLambda0.apply(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at java.util.HashMap.computeIfAbsent(HashMap.java:1231)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.settingslib.bluetooth.LocalBluetoothAdapter.getInstance(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:19)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.systemui.dagger.SettingsLibraryModule_ProvideLocalBluetoothControllerFactory.provideLocalBluetoothController(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:2)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get3(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1644
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4566)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get9(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:1949
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4536)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get20(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:147
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.google.android.systemui.dagger.DaggerSysUIGoogleGlobalRootComponent$SysUIGoogleSysUIComponentImpl$SwitchingProvider.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:4481)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at dagger.internal.DoubleCheck.get(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:13)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl$$ExternalSyntheticLambda1.run(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:46)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.timeInitialization(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:27)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.startServicesIfNeeded(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:232)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.systemui.application.impl.SystemUIApplicationImpl.startSystemUserServicesIfNeeded(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:69)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.systemui.SystemUIService.onCreate(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:9)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5644)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	... 10 more
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: Caused by: android.os.RemoteException: Remote stack trace:
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.TimeoutKt.TimeoutCancellationException(Timeout.kt:189)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.TimeoutCoroutine.run(Timeout.kt:157)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.EventLoopImplBase$DelayedRunnableTask.run(EventLoop.common.kt:505)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at com.android.server.bluetooth.jarjar.kotlinx.coroutines.DefaultExecutor.run(DefaultExecutor.kt:105)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 
+11-27 20:38:18.222  1541  1541 I DreamScapeFGS: start asked at idle after 164 ms (1 asks, from boot: true)
+11-27 20:38:22.917   714  1731 I ActivityManager: Background started FGS: Allowed [callingPackage: jp.net.seventhreeseven.dreamscape; callingUid: 10234; uidState: BFGS; uidBFSL: [BFSL]; BFGS denied: false; intent: Intent { xflg=0x4 cmp=jp.net.seventhreeseven.d
+11-27 20:38:25.530  1541  1541 I DreamScapeFGS: startForeground at create, type 1073741824, 46600 ms after the process started
+11-27 20:38:29.619  1541  1541 I DreamScapeFGS: foreground from boot / update: the ActiveSync link starts
+11-27 20:38:34.949   714   714 D AndroidRuntime: Shutting down VM
+11-27 20:38:34.949   714   714 E AndroidRuntime: *** FATAL EXCEPTION IN SYSTEM PROCESS: main
+11-27 20:38:34.949   714   714 E AndroidRuntime: java.lang.IllegalStateException: Lost network stack. This is not the root cause of any issue, it is a side effect of a crash that happened earlier. Earlier logs should point to the actual issue.
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at android.net.ConnectivityModuleConnector.maybeCrashWithTerribleFailure(ConnectivityModuleConnector.java:328)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at android.net.ConnectivityModuleConnector.-$$Nest$mmaybeCrashWithTerribleFailure(ConnectivityModuleConnector.java:0)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at android.net.ConnectivityModuleConnector$ModuleServiceConnection.onServiceDisconnected(ConnectivityModuleConnector.java:271)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at android.app.LoadedApk$ServiceDispatcher.doDeath(LoadedApk.java:2473)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at android.app.LoadedApk$ServiceDispatcher$RunConnection.run(LoadedApk.java:2491)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at android.os.Handler.handleCallback(Handler.java:1095)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:296)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:397)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at com.android.server.SystemServer.run(SystemServer.java:1097)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at com.android.server.SystemServer.main(SystemServer.java:727)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+11-27 20:38:34.949   714   714 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:917)
+11-27 20:38:40.258  1396  1396 D AndroidRuntime: Shutting down VM
+11-27 20:38:40.258  1396  1396 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:40.258  1396  1396 E AndroidRuntime: Process: com.google.android.inputmethod.latin, PID: 1396
+11-27 20:38:40.258  1396  1396 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.282  2201  2201 D AndroidRuntime: Shutting down VM
+11-27 20:38:40.282  2201  2201 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:40.282  2201  2201 E AndroidRuntime: PID: 2201
+11-27 20:38:40.282  2201  2201 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.283  1232  1293 E AndroidRuntime: FATAL EXCEPTION: UiThreadHelper
+11-27 20:38:40.283  1232  1293 E AndroidRuntime: Process: com.google.android.apps.nexuslauncher, PID: 1232
+11-27 20:38:40.283  1232  1293 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.302  2040  2040 D AndroidRuntime: Shutting down VM
+11-27 20:38:40.303  2040  2040 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:40.303  2040  2040 E AndroidRuntime: Process: com.android.phone, PID: 2040
+11-27 20:38:40.303  2040  2040 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.315  1873  2219 E AndroidRuntime: FATAL EXCEPTION: pool-3-thread-8
+11-27 20:38:40.315  1873  2219 E AndroidRuntime: Process: com.google.android.permissioncontroller, PID: 1873
+11-27 20:38:40.315  1873  2219 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.334  1396  2216 E AndroidRuntime: FATAL EXCEPTION: Primes-nativecrash-sidecar
+11-27 20:38:40.334  1396  2216 E AndroidRuntime: Process: com.google.android.inputmethod.latin, PID: 1396
+11-27 20:38:40.334  1396  2216 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.335  1396  2150 E AndroidRuntime: FATAL EXCEPTION: GoogleApiHandler
+11-27 20:38:40.335  1396  2150 E AndroidRuntime: Process: com.google.android.inputmethod.latin, PID: 1396
+11-27 20:38:40.335  1396  2150 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.361  1909  1909 D AndroidRuntime: Shutting down VM
+11-27 20:38:40.361  1909  1909 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:40.361  1909  1909 E AndroidRuntime: Process: com.google.android.bluetooth, PID: 1909
+11-27 20:38:40.361  1909  1909 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.366  1641  1641 D AndroidRuntime: Shutting down VM
+11-27 20:38:40.366  1641  1641 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:40.366  1641  1641 E AndroidRuntime: Process: com.google.android.gms.persistent, PID: 1641
+11-27 20:38:40.366  1641  1641 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.369  1541  1541 D AndroidRuntime: Shutting down VM
+11-27 20:38:40.369  1541  1541 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:40.369  1541  1541 E AndroidRuntime: Process: jp.net.seventhreeseven.dreamscape, PID: 1541
+11-27 20:38:40.369  1541  1541 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.377  2157  2157 D AndroidRuntime: Shutting down VM
+11-27 20:38:40.377  2157  2157 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:40.377  2157  2157 E AndroidRuntime: Process: com.google.android.gms, PID: 2157
+11-27 20:38:40.377  2157  2157 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.395  2157  2217 E AndroidRuntime: FATAL EXCEPTION: GoogleApiHandler
+11-27 20:38:40.395  2157  2217 E AndroidRuntime: Process: com.google.android.gms, PID: 2157
+11-27 20:38:40.395  2157  2217 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.447  2231  2231 D AndroidRuntime: Shutting down VM
+11-27 20:38:40.447  2231  2231 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:40.447  2231  2231 E AndroidRuntime: PID: 2231
+11-27 20:38:40.447  2231  2231 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.464  2133  2133 D AndroidRuntime: Shutting down VM
+11-27 20:38:40.464  2133  2133 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:40.464  2133  2133 E AndroidRuntime: Process: android.process.media, PID: 2133
+11-27 20:38:40.464  2133  2133 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.530  1614  1614 D AndroidRuntime: Shutting down VM
+11-27 20:38:40.530  1614  1614 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:40.530  1614  1614 E AndroidRuntime: Process: com.google.android.as, PID: 1614
+11-27 20:38:40.530  1614  1614 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.706  1546  1977 E AndroidRuntime: FATAL EXCEPTION: GoogleApiHandler
+11-27 20:38:40.706  1546  1977 E AndroidRuntime: Process: com.google.android.googlequicksearchbox:interactor, PID: 1546
+11-27 20:38:40.706  1546  1977 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+11-27 20:38:40.968  2157  2157 E DeviceDoctorHandler: FATAL EXCEPTION: main
+11-27 20:38:41.138  1641  1641 E DeviceDoctorHandler: FATAL EXCEPTION: main
+11-27 20:38:42.729  2320  2320 D AndroidRuntime: >>>>>> START com.android.internal.os.ZygoteInit uid 0 <<<<<<
+11-27 20:40:57.014  3529  3529 I DreamScapeFGS: start ask merged into the waiting one (Melaton Bars connected, the link's service not running; 2 asks, from boot: true)
+11-27 20:40:57.329  3529  3529 I DreamScapeFGS: start asked at idle after 1020 ms (2 asks, from boot: true)
+11-27 20:41:00.854  2393  3617 I ActivityManager: Background started FGS: Allowed [callingPackage: jp.net.seventhreeseven.dreamscape; callingUid: 10234; uidState: BFGS; uidBFSL: [BFSL]; BFGS denied: false; intent: Intent { xflg=0x4 cmp=jp.net.seventhreeseven.d
+11-27 20:41:01.809  3529  3529 I DreamScapeFGS: startForeground at create, type 1073741824, 33928 ms after the process started
+11-27 20:41:05.269  3529  3529 I DreamScapeFGS: foreground from boot / update: the ActiveSync link starts
+11-27 20:37:23.965  1012  1012 D LauncherProxyService: disconnectFromLauncherService bound?: false currentProxy: null disconnectReason: startConnectionToCurrentUser
+11-27 20:37:26.970   714  1323 E ActivityManager: Reason: executing service com.android.server.telecom/.components.TelecomService, waited 20218ms
+11-27 20:37:29.386  1232  1232 D TouchInteractionService: disposeEventHandlers: Reason: Initializing input monitor due to: onTrackpadConnected() instance=18272255
+11-27 20:37:36.931   714   754 D WearableSensingManagerPerUserService: Trying to cancel the remote request. Reason: Service destroyed.
+--- crash buffer (first 6 lines)
+--------- beginning of crash
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: FATAL EXCEPTION: main
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: Process: com.android.systemui, PID: 1012
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: java.lang.RuntimeException: Unable to create service com.android.systemui.SystemUIService
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5655)
+11-27 20:38:15.837  1012  1012 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleCreateService(ActivityThread.java:0)
+--- services at end
+  * ServiceRecord{669743c u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+    isForeground=true foregroundId=1 types=0x40000000 foregroundNoti=Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ON
+--- notification
+    NotificationRecord(0x08830e9f: pkg=jp.net.seventhreeseven.dreamscape user=UserHandle{0} id=1 tag=null importance=2 key=0|jp.net.seventhreeseven.dreamscape|1|null|10234: Notification(channel=dreams
+      icon=Icon(typ=RESOURCE pkg=jp.net.seventhreeseven.dreamscape id=0x7f0800c0)
+      flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE

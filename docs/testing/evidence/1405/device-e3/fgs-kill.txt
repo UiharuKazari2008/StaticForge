@@ -1,0 +1,154 @@
+### kill 1 at 21:09:52.303, old pid 2036, loadavg 73.18 45.31 19.09 36/2458 4501
+{"ok": true, "killedPid": 2036, "appPid": 4557}
+new pid '4557' after ~1 s at 21:09:53
+11-27 21:09:22.076  2036  2036 I DreamScapeFGS: start asked at idle after 4 ms (1 asks, from boot: false)
+11-27 21:09:23.782  2036  2036 I DreamScapeFGS: startForeground at start, type 1073741824, 148271 ms after the process started
+11-27 21:09:53.470  4557  4557 I DreamScapeFGS: startForeground at create, type 1073741824, 675 ms after the process started
+11-27 21:10:18.317   538   538 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d | grep -E 'DreamScapeFGS' | tail -4; echo '--- crash buffer:'; logcat -b crash -d | grep -v adbd; echo '--- service:'; dumpsys activity services jp.net.seventhreeseven.dreamscape | grep -E 'ServiceRecord.*DreamScapeForegroundService|isForeground'; echo '--- notification flags:'; dumpsys notification --noredact | grep -m1 -A0 'flags=ONGOING' ; ps -A | grep -c sandboxed'
+--- crash buffer:
+--------- beginning of crash
+11-27 21:08:39.780  2171  2906 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 2906 (gd_stack_thread), pid 2171 (droid.bluetooth)
+11-27 21:08:45.293  3201  3201 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+11-27 21:08:45.293  3201  3201 F DEBUG   : Build fingerprint: 'google/sdk_gphone64_x86_64/emu64xa:17/CE2A.260420.051.A3/16571990:userdebug/dev-keys'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Kernel Release: '6.12.81-android16-6-g4f69fc7b210c-ab16167562'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Revision: '0'
+11-27 21:08:45.293  3201  3201 F DEBUG   : ABI: 'x86_64'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Timestamp: 2026-11-27 21:08:44.523223700-0500
+11-27 21:08:45.293  3201  3201 F DEBUG   : Process uptime: 0s
+11-27 21:08:45.293  3201  3201 F DEBUG   : Executable: /system/bin/app_process64
+11-27 21:08:45.293  3201  3201 F DEBUG   : Cmdline: com.google.android.bluetooth
+11-27 21:08:45.293  3201  3201 F DEBUG   : pid: 2171, ppid: 471, tid: 2906, name: gd_stack_thread  >>> com.google.android.bluetooth <<<
+11-27 21:08:45.293  3201  3201 F DEBUG   : uid: 1002
+11-27 21:08:45.293  3201  3201 F DEBUG   : signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------
+11-27 21:08:45.293  3201  3201 F DEBUG   : Abort message: 'system/gd/hci/hci_layer.cc:94 abort_after_time_out: Done waiting for debug information after HCI timeout (WRITE_EXTENDED_INQUIRY_RESPONSE(0x0c52)) for 5000ms'
+11-27 21:08:45.293  3201  3201 F DEBUG   :     rax 0000000000000000  rbx 000000000000087b  rcx 0000703b260ccadd  rdx 0000000000000006
+11-27 21:08:45.293  3201  3201 F DEBUG   :     r8  000070388672d350  r9  000070388672d350  r10 000070388672d330  r11 0000000000000203
+11-27 21:08:45.293  3201  3201 F DEBUG   :     r12 0000000000000000  r13 00007038869152d4  r14 0000000000000b5a  r15 000070388672d330
+11-27 21:08:45.293  3201  3201 F DEBUG   :     rdi 000000000000087b  rsi 0000000000000b5a
+11-27 21:08:45.293  3201  3201 F DEBUG   :     rbp 000070388672d3e0  rsp 000070388672d330  rip 0000703b260ccadd  err 0000000000000004
+11-27 21:08:45.294  3201  3201 F DEBUG   : 12 total frames
+11-27 21:08:45.294  3201  3201 F DEBUG   : backtrace:
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #00 pc 0000000000059add  /apex/com.android.runtime/lib64/bionic/libc.so (abort+189) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #01 pc 00000000008ea8fc  /apex/com.android.art/lib64/libart.so (art::Runtime::Abort(char const*)+1612) (BuildId: ee39087e94b33f52a6702ae4ffb86dc0)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #02 pc 00000000000165be  /apex/com.android.art/lib64/libbase.so (android::base::SetAborter(std::__1::function<void (char const*)>&&)::$_0::__invoke(char const*)+62) (BuildId: 2ecca23d34d49b8e847226a61f55ed7d)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #03 pc 0000000000eeaa1d  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::log_internal::vlog(bluetooth::log_internal::Level, char const*, bluetooth::log_internal::source_location, std::__1::basic_string_view<char, std::__1::char_traits<char>>, std::__1::basic_format_args<std::__1::basic_format_context<std::__1::back_insert_iterator<std::__1::__format::__output_buffer<char>>, char>>)+925) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #04 pc 0000000000c7a9fa  /apex/com.android.bt/lib64/libbluetooth_jni.so (void bluetooth::log::fatal<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, long long>(std::__1::basic_format_string<char, std::__1::type_identity<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>::type, std::__1::type_identity<long long>::type>, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>&&, long long&&, bluetooth::log_internal::source_location)+106) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #05 pc 0000000000c786fb  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::hci::abort_after_time_out(bluetooth::hci::OpCode)+91) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #06 pc 0000000000b501b1  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::os::Alarm::on_fire()+641) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #07 pc 0000000000b5154c  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::os::Reactor::Run()+1420) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #08 pc 0000000000b52279  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::os::Thread::run(std::__1::promise<void>)+553) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #09 pc 0000000000b52487  /apex/com.android.bt/lib64/libbluetooth_jni.so (void* std::__1::__thread_proxy[abi:nn220000]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (bluetooth::os::Thread::*)(std::__1::promise<void>), bluetooth::os::Thread*, std::__1::promise<void>>>(void*)+103) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #10 pc 000000000008c7af  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*) (.__uniq.67847048707805468364044055584648682506)+63) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #11 pc 000000000008670d  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+45) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+11-27 21:08:45.294  3201  3201 F DEBUG   : Note: To display stack pointer information, use the pbtombstone tool:
+11-27 21:08:45.294  3201  3201 F DEBUG   :         pbtombstone --display-sp tombstone_XX.pb
+--- service:
+  * ServiceRecord{b9c631a u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+    isForeground=true foregroundId=1 types=0x40000000 foregroundNoti=Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC)
+--- notification flags:
+    NotificationRecord(0x051572f9: pkg=jp.net.seventhreeseven.dreamscape user=UserHandle{0} id=1 tag=null importance=2 key=0|jp.net.seventhreeseven.dreamscape|1|null|10234: Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC))
+Failed to write while dumping service notification: Broken pipe
+1
+### kill 2 at 21:10:39.467, old pid 4557, loadavg 34.65 39.36 18.46 3/2492 4924
+{"ok": true, "killedPid": 4557, "appPid": 0}
+new pid '4940' after ~4 s at 21:10:44
+11-27 21:09:53.470  4557  4557 I DreamScapeFGS: startForeground at create, type 1073741824, 675 ms after the process started
+11-27 21:10:18.317   538   538 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d | grep -E 'DreamScapeFGS' | tail -4; echo '--- crash buffer:'; logcat -b crash -d | grep -v adbd; echo '--- service:'; dumpsys activity services jp.net.seventhreeseven.dreamscape | grep -E 'ServiceRecord.*DreamScapeForegroundService|isForeground'; echo '--- notification flags:'; dumpsys notification --noredact | grep -m1 -A0 'flags=ONGOING' ; ps -A | grep -c sandboxed'
+11-27 21:10:43.326  4940  4940 I DreamScapeFGS: startForeground at create, type 1073741824, 102 ms after the process started
+11-27 21:11:08.719   538   538 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d | grep -E 'DreamScapeFGS' | tail -4; echo '--- crash buffer:'; logcat -b crash -d | grep -v adbd; echo '--- service:'; dumpsys activity services jp.net.seventhreeseven.dreamscape | grep -E 'ServiceRecord.*DreamScapeForegroundService|isForeground'; echo '--- notification flags:'; dumpsys notification --noredact | grep -m1 -A0 'flags=ONGOING' ; ps -A | grep -c sandboxed'
+--- crash buffer:
+--------- beginning of crash
+11-27 21:08:39.780  2171  2906 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 2906 (gd_stack_thread), pid 2171 (droid.bluetooth)
+11-27 21:08:45.293  3201  3201 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+11-27 21:08:45.293  3201  3201 F DEBUG   : Build fingerprint: 'google/sdk_gphone64_x86_64/emu64xa:17/CE2A.260420.051.A3/16571990:userdebug/dev-keys'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Kernel Release: '6.12.81-android16-6-g4f69fc7b210c-ab16167562'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Revision: '0'
+11-27 21:08:45.293  3201  3201 F DEBUG   : ABI: 'x86_64'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Timestamp: 2026-11-27 21:08:44.523223700-0500
+11-27 21:08:45.293  3201  3201 F DEBUG   : Process uptime: 0s
+11-27 21:08:45.293  3201  3201 F DEBUG   : Executable: /system/bin/app_process64
+11-27 21:08:45.293  3201  3201 F DEBUG   : Cmdline: com.google.android.bluetooth
+11-27 21:08:45.293  3201  3201 F DEBUG   : pid: 2171, ppid: 471, tid: 2906, name: gd_stack_thread  >>> com.google.android.bluetooth <<<
+11-27 21:08:45.293  3201  3201 F DEBUG   : uid: 1002
+11-27 21:08:45.293  3201  3201 F DEBUG   : signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------
+11-27 21:08:45.293  3201  3201 F DEBUG   : Abort message: 'system/gd/hci/hci_layer.cc:94 abort_after_time_out: Done waiting for debug information after HCI timeout (WRITE_EXTENDED_INQUIRY_RESPONSE(0x0c52)) for 5000ms'
+11-27 21:08:45.293  3201  3201 F DEBUG   :     rax 0000000000000000  rbx 000000000000087b  rcx 0000703b260ccadd  rdx 0000000000000006
+11-27 21:08:45.293  3201  3201 F DEBUG   :     r8  000070388672d350  r9  000070388672d350  r10 000070388672d330  r11 0000000000000203
+11-27 21:08:45.293  3201  3201 F DEBUG   :     r12 0000000000000000  r13 00007038869152d4  r14 0000000000000b5a  r15 000070388672d330
+11-27 21:08:45.293  3201  3201 F DEBUG   :     rdi 000000000000087b  rsi 0000000000000b5a
+11-27 21:08:45.293  3201  3201 F DEBUG   :     rbp 000070388672d3e0  rsp 000070388672d330  rip 0000703b260ccadd  err 0000000000000004
+11-27 21:08:45.294  3201  3201 F DEBUG   : 12 total frames
+11-27 21:08:45.294  3201  3201 F DEBUG   : backtrace:
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #00 pc 0000000000059add  /apex/com.android.runtime/lib64/bionic/libc.so (abort+189) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #01 pc 00000000008ea8fc  /apex/com.android.art/lib64/libart.so (art::Runtime::Abort(char const*)+1612) (BuildId: ee39087e94b33f52a6702ae4ffb86dc0)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #02 pc 00000000000165be  /apex/com.android.art/lib64/libbase.so (android::base::SetAborter(std::__1::function<void (char const*)>&&)::$_0::__invoke(char const*)+62) (BuildId: 2ecca23d34d49b8e847226a61f55ed7d)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #03 pc 0000000000eeaa1d  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::log_internal::vlog(bluetooth::log_internal::Level, char const*, bluetooth::log_internal::source_location, std::__1::basic_string_view<char, std::__1::char_traits<char>>, std::__1::basic_format_args<std::__1::basic_format_context<std::__1::back_insert_iterator<std::__1::__format::__output_buffer<char>>, char>>)+925) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #04 pc 0000000000c7a9fa  /apex/com.android.bt/lib64/libbluetooth_jni.so (void bluetooth::log::fatal<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, long long>(std::__1::basic_format_string<char, std::__1::type_identity<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>::type, std::__1::type_identity<long long>::type>, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>&&, long long&&, bluetooth::log_internal::source_location)+106) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #05 pc 0000000000c786fb  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::hci::abort_after_time_out(bluetooth::hci::OpCode)+91) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #06 pc 0000000000b501b1  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::os::Alarm::on_fire()+641) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #07 pc 0000000000b5154c  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::os::Reactor::Run()+1420) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #08 pc 0000000000b52279  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::os::Thread::run(std::__1::promise<void>)+553) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #09 pc 0000000000b52487  /apex/com.android.bt/lib64/libbluetooth_jni.so (void* std::__1::__thread_proxy[abi:nn220000]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (bluetooth::os::Thread::*)(std::__1::promise<void>), bluetooth::os::Thread*, std::__1::promise<void>>>(void*)+103) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #10 pc 000000000008c7af  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*) (.__uniq.67847048707805468364044055584648682506)+63) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #11 pc 000000000008670d  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+45) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+11-27 21:08:45.294  3201  3201 F DEBUG   : Note: To display stack pointer information, use the pbtombstone tool:
+11-27 21:08:45.294  3201  3201 F DEBUG   :         pbtombstone --display-sp tombstone_XX.pb
+--- service:
+  * ServiceRecord{b9c631a u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+    isForeground=true foregroundId=1 types=0x40000000 foregroundNoti=Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC)
+--- notification flags:
+    NotificationRecord(0x06861a33: pkg=jp.net.seventhreeseven.dreamscape user=UserHandle{0} id=1 tag=null importance=2 key=0|jp.net.seventhreeseven.dreamscape|1|null|10234: Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC))
+Failed to write while dumping service notification: Broken pipe
+1
+### kill 3 at 21:11:29.887, old pid 4940, loadavg 15.16 33.32 17.50 1/2439 5094
+{"ok": true, "killedPid": 4940, "appPid": 0}
+new pid '5130' after ~15 s at 21:11:46
+11-27 21:10:43.326  4940  4940 I DreamScapeFGS: startForeground at create, type 1073741824, 102 ms after the process started
+11-27 21:11:08.719   538   538 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d | grep -E 'DreamScapeFGS' | tail -4; echo '--- crash buffer:'; logcat -b crash -d | grep -v adbd; echo '--- service:'; dumpsys activity services jp.net.seventhreeseven.dreamscape | grep -E 'ServiceRecord.*DreamScapeForegroundService|isForeground'; echo '--- notification flags:'; dumpsys notification --noredact | grep -m1 -A0 'flags=ONGOING' ; ps -A | grep -c sandboxed'
+11-27 21:11:45.801  5130  5130 I DreamScapeFGS: startForeground at create, type 1073741824, 96 ms after the process started
+11-27 21:12:11.375   538   538 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d | grep -E 'DreamScapeFGS' | tail -4; echo '--- crash buffer:'; logcat -b crash -d | grep -v adbd; echo '--- service:'; dumpsys activity services jp.net.seventhreeseven.dreamscape | grep -E 'ServiceRecord.*DreamScapeForegroundService|isForeground'; echo '--- notification flags:'; dumpsys notification --noredact | grep -m1 -A0 'flags=ONGOING' ; ps -A | grep -c sandboxed'
+--- crash buffer:
+--------- beginning of crash
+11-27 21:08:39.780  2171  2906 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 2906 (gd_stack_thread), pid 2171 (droid.bluetooth)
+11-27 21:08:45.293  3201  3201 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+11-27 21:08:45.293  3201  3201 F DEBUG   : Build fingerprint: 'google/sdk_gphone64_x86_64/emu64xa:17/CE2A.260420.051.A3/16571990:userdebug/dev-keys'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Kernel Release: '6.12.81-android16-6-g4f69fc7b210c-ab16167562'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Revision: '0'
+11-27 21:08:45.293  3201  3201 F DEBUG   : ABI: 'x86_64'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Timestamp: 2026-11-27 21:08:44.523223700-0500
+11-27 21:08:45.293  3201  3201 F DEBUG   : Process uptime: 0s
+11-27 21:08:45.293  3201  3201 F DEBUG   : Executable: /system/bin/app_process64
+11-27 21:08:45.293  3201  3201 F DEBUG   : Cmdline: com.google.android.bluetooth
+11-27 21:08:45.293  3201  3201 F DEBUG   : pid: 2171, ppid: 471, tid: 2906, name: gd_stack_thread  >>> com.google.android.bluetooth <<<
+11-27 21:08:45.293  3201  3201 F DEBUG   : uid: 1002
+11-27 21:08:45.293  3201  3201 F DEBUG   : signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------
+11-27 21:08:45.293  3201  3201 F DEBUG   : Abort message: 'system/gd/hci/hci_layer.cc:94 abort_after_time_out: Done waiting for debug information after HCI timeout (WRITE_EXTENDED_INQUIRY_RESPONSE(0x0c52)) for 5000ms'
+11-27 21:08:45.293  3201  3201 F DEBUG   :     rax 0000000000000000  rbx 000000000000087b  rcx 0000703b260ccadd  rdx 0000000000000006
+11-27 21:08:45.293  3201  3201 F DEBUG   :     r8  000070388672d350  r9  000070388672d350  r10 000070388672d330  r11 0000000000000203
+11-27 21:08:45.293  3201  3201 F DEBUG   :     r12 0000000000000000  r13 00007038869152d4  r14 0000000000000b5a  r15 000070388672d330
+11-27 21:08:45.293  3201  3201 F DEBUG   :     rdi 000000000000087b  rsi 0000000000000b5a
+11-27 21:08:45.293  3201  3201 F DEBUG   :     rbp 000070388672d3e0  rsp 000070388672d330  rip 0000703b260ccadd  err 0000000000000004
+11-27 21:08:45.294  3201  3201 F DEBUG   : 12 total frames
+11-27 21:08:45.294  3201  3201 F DEBUG   : backtrace:
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #00 pc 0000000000059add  /apex/com.android.runtime/lib64/bionic/libc.so (abort+189) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #01 pc 00000000008ea8fc  /apex/com.android.art/lib64/libart.so (art::Runtime::Abort(char const*)+1612) (BuildId: ee39087e94b33f52a6702ae4ffb86dc0)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #02 pc 00000000000165be  /apex/com.android.art/lib64/libbase.so (android::base::SetAborter(std::__1::function<void (char const*)>&&)::$_0::__invoke(char const*)+62) (BuildId: 2ecca23d34d49b8e847226a61f55ed7d)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #03 pc 0000000000eeaa1d  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::log_internal::vlog(bluetooth::log_internal::Level, char const*, bluetooth::log_internal::source_location, std::__1::basic_string_view<char, std::__1::char_traits<char>>, std::__1::basic_format_args<std::__1::basic_format_context<std::__1::back_insert_iterator<std::__1::__format::__output_buffer<char>>, char>>)+925) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #04 pc 0000000000c7a9fa  /apex/com.android.bt/lib64/libbluetooth_jni.so (void bluetooth::log::fatal<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, long long>(std::__1::basic_format_string<char, std::__1::type_identity<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>::type, std::__1::type_identity<long long>::type>, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>&&, long long&&, bluetooth::log_internal::source_location)+106) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #05 pc 0000000000c786fb  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::hci::abort_after_time_out(bluetooth::hci::OpCode)+91) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #06 pc 0000000000b501b1  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::os::Alarm::on_fire()+641) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #07 pc 0000000000b5154c  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::os::Reactor::Run()+1420) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #08 pc 0000000000b52279  /apex/com.android.bt/lib64/libbluetooth_jni.so (bluetooth::os::Thread::run(std::__1::promise<void>)+553) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #09 pc 0000000000b52487  /apex/com.android.bt/lib64/libbluetooth_jni.so (void* std::__1::__thread_proxy[abi:nn220000]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (bluetooth::os::Thread::*)(std::__1::promise<void>), bluetooth::os::Thread*, std::__1::promise<void>>>(void*)+103) (BuildId: a14e21d91e77485289fc5d3e82d04654)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #10 pc 000000000008c7af  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*) (.__uniq.67847048707805468364044055584648682506)+63) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+11-27 21:08:45.294  3201  3201 F DEBUG   :       #11 pc 000000000008670d  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+45) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+11-27 21:08:45.294  3201  3201 F DEBUG   : Note: To display stack pointer information, use the pbtombstone tool:
+11-27 21:08:45.294  3201  3201 F DEBUG   :         pbtombstone --display-sp tombstone_XX.pb
+--- service:
+  * ServiceRecord{b9c631a u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+    isForeground=true foregroundId=1 types=0x40000000 foregroundNoti=Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC)
+--- notification flags:
+    NotificationRecord(0x0ebab116: pkg=jp.net.seventhreeseven.dreamscape user=UserHandle{0} id=1 tag=null importance=2 key=0|jp.net.seventhreeseven.dreamscape|1|null|10234: Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC))
+Failed to write while dumping service notification: Broken pipe
+1
+KILL-DONE

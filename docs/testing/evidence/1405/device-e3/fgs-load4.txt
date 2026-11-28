@@ -1,0 +1,37 @@
+### load4: loops=20 start 20:47:00
+adb answered 20:47:42.787
+20
+1.11 0.23 0.08 28/433 694
+load on 20:47:44.463
+up returned 20:49:19: {"ok": true, "id": "aemu-fold-1", "state": "stopped"} {"ok": true, "id": "aemu-fold-1", "state": "booted", "bootSecs": 87, "noAudio": true} 
+boot_completed 20:49:20  loadavg: 38.12 11.75 4.12 51/1076 1834
++25 s: 20:49:45 loadavg 54.27 17.60 6.25 91/1201 2026 pid 1839
+start-app at 20:49:45
+{"ok": true, "appPid": 1839, "display": "0"}
+end: 20:52:30 loadavg 86.62 46.57 19.10 102/1815 3564
+### done 20:52:38
+--- filtered log (DreamScapeFGS, system FGS lines, ANR/FATAL of any process)
+11-27 20:47:41.808   472   472 D AndroidRuntime: >>>>>> START com.android.internal.os.ZygoteInit uid 0 <<<<<<
+11-27 20:50:16.805  1839  1839 I DreamScapeFGS: start ask merged into the waiting one (notification listener connected, the link's service not running; 2 asks, from boot: true)
+11-27 20:50:18.936  1839  1839 W DreamScapeFGS: start asked at the bound after 23975 ms, the main thread did not go idle (2 asks, from boot: true)
+11-27 20:50:19.518   719  1792 I ActivityManager: Background started FGS: Allowed [callingPackage: jp.net.seventhreeseven.dreamscape; callingUid: 10234; uidState: TOP ; uidBFSL: [BFSL]; BFGS denied: false; intent: Intent { xflg=0x4 cmp=jp.net.seventhreeseven.d
+11-27 20:50:20.449  1839  1839 I DreamScapeFGS: start ask merged into the waiting one (boot; 2 asks, from boot: true)
+11-27 20:50:23.545  1839  1839 I DreamScapeFGS: startForeground at create, type 1073741824, 55524 ms after the process started
+11-27 20:50:24.034  1839  1839 I DreamScapeFGS: foreground from boot / update: the ActiveSync link starts
+11-27 20:50:27.347  1839  1839 I DreamScapeFGS: start asked at idle after 7707 ms (2 asks, from boot: true)
+11-27 20:50:29.258  1839  1839 I DreamScapeFGS: startForeground at start, type 1073741824, 61237 ms after the process started
+11-27 20:50:29.258  1839  1839 I DreamScapeFGS: foreground from boot / update: the ActiveSync link starts
+11-27 20:51:49.918  1839  1839 I DreamScapeFGS: start asked at idle after 223 ms (1 asks, from boot: false)
+11-27 20:51:50.681  1839  1839 I DreamScapeFGS: startForeground at start, type 1073741824, 142660 ms after the process started
+11-27 20:48:49.733  1010  1010 D LauncherProxyService: disconnectFromLauncherService bound?: false currentProxy: null disconnectReason: startConnectionToCurrentUser
+11-27 20:48:55.006  1166  1166 D TouchInteractionService: disposeEventHandlers: Reason: Initializing input monitor due to: onTrackpadConnected() instance=184066388
+11-27 20:48:59.036   719   757 D WearableSensingManagerPerUserService: Trying to cancel the remote request. Reason: Service destroyed.
+11-27 20:49:08.314   719  1596 E ActivityManager: Reason: Process ProcessRecord{7e4e728 1150:com.android.phone/1001} failed to complete startup
+--- crash buffer (first 6 lines)
+--- services at end
+  * ServiceRecord{ff417c1 u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+    isForeground=true foregroundId=1 types=0x40000000 foregroundNoti=Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ON
+--- notification
+    NotificationRecord(0x0f66d2dc: pkg=jp.net.seventhreeseven.dreamscape user=UserHandle{0} id=1 tag=null importance=2 key=0|jp.net.seventhreeseven.dreamscape|1|null|10234: Notification(channel=dreams
+      icon=Icon(typ=RESOURCE pkg=jp.net.seventhreeseven.dreamscape id=0x7f0800c0)
+      flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE

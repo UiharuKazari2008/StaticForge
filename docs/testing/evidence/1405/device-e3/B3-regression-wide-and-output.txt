@@ -1,0 +1,14 @@
+back-key-wide | differs open-vs-before: 1.4357e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+soft-back-wide | differs open-vs-before: 1.43594e+06 px | differs after-close-vs-before: 235 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+edge-left-wide | differs open-vs-before: 1.4357e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+edge-right-wide | differs open-vs-before: 1.4357e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+outside-wide | differs open-vs-before: 1.4357e+06 px | differs after-close-vs-before: 133 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+swipe-up-wide | differs open-vs-before: 1.43571e+06 px | differs after-close-vs-before: 4.22487e+06 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+screen-off-on-wide | differs open-vs-before: 1.43577e+06 px | differs after-close-vs-before: 629 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+back-key-out | differs open-vs-before: 1.43668e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+soft-back-out | differs open-vs-before: 1.43667e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+edge-left-out | differs open-vs-before: 1.43667e+06 px | differs after-close-vs-before: 235 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+edge-right-out | differs open-vs-before: 1.43667e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+outside-out | differs open-vs-before: 1.43667e+06 px | differs after-close-vs-before: 0 px | top: com.android.settings/.homepage.SettingsHomepageActivity
+swipe-up-out | differs open-vs-before: 1.43667e+06 px | differs after-close-vs-before: 4.22476e+06 px | top: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+screen-off-on-out | differs open-vs-before: 1.43673e+06 px | differs after-close-vs-before: 261 px | top: com.android.settings/.homepage.SettingsHomepageActivity

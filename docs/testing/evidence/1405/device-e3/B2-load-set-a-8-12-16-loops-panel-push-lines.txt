@@ -1,0 +1,172 @@
+## lv8b2c-wide-qa-1
+   19:55:32.713  4933  4933 panel push: still in time, ask -> got 66 ms
+   19:55:33.024  4933  4933 bubble quickaccess drawn here
+   19:55:43.487  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-out-1
+   19:55:48.885  4933  4933 panel push: still in time, ask -> got 47 ms
+   19:55:49.040  4933  4933 bubble output.1 drawn here
+   19:55:59.388  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-qa-2
+   19:56:05.409  4933  4933 panel push: still in time, ask -> got 105 ms
+   19:56:05.545  4933  4933 bubble quickaccess drawn here
+   19:56:16.297  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-out-2
+   19:56:22.547  4933  4933 panel push: still in time, ask -> got 200 ms
+   19:56:22.909  4933  4933 bubble output.1 drawn here
+   19:56:33.095  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-qa-3
+   19:56:38.770  4933  4933 panel push: still in time, ask -> got 36 ms
+   19:56:39.118  4933  4933 bubble quickaccess drawn here
+   19:56:49.888  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-out-3
+   19:56:55.531  4933  4933 panel push: still in time, ask -> got 90 ms
+   19:56:55.678  4933  4933 bubble output.1 drawn here
+   19:57:06.163  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-qa-4
+   19:57:11.901  4933  4933 panel push: still in time, ask -> got 53 ms
+   19:57:12.280  4933  4933 bubble quickaccess drawn here
+   19:57:22.662  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-out-4
+   19:57:28.268  4933  4933 panel push: still in time, ask -> got 40 ms
+   19:57:28.452  4933  4933 bubble output.1 drawn here
+   19:57:39.031  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-qa-5
+   19:57:44.661  4933  4933 panel push: still in time, ask -> got 53 ms
+   19:57:44.949  4933  4933 bubble quickaccess drawn here
+   19:57:55.493  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-out-5
+   19:58:01.133  4933  4933 panel push: still in time, ask -> got 48 ms
+   19:58:01.389  4933  4933 bubble output.1 drawn here
+   19:58:11.833  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-qa-6
+   19:58:17.591  4933  4933 panel push: still in time, ask -> got 82 ms
+   19:58:17.889  4933  4933 bubble quickaccess drawn here
+   19:58:28.409  4933  4933 popup tap 301,1950: outside: closed
+## lv8b2c-wide-out-6
+   19:58:34.020  4933  4933 panel push: still in time, ask -> got 27 ms
+   19:58:34.353  4933  4933 bubble output.1 drawn here
+   19:58:44.810  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-qa-1
+   19:58:59.946  4933  4933 panel push: still in time, ask -> got 62 ms
+   19:59:00.553  4933  4933 bubble quickaccess drawn here
+   19:59:11.406  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-out-1
+   19:59:17.229  4933  4933 panel push: still in time, ask -> got 48 ms
+   19:59:17.477  4933  4933 bubble output.1 drawn here
+   19:59:28.829  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-qa-2
+   19:59:35.157  4933  4933 panel push: limit passed, still out for 19 ms (limit 400 ms, 409 ms since the open)
+   19:59:35.157  4933  4933 panel push: late push asks for the program's window picture (try 1, 409 ms after the open, 9 ms after the limit, before the panel is drawn)
+   19:59:35.528  4933  4933 bubble quickaccess drawn here
+   19:59:35.529  4933  4933 panel push: drawn without a still, the draw took 371 ms
+   19:59:35.549  4933  4933 panel push: late still 410 ms after the ask, 400 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+   19:59:35.549  4933  4933 panel push: late push: window picture in 392 ms, screen pushed aside (801 ms after the open)
+   19:59:46.689  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-out-2
+   19:59:52.357  4933  4933 panel push: still in time, ask -> got 84 ms
+   19:59:52.568  4933  4933 bubble output.1 drawn here
+   20:00:04.020  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-qa-3
+   20:00:10.750  4933  4933 panel push: limit passed, still out for 33 ms (limit 400 ms, 485 ms since the open)
+   20:00:10.751  4933  4933 panel push: late push asks for the program's window picture (try 1, 485 ms after the open, 85 ms after the limit, before the panel is drawn)
+   20:00:11.414  4933  4933 bubble quickaccess drawn here
+   20:00:11.415  4933  4933 panel push: drawn without a still, the draw took 664 ms
+   20:00:11.448  4933  4933 panel push: late push: window picture in 697 ms, screen pushed aside (1183 ms after the open)
+   20:00:11.798  4933  4933 panel push: late still 1080 ms after the ask, 1132 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+   20:00:22.389  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-out-3
+   20:00:28.613  4933  4933 panel push: still in time, ask -> got 86 ms
+   20:00:28.745  4933  4933 bubble output.1 drawn here
+   20:00:39.897  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-qa-4
+   20:00:46.545  4933  4933 panel push: limit passed, still out for 24 ms (limit 400 ms, 631 ms since the open)
+   20:00:46.545  4933  4933 panel push: late push asks for the program's window picture (try 1, 632 ms after the open, 232 ms after the limit, before the panel is drawn)
+   20:00:46.790  4933  4933 bubble quickaccess drawn here
+   20:00:46.791  4933  4933 panel push: drawn without a still, the draw took 246 ms
+   20:00:46.819  4933  4933 panel push: late still 298 ms after the ask, 505 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+   20:00:46.819  4933  4933 panel push: late push: window picture in 273 ms, screen pushed aside (905 ms after the open)
+   20:00:57.419  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-out-4
+   20:01:03.367  4933  4933 panel push: still in time, ask -> got 61 ms
+   20:01:03.582  4933  4933 bubble output.1 drawn here
+   20:01:14.813  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-qa-5
+   20:01:20.989  4933  4933 panel push: limit passed, still out for 25 ms (limit 400 ms, 405 ms since the open)
+   20:01:20.989  4933  4933 panel push: late push asks for the program's window picture (try 1, 406 ms after the open, 6 ms after the limit, before the panel is drawn)
+   20:01:21.325  4933  4933 bubble quickaccess drawn here
+   20:01:21.326  4933  4933 panel push: drawn without a still, the draw took 337 ms
+   20:01:21.326  4933  4933 panel push: late still 362 ms after the ask, 342 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+   20:01:21.326  4933  4933 panel push: late push: window picture in 336 ms, screen pushed aside (742 ms after the open)
+   20:01:32.320  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-out-5
+   20:01:38.053  4933  4933 panel push: still in time, ask -> got 55 ms
+   20:01:38.429  4933  4933 bubble output.1 drawn here
+   20:01:49.234  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-qa-6
+   20:01:55.367  4933  4933 panel push: still in time, ask -> got 97 ms
+   20:01:55.668  4933  4933 bubble quickaccess drawn here
+   20:02:06.363  4933  4933 popup tap 301,1950: outside: closed
+## lv12b2c-wide-out-6
+   20:02:12.335  4933  4933 panel push: still in time, ask -> got 46 ms
+   20:02:12.533  4933  4933 bubble output.1 drawn here
+   20:02:23.280  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-qa-1
+   20:02:39.669  4933  4933 panel push: limit passed, still out for 145 ms (limit 400 ms, 625 ms since the open)
+   20:02:39.669  4933  4933 panel push: late push asks for the program's window picture (try 1, 625 ms after the open, 225 ms after the limit, before the panel is drawn)
+   20:02:40.004  4933  4933 bubble quickaccess drawn here
+   20:02:40.005  4933  4933 panel push: drawn without a still, the draw took 335 ms
+   20:02:40.088  4933  4933 panel push: late still 563 ms after the ask, 643 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+   20:02:40.089  4933  4933 panel push: late push: window picture in 419 ms, screen pushed aside (1044 ms after the open)
+   20:02:51.324  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-out-1
+   20:02:57.684  4933  4933 panel push: still in time, ask -> got 78 ms
+   20:02:58.080  4933  4933 bubble output.1 drawn here
+   20:03:09.268  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-qa-2
+   20:03:16.189  4933  4933 panel push: still in time, ask -> got 125 ms
+   20:03:16.680  4933  4933 bubble quickaccess drawn here
+   20:03:28.360  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-out-2
+   20:03:34.932  4933  4933 panel push: still in time, ask -> got 103 ms
+   20:03:35.258  4933  4933 bubble output.1 drawn here
+   20:03:46.821  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-qa-3
+   20:03:53.770  4933  4933 panel push: limit passed, still out for 18 ms (limit 400 ms, 491 ms since the open)
+   20:03:53.771  4933  4933 panel push: late push asks for the program's window picture (try 1, 491 ms after the open, 91 ms after the limit, before the panel is drawn)
+   20:03:54.162  4933  4933 bubble quickaccess drawn here
+   20:03:54.162  4933  4933 panel push: drawn without a still, the draw took 392 ms
+   20:03:54.251  4933  4933 panel push: late still 498 ms after the ask, 571 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+   20:03:54.251  4933  4933 panel push: late push: window picture in 481 ms, screen pushed aside (972 ms after the open)
+   20:04:05.208  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-out-3
+   20:04:11.662  4933  4933 panel push: still in time, ask -> got 104 ms
+   20:04:12.089  4933  4933 bubble output.1 drawn here
+   20:04:23.325  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-qa-4
+   20:04:30.120  4933  4933 panel push: still in time, ask -> got 134 ms
+   20:04:30.637  4933  4933 bubble quickaccess drawn here
+   20:04:41.917  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-out-4
+   20:04:47.886  4933  4933 panel push: still in time, ask -> got 44 ms
+   20:04:48.276  4933  4933 bubble output.1 drawn here
+   20:04:59.516  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-qa-5
+   20:05:06.981  4933  4933 panel push: limit passed, still out for 88 ms (limit 400 ms, 430 ms since the open)
+   20:05:06.981  4933  4933 panel push: late push asks for the program's window picture (try 1, 430 ms after the open, 30 ms after the limit, before the panel is drawn)
+   20:05:07.342  4933  4933 bubble quickaccess drawn here
+   20:05:07.342  4933  4933 panel push: drawn without a still, the draw took 362 ms
+   20:05:07.342  4933  4933 panel push: late still 450 ms after the ask, 392 ms after the limit (400 ms), recycled (taken after the panel was drawn, it may hold the panel)
+   20:05:07.343  4933  4933 panel push: late push: window picture in 362 ms, screen pushed aside (792 ms after the open)
+   20:05:18.800  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-out-5
+   20:05:25.197  4933  4933 panel push: still in time, ask -> got 116 ms
+   20:05:25.479  4933  4933 bubble output.1 drawn here
+   20:05:36.755  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-qa-6
+   20:05:43.704  4933  4933 panel push: still in time, ask -> got 108 ms
+   20:05:43.938  4933  4933 bubble quickaccess drawn here
+   20:05:55.340  4933  4933 popup tap 301,1950: outside: closed
+## lv16b2c-wide-out-6
+   20:06:01.725  4933  4933 panel push: still in time, ask -> got 28 ms
+   20:06:02.025  4933  4933 bubble output.1 drawn here
+   20:06:13.452  4933  4933 popup tap 301,1950: outside: closed

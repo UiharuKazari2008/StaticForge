@@ -1,0 +1,90 @@
+### normal
+ loadavg samples: ['8.20 1.81 0.59', '15.91 4.28 1.45', '1.28 2.66 1.28']
+ first start ask: 20:26:23.873  1653  1653 I DreamScapeFGS: start asked at idle after 230 ms (2 asks, from boot: true)
+ startForeground at create: 20:26:24.140  1653  1653 I DreamScapeFGS: startForeground at create, type 1073741824, 3855 ms after the process started
+ gap ask->create: 0.27 s
+ ask at the bound (warn) lines: []
+ refused/fell back: none
+ DidNotStart: none | FATAL: none | crash buffer bytes: 0
+ service running+foreground at end: True
+### load1
+ loadavg samples: ['48.16 16.43 5.89', '57.45 21.22 7.76', '71.50 43.22 18.33']
+ first start ask: 20:32:39.542  1874  1874 I DreamScapeFGS: start asked at idle after 1399 ms (2 asks, from boot: true)
+ startForeground at create: 20:32:42.782  1874  1874 I DreamScapeFGS: startForeground at create, type 1073741824, 26039 ms after the process started
+ gap ask->create: 3.24 s
+ ask at the bound (warn) lines: ['20:33:19.455  1874  1874 W DreamScapeFGS: start asked at the bound after 27292 ms, the main thread did not go idle (2 asks, from boot: true)']
+ refused/fell back: none
+ DidNotStart: none | FATAL: none | crash buffer bytes: 0
+ service running+foreground at end: True
+### load2
+ loadavg samples: ['39.78 12.82 4.54', '50.47 17.47 6.30', '69.23 34.77 14.38']
+ first start ask: 20:38:18.222  1541  1541 I DreamScapeFGS: start asked at idle after 164 ms (1 asks, from boot: true)
+ startForeground at create: 20:38:25.530  1541  1541 I DreamScapeFGS: startForeground at create, type 1073741824, 46600 ms after the process started
+ gap ask->create: 7.31 s
+ ask at the bound (warn) lines: []
+ refused/fell back: none
+ DidNotStart: none | FATAL: ['11-27 20:38:15.837  1012  1012 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:34.949   714   714 E AndroidRuntime: *** FATAL EXCEPTION IN SYSTEM PROCESS: main', '11-27 20:38:40.258  1396  1396 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:40.282  2201  2201 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:40.283  1232  1293 E AndroidRuntime: FATAL EXCEPTION: UiThreadHelper', '11-27 20:38:40.303  2040  2040 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:40.315  1873  2219 E AndroidRuntime: FATAL EXCEPTION: pool-3-thread-8', '11-27 20:38:40.334  1396  2216 E AndroidRuntime: FATAL EXCEPTION: Primes-nativecrash-sidecar', '11-27 20:38:40.335  1396  2150 E AndroidRuntime: FATAL EXCEPTION: GoogleApiHandler', '11-27 20:38:40.361  1909  1909 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:40.366  1641  1641 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:40.369  1541  1541 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:40.377  2157  2157 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:40.395  2157  2217 E AndroidRuntime: FATAL EXCEPTION: GoogleApiHandler', '11-27 20:38:40.447  2231  2231 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:40.464  2133  2133 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:40.530  1614  1614 E AndroidRuntime: FATAL EXCEPTION: main', '11-27 20:38:40.706  1546  1977 E AndroidRuntime: FATAL EXCEPTION: GoogleApiHandler', '11-27 20:38:40.968  2157  2157 E DeviceDoctorHandler: FATAL EXCEPTION: main', '11-27 20:38:41.138  1641  1641 E DeviceDoctorHandler: FATAL EXCEPTION: main'] | crash buffer bytes: 16123
+ service running+foreground at end: True
+### load3
+ loadavg samples: ['40.75 12.73 4.47', '54.22 18.08 6.46', '81.97 45.03 18.60']
+ first start ask: 20:44:45.408  1940  1940 I DreamScapeFGS: start asked at idle after 20288 ms (1 asks, from boot: false)
+ startForeground at create: 20:44:45.586  1940  1940 I DreamScapeFGS: startForeground at create, type 1073741824, 40873 ms after the process started
+ gap ask->create: 0.18 s
+ ask at the bound (warn) lines: []
+ refused/fell back: none
+ DidNotStart: none | FATAL: none | crash buffer bytes: 135
+ service running+foreground at end: True
+### load4
+ loadavg samples: ['38.12 11.75 4.12', '54.27 17.60 6.25', '86.62 46.57 19.10']
+ first start ask: 20:50:18.936  1839  1839 W DreamScapeFGS: start asked at the bound after 23975 ms, the main thread did not go idle (2 asks, from boot: true)
+ startForeground at create: 20:50:23.545  1839  1839 I DreamScapeFGS: startForeground at create, type 1073741824, 55524 ms after the process started
+ gap ask->create: 4.61 s
+ ask at the bound (warn) lines: ['20:50:18.936  1839  1839 W DreamScapeFGS: start asked at the bound after 23975 ms, the main thread did not go idle (2 asks, from boot: true)']
+ refused/fell back: none
+ DidNotStart: none | FATAL: none | crash buffer bytes: 0
+ service running+foreground at end: True
+### load5
+ loadavg samples: ['43.76 13.50 4.74', '54.99 18.54 6.63', '92.11 49.01 20.10']
+ first start ask: 20:56:30.954  1776  1776 W DreamScapeFGS: start asked at the bound after 46261 ms, the main thread did not go idle (3 asks, from boot: true)
+ startForeground at create: 20:56:33.271  1776  1776 I DreamScapeFGS: startForeground at create, type 1073741824, 92265 ms after the process started
+ gap ask->create: 2.32 s
+ ask at the bound (warn) lines: ['20:56:30.954  1776  1776 W DreamScapeFGS: start asked at the bound after 46261 ms, the main thread did not go idle (3 asks, from boot: true)']
+ refused/fell back: none
+ DidNotStart: none | FATAL: none | crash buffer bytes: 0
+ service running+foreground at end: True
+### load6
+ loadavg samples: ['37.10 11.37 3.97', '44.62 15.22 5.45', '86.02 46.43 18.95']
+ first start ask: 21:01:50.998  1955  1955 I DreamScapeFGS: start asked at idle after 21463 ms (1 asks, from boot: false)
+ startForeground at create: 21:01:51.473  1955  1955 I DreamScapeFGS: startForeground at create, type 1073741824, 44380 ms after the process started
+ gap ask->create: 0.47 s
+ ask at the bound (warn) lines: []
+ refused/fell back: none
+ DidNotStart: none | FATAL: none | crash buffer bytes: 0
+ service running+foreground at end: True
+### load7
+ loadavg samples: ['33.50 10.39 3.64', '47.30 15.46 5.50', '81.07 44.68 18.32']
+ first start ask: 21:07:40.760  2036  2036 W DreamScapeFGS: start asked at the bound after 27796 ms, the main thread did not go idle (3 asks, from boot: true)
+ startForeground at create: 21:07:43.014  2036  2036 I DreamScapeFGS: startForeground at create, type 1073741824, 47502 ms after the process started
+ gap ask->create: 2.25 s
+ ask at the bound (warn) lines: ['21:07:40.760  2036  2036 W DreamScapeFGS: start asked at the bound after 27796 ms, the main thread did not go idle (3 asks, from boot: true)']
+ refused/fell back: none
+ DidNotStart: none | FATAL: none | crash buffer bytes: 5911
+ service running+foreground at end: True
+### load8
+ loadavg samples: ['41.57 14.40 5.18', '53.87 19.42 7.08', '77.47 52.08 22.92']
+ first start ask: 21:18:11.700  1817  1817 I DreamScapeFGS: start asked at idle after 384 ms (1 asks, from boot: true)
+ startForeground at create: 21:18:13.766  1817  1817 I DreamScapeFGS: startForeground at create, type 1073741824, 29563 ms after the process started
+ gap ask->create: 2.07 s
+ ask at the bound (warn) lines: ['21:19:14.839  1817  1817 W DreamScapeFGS: start asked at the bound after 21095 ms, the main thread did not go idle (1 asks, from boot: true)']
+ refused/fell back: none
+ DidNotStart: none | FATAL: none | crash buffer bytes: 0
+ service running+foreground at end: True
+### load9
+ loadavg samples: ['36.99 11.90 4.21', '45.74 16.02 5.78', '72.46 48.14 21.15']
+ first start ask: 21:24:48.383  1611  1611 I DreamScapeFGS: start asked at idle after 619 ms (1 asks, from boot: true)
+ startForeground at create: 21:24:52.792  1611  1611 I DreamScapeFGS: startForeground at create, type 1073741824, 36330 ms after the process started
+ gap ask->create: 4.41 s
+ ask at the bound (warn) lines: ['21:25:31.029  1611  1611 W DreamScapeFGS: start asked at the bound after 17600 ms, the main thread did not go idle (2 asks, from boot: true)']
+ refused/fell back: none
+ DidNotStart: none | FATAL: none | crash buffer bytes: 0
+ service running+foreground at end: True

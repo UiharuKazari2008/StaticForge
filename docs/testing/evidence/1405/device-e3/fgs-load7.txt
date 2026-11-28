@@ -1,0 +1,44 @@
+### load7: loops=20 start 21:04:06
+adb answered 21:04:47.773
+20
+2.16 0.45 0.14 25/439 698
+load on 21:04:49.415
+up returned 21:06:21: {"ok": true, "id": "aemu-fold-1", "state": "stopped"} {"ok": true, "id": "aemu-fold-1", "state": "booted", "bootSecs": 80, "noAudio": true} 
+boot_completed 21:06:21  loadavg: 33.50 10.39 3.64 77/1093 1808
++25 s: 21:06:46 loadavg 47.30 15.46 5.50 70/1158 1987 pid 
+start-app at 21:06:47
+{"ok": true, "appPid": 0, "display": "0"}
+end: 21:09:32 loadavg 81.07 44.68 18.32 78/1773 3515
+### done 21:09:37
+--- filtered log (DreamScapeFGS, system FGS lines, ANR/FATAL of any process)
+11-27 21:04:46.483   471   471 D AndroidRuntime: >>>>>> START com.android.internal.os.ZygoteInit uid 0 <<<<<<
+11-27 21:07:39.099  2036  2036 I DreamScapeFGS: start ask merged into the waiting one (Melaton Bars connected, the link's service not running; 2 asks, from boot: true)
+11-27 21:07:39.420  2036  2036 I DreamScapeFGS: start ask merged into the waiting one (notification listener connected, the link's service not running; 3 asks, from boot: true)
+11-27 21:07:40.760  2036  2036 W DreamScapeFGS: start asked at the bound after 27796 ms, the main thread did not go idle (3 asks, from boot: true)
+11-27 21:07:41.405   715  1296 I ActivityManager: Background started FGS: Allowed [callingPackage: jp.net.seventhreeseven.dreamscape; callingUid: 10234; uidState: TOP ; uidBFSL: [BFSL]; BFGS denied: false; intent: Intent { xflg=0x4 cmp=jp.net.seventhreeseven.d
+11-27 21:07:43.014  2036  2036 I DreamScapeFGS: startForeground at create, type 1073741824, 47502 ms after the process started
+11-27 21:07:43.829  2036  2036 I DreamScapeFGS: foreground from boot / update: the ActiveSync link starts
+11-27 21:07:45.582  2036  2036 I DreamScapeFGS: start asked at idle after 3493 ms (1 asks, from boot: true)
+11-27 21:07:47.976  2036  2036 I DreamScapeFGS: startForeground at start, type 1073741824, 52465 ms after the process started
+11-27 21:07:47.976  2036  2036 I DreamScapeFGS: foreground from boot / update: the ActiveSync link starts
+11-27 21:09:22.076  2036  2036 I DreamScapeFGS: start asked at idle after 4 ms (1 asks, from boot: false)
+11-27 21:09:23.782  2036  2036 I DreamScapeFGS: startForeground at start, type 1073741824, 148271 ms after the process started
+11-27 21:05:45.592  1004  1004 D LauncherProxyService: disconnectFromLauncherService bound?: false currentProxy: null disconnectReason: startConnectionToCurrentUser
+11-27 21:05:50.762  1161  1161 D TouchInteractionService: disposeEventHandlers: Reason: Initializing input monitor due to: onTrackpadConnected() instance=8118837
+11-27 21:05:58.438   715  1307 E ActivityManager: Reason: executing service com.android.server.telecom/.components.TelecomService, waited 20038ms
+11-27 21:06:12.484   715   749 D WearableSensingManagerPerUserService: Trying to cancel the remote request. Reason: Service destroyed.
+--- crash buffer (first 6 lines)
+--------- beginning of crash
+11-27 21:08:39.780  2171  2906 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 2906 (gd_stack_thread), pid 2171 (droid.bluetooth)
+11-27 21:08:45.293  3201  3201 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+11-27 21:08:45.293  3201  3201 F DEBUG   : Build fingerprint: 'google/sdk_gphone64_x86_64/emu64xa:17/CE2A.260420.051.A3/16571990:userdebug/dev-keys'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Kernel Release: '6.12.81-android16-6-g4f69fc7b210c-ab16167562'
+11-27 21:08:45.293  3201  3201 F DEBUG   : Revision: '0'
+--- services at end
+  * ServiceRecord{b9c631a u0 jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService c:jp.net.seventhreeseven.dreamscape}
+    isForeground=true foregroundId=1 types=0x40000000 foregroundNoti=Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ON
+--- notification
+    NotificationRecord(0x0b5dc7d8: pkg=jp.net.seventhreeseven.dreamscape user=UserHandle{0} id=1 tag=null importance=2 key=0|jp.net.seventhreeseven.dreamscape|1|null|10234: Notification(channel=dreams
+      icon=Icon(typ=RESOURCE pkg=jp.net.seventhreeseven.dreamscape id=0x7f0800c0)
+      flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE
+    NotificationRecord(0x0d3ed708: pkg=jp.net.seventhreeseven.dreamscape user=UserHandle{0} id=1 tag=null importance=2 key=0|jp.net.seventhreeseven.dreamscape|1|null|10234: Notification(channel=dreams

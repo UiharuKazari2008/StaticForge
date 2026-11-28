@@ -1,0 +1,7 @@
+  Window #2 Window{5cf84d4 u0 MelatonHomeStrip}:
+  Window #4 Window{2ecf7e7 u0 MelatonQuickAccessZone}:
+  Window #5 Window{2e6060b u0 MelatonBarEdge}:
+  Window #6 Window{2cdb9ef u0 MelatonBarEdge}:
+  Window #7 Window{5513793 u0 MelatonBar}:
+  Window #8 Window{e8412ff u0 MelatonBar}:
+  Window #16 Window{3d3bc76 u0 com.android.settings/com.android.settings.homepage.SettingsHomepageActivity}:
