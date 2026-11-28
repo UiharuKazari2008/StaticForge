@@ -270,3 +270,18 @@
 .rm-cl { vector-effect: none; stroke-linejoin: round; }
 .rm-tip-h { margin-top: 3px; font-weight: bold; color: #1e395b; }
 .rm-tip-h:first-of-type { margin-top: 0; }
+
+/* Server page "At a Glance": one card per role (Vista's raised list-item look: soft border, hover glow, 32 px art) */
+.rm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 6px; margin: 2px 0 4px; }
+.mmc-window .rm-card { display: grid; grid-template-columns: 32px 1fr; grid-template-rows: auto auto auto; column-gap: 8px; align-items: center; text-align: left;
+  padding: 6px 8px; border: 1px solid #d5dfe5; box-shadow: none; height: auto; min-height: 0; justify-items: start; border-radius: 3px; background: linear-gradient(#fff, #f4f7f9); cursor: default; font: inherit; color: inherit; min-width: 0; }
+.mmc-window .rm-card:hover { border-color: #b8d6fb; background: linear-gradient(#fafdff, #e8f3fd); }
+.mmc-window .rm-card:active { border-color: #7da2ce; background: linear-gradient(#e3eefb, #d3e5fa); }
+.mmc-window .rm-card:focus-visible { outline: 1px dotted #000; outline-offset: -3px; }
+.mmc-window .rm-card > img { grid-row: 1 / span 3; width: 32px; height: 32px; }
+.mmc-window .rm-card-t { font-size: 11px; color: #4c607a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mmc-window .rm-card-n { font-size: 15px; font-weight: normal; color: #1e3287; white-space: nowrap; }
+.mmc-window .rm-card-s { font-size: 11px; color: #6d6d6d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mmc-window .rm-card.is-off { opacity: .6; }
+.mmc-window .rm-card.is-warn .rm-card-n { color: #b54500; }
+.mmc-window .rm-card-foot { margin: 4px 0 0; }

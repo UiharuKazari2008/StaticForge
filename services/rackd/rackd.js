@@ -53,6 +53,8 @@ async function info() {
   await Promise.all(Object.values(roles).map(async r => {
     try { out[r.id] = await Promise.race([r.detect(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))]); }
     catch (e) { out[r.id] = { installed: false, ready: false, summary: `error: ${e.message}`, missing: [] }; }
+    // what runs now, for the console's At a Glance cards (count() is each role's own event-driven state, no extra calls)
+    try { if (typeof r.count === 'function') { const c = r.count(); out[r.id].running = typeof c === 'number' ? c : (c && typeof c[r.id] === 'number' ? c[r.id] : c); } } catch { /* no count */ }
   }));
   return { host: os.hostname(), os: osr, kernel: os.release(), uptimeS: Math.round(os.uptime()), cpus: { count: sockets, model: os.cpus()[0]?.model, threads: os.cpus().length }, memory: { totalB: mem.totalB, availB: mem.availB }, load: os.loadavg(), rackd: { version: VERSION, startedAt }, roles: out };
 }

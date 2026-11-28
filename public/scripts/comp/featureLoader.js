@@ -588,6 +588,7 @@ const FEATURE_MANIFEST = {
             'scripts/comp/mmcRackManagerLoad.js',
             'scripts/comp/mmcRackManagerRoles.js',
             'scripts/comp/mmcRackManagerRoles2.js',
+            'scripts/comp/mmcRackManagerReplicas.js',
             // Server Manager hosts the consoles above: after them
             'scripts/comp/mmcServerManager.js'
         ]

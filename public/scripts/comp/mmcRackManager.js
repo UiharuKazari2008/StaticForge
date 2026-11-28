@@ -45,6 +45,7 @@
         { id: 'sandboxes', name: 'Sandboxes', i16: `${ITEMS}/internet-options-16.png`, i32: `${ITEMS}/internet-options-32.png`, desc: 'Browser environments for testing, each with its own profile and debugging port.' },
         { id: 'containers', name: 'Containers', i16: `${ITEMS}/programs-and-features-16.png`, i32: `${ITEMS}/programs-and-features-32.png`, desc: 'Docker containers, images and volumes.' },
         { id: 'builds', name: 'Builds', i16: `${ITEMS}/backup-and-restore-center-16.png`, i32: `${ITEMS}/backup-and-restore-center-32.png`, desc: 'Clean, tracked builds: pipelines, runs, logs and artifacts.' },
+        { id: 'replicas', name: 'Replicas', i16: '/static_images/melaton/net-server-16.png', i32: '/static_images/melaton/net-server-32.png', desc: 'Dreamscape replica servers for development, one per agent or task.' },
         { id: 'terminal', name: 'Terminal', i16: '/static_images/vista-cmd/cmd-16.png', i32: '/static_images/vista-cmd/cmd-32.png', desc: 'A shell on the server, and its tmux sessions.' },
         { id: 'storage', name: 'Storage', i16: '/static_images/vista-devmgr/disk-drives-16.png', i32: '/static_images/vista-devmgr/disk-drives-32.png', desc: 'Disks, file systems, volumes and RAM disks.' },
         { id: 'networking', name: 'Networking', i16: `${ITEMS}/network-and-sharing-center-16.png`, i32: `${ITEMS}/network-and-sharing-center-32.png`, desc: 'Interfaces, routes, bridges and listening ports.' },
@@ -610,6 +611,53 @@
     }
     const wattsOf = (st) => { const p = st && st.ilo && st.ilo.power; return p && (p.present != null ? p.present : p.watts != null ? p.watts : null); };
 
+    /** "At a Glance": one card per role with what runs and what is there. Counts come from rackd's info (roles[id].running
+     *  when rackd sends it, else read from the role's summary line); a card opens its role. Pushed data only, nothing polled. */
+    function glanceCards(c, n) {
+        const arr = (v) => (v == null ? [] : Array.isArray(v) ? v : [v]);
+        const st = n.ss;
+        const roles = st.info && st.info.roles;
+        if (!roles) return '<p class="mmc-hint">Reading data, please wait...</p>';
+        const num = (re, txt) => { const m = re.exec(String(txt || '')); return m ? Number(m[1]) : null; };
+        const pair = (re, txt) => { const m = re.exec(String(txt || '')); return m ? [Number(m[1]), Number(m[2])] : null; };
+        const runOf = (x) => (typeof x.running === 'number' ? x.running : null);
+        const jobs = runningJobs(n.server).length;
+        const leases = arr((st.power || {}).leases).length;
+        const card = (id, big, sub, warn) => {
+            const r = ROLES.find((y) => y.id === id) || { name: id, i32: SRV32 };
+            const x = roles[id] || {};
+            if (!x.installed) return `<button type="button" class="rm-card is-off" data-act="nav:s:${esc(n.server)}:r:${esc(id)}"><img src="${esc(r.i32)}" alt=""><span class="rm-card-t">${esc(r.name)}</span><b class="rm-card-n">-</b><span class="rm-card-s">Not installed</span></button>`;
+            return `<button type="button" class="rm-card${warn ? ' is-warn' : ''}" data-act="nav:s:${esc(n.server)}:r:${esc(id)}" title="${esc(x.summary || '')}"><img src="${esc(r.i32)}" alt=""><span class="rm-card-t">${esc(r.name)}</span><b class="rm-card-n">${esc(big)}</b><span class="rm-card-s">${esc(sub)}</span></button>`;
+        };
+        const R0 = (id) => roles[id] || {};
+        const vmTotal = num(/(\d+) VM/, R0('vms').summary);
+        const vmRun = runOf(R0('vms'));
+        const av = pair(/(\d+) AVD\(s\), (\d+) running/, R0('android').summary);
+        const sb = pair(/(\d+)\/(\d+) running/, R0('sandboxes').summary);
+        const ct = pair(/(\d+)\/(\d+) running/, R0('containers').summary);
+        const rp = num(/(\d+) replica/, R0('replicas').summary);
+        const bp = pair(/(\d+) pipeline\(s\), (\d+) running/, R0('builds').summary);
+        const tm = num(/(\d+) tmux/, R0('terminal').summary);
+        const rd = num(/(\d+) RAM disk/, R0('storage').summary);
+        const up = num(/(\d+) upgradable/, R0('updates').summary);
+        const rs = num(/(\d+) rack service/, R0('services').summary);
+        const unmanaged = arr(st.info.unmanaged);
+        const cards = [
+            card('vms', vmRun != null ? `${vmRun} running` : `${vmTotal == null ? '-' : vmTotal}`, vmRun != null ? `of ${vmTotal == null ? '?' : vmTotal} virtual machines` : 'virtual machines'),
+            card('android', av ? `${av[1]} running` : '-', av ? `of ${av[0]} devices` : ''),
+            card('sandboxes', sb ? `${sb[0]} running` : '-', sb ? `of ${sb[1]} browsers` : ''),
+            card('containers', ct ? `${ct[0]} running` : '-', ct ? `of ${ct[1]} containers` : ''),
+            card('replicas', rp == null ? '-' : String(rp), rp === 1 ? 'Dreamscape replica' : 'Dreamscape replicas'),
+            card('builds', bp ? `${bp[1]} running` : '-', bp ? `${bp[0]} pipelines${jobs ? `, ${jobs} job${jobs === 1 ? '' : 's'}` : ''}` : ''),
+            card('terminal', tm == null ? '-' : String(tm), tm === 1 ? 'tmux session' : 'tmux sessions'),
+            card('storage', rd == null ? '-' : String(rd), rd === 1 ? 'RAM disk' : 'RAM disks'),
+            card('services', rs == null ? '-' : String(rs), rs === 1 ? 'rack service' : 'rack services'),
+            card('updates', up == null ? '-' : String(up), up === 1 ? 'update available' : 'updates available', up > 0)
+        ].join('');
+        const extra = `<p class="rm-card-foot">${leases ? `${leases} lease${leases === 1 ? '' : 's'} keep this server on. ` : ''}${unmanaged.length ? `${c.state(false, `${unmanaged.length} thing${unmanaged.length === 1 ? '' : 's'} running outside Rack Manager`, true)}` : ''}</p>`;
+        return `<div class="rm-cards">${cards}</div>${leases || unmanaged.length ? extra : ''}`;
+    }
+
     function serverPage(c, n) {
         const m = n.meta;
         if (!m) return plain(c, 'Server', '', '<p>This server is not in the list.</p>');
@@ -661,6 +709,7 @@
         }
         return c.page(m.label, m.model, [
             { id: 'rm-srv', title: 'Server', body: c.props(rows) + `<div class="mmc-buttons">${btnHtml('nav-console', 'Open Console', n.server)}${btnHtml('nav-power', 'Power', n.server)}${btnHtml('nav-hardware', 'Hardware', n.server)}</div>` },
+            info ? { id: 'rm-glance', title: 'At a Glance', body: glanceCards(c, n) } : null,
             R.hostBrief ? R.hostBrief(c, n) : null,
             R.loadSection ? R.loadSection(c, n) : null,
             { id: 'rm-host', title: 'Host', body: host },

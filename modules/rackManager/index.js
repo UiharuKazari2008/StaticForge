@@ -31,7 +31,7 @@ const { fork } = require('child_process');
 const { EventEmitter } = require('events');
 
 const ROOT = path.join(__dirname, '..', '..');
-const ROLES = ['vms', 'android', 'sandboxes', 'terminal', 'storage', 'networking', 'services', 'logs', 'updates', 'containers', 'builds'];
+const ROLES = ['vms', 'android', 'sandboxes', 'terminal', 'storage', 'networking', 'services', 'logs', 'updates', 'containers', 'builds', 'replicas'];
 const NAME_RE = /^[a-z][a-z0-9_-]{0,40}$/;
 const FILE_RE = /^[A-Za-z0-9._-]{1,200}$/;
 const POWER_OPS = { press: 0, hold: 1, cold: 2, reset: 3 };
@@ -354,6 +354,7 @@ function needsConfirm(role, action, params) {
     if (role === 'android' && action === 'delete') return true;
     if (role === 'containers' && ['remove', 'prune', 'image-remove', 'volume-remove'].includes(action)) return true;
     if (role === 'builds' && (action === 'pipeline-delete' || action === 'artifact-remove')) return true;
+    if (role === 'replicas' && action === 'delete') return true;
     return false;
 }
 
