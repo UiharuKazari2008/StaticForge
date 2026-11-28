@@ -181,7 +181,10 @@ module.exports = {
     ...hv.actions,
     ...Object.fromEntries([['start', 'start'], ['shutdown', 'shutdown'], ['reboot', 'reboot'], ['destroy', 'destroy'], ['suspend', 'suspend'], ['resume', 'resume'], ['reset', 'reset']].map(([a, verb]) => [a, async p => {
       const name = vmName(p.name); await mustExist(name); if (verb === 'start') await guardTemplate(name, 'starting it');
-      await vok([verb, name]); return { ok: true };
+      const wasSaved = verb === 'start' && /Managed save:\s+yes/.test((await virsh(['dominfo', name])).stdout);
+      await vok([verb, name]);
+      if (wasSaved && (await virsh(['domstate', name])).stdout.trim() === 'paused') await vok(['resume', name]); // Save + Start continue running, as Hyper-V does
+      return { ok: true };
     }])),
     // create {name, vcpus?, memMB?, memMaxMB?, generation?:1|2, secureBoot?, tpm?, cpuModel?, diskMode?:'new'|'existing'|'none', diskGB?, volume? (existing disk path), pool? (a LVM pool makes a raw volume; default: qcow2 file in the directory pool),
     //         bus?:'virtio'|'scsi'|'sata', iso?, network?, guest?:'windows'|'linux'|'other', purpose?, start?:true}
@@ -230,7 +233,9 @@ module.exports = {
       await guardTemplate(name, 'deleting it');
       const st = (await virsh(['domstate', name])).stdout.trim();
       if (st !== 'shut off') { if (p.force === true) await vok(['destroy', name]); else throw bad('the VM is not shut off (destroy it first, or pass force:true)', 'IN_USE'); }
+      const files0 = bool(p.storage, false) ? X.disks((await vok(['dumpxml', name, '--inactive'])).stdout).filter(d => d.type === 'file' && d.source && d.device === 'disk').map(d => d.source) : [];
       await vok(['undefine', name, '--nvram', '--managed-save', '--snapshots-metadata', '--tpm', ...(bool(p.storage, false) ? ['--remove-all-storage'] : [])], { timeoutMs: 120000 });
+      for (const f of files0) if (f.startsWith('/srv/rack/') && fs.existsSync(f)) fs.rmSync(f, { force: true }); // file disks in directory pools that libvirt left behind
       delete tags[name]; writeJson(TAGS, tags); fs.rmSync(X.logPath(name), { force: true });
       events.emit('vms', 'removed', name, { name });
       return { ok: true };

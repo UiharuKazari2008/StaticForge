@@ -36,3 +36,6 @@
 .rm-boot { border: 1px solid #828790; background: #fff; }
 .rm-bootrow { padding: 2px 6px; cursor: default; user-select: none; }
 .rm-bootrow.is-selected { background: linear-gradient(#dcebfc, #c1dbfc); outline: 1px solid #7da2ce; outline-offset: -1px; }
+
+/* the Vista dialog engine's static control passes no pointer events to plain divs: the Settings panes and the lists in my dialogs take them */
+.rm-form .rm-set, .rm-form .rm-set *, .rm-form .rm-isolist, .rm-form .rm-isolist *, .rm-form .rm-boot, .rm-form .rm-boot * { pointer-events: auto; }
