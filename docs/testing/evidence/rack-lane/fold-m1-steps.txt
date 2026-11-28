@@ -1,0 +1,34 @@
+--- notice push
+{"success":true,"mode":"push","deviceId":"a6586fb529b58aebc9ff4b6f932ea05d","notice":{"id":"lane:misaka1","app":"test","cls":"test","title":"Lane test","text":"hello from misaka","actions":[],"data":{"kind":"test"},"createdAt":1795830250177,"alertAt":1795830250177,"updatedAt":1795830250177,"expiresAt":1795851850177,"state":"new","actedBy":null,"sortAt":1795830250177,"prio":1,"alert":true},"sent":1
+--- notifs
+[{"key": "0|jp.net.seventhreeseven.dreamscape|1|null|10235", "importance": 2, "id": 1, "channel": "dreamscape_persistent", "title": "DreamScape", "text": "Default \u00b7 92 \u00b7 6633 + 22825 anlas", "channelSound": "null", "when": 1795830210171}]
+--- sound
+{"ok": true, "sinceMs": 1795830230225, "count": 0, "sounds": [], "playedCount": 0, "played": [], "alarmLikeStarted": 0, "sources": {"noteAlerts": [], "playerState": [], "notificationAlert": [], "playbackNow": [{"piid": 159, "uid": 1000, "pid": 664, "state": "idle", "usage": "USAGE_ASSISTANCE_SONIFICATION"}, {"piid": 167, "uid": 10189, "pid": 1208, "state": "idle", "usage": "USAGE_ASSISTANCE_SONIFICATION"}]}, "authoritative": "noteAlerts (the app named the file and sha256 prefix it played); playerState / notificationAlert confirm Android saw it", "wav": null}
+--- shade
+{"ok": true, "file": "/home/kanmi/staticforge/docs/testing/evidence/rack-lane/fold-m1-shade.png"}
+--- status noAudio
+{'booted': True, 'noAudio': True, 'shizukuRunning': True}
+--- sms-shaped notice
+{"success":true,"mode":"push","deviceId":"a6586fb529b58aebc9ff4b6f932ea05d","notice":{"id":"sms:lane-acct:lane-chat-misa
+--- sound
+{'count': 0, 'alarmLikeStarted': 0} []
+{"success":true}
+--- reset
+{"ok": true, "id": "aemu-fold-m1", "state": "golden", "bootSecs": 12, "noAudio": true, "appPort5555Restored": true}
+real	0m22.532s
+--- status after reset
+{'booted': True, 'noAudio': True, 'shizukuRunning': True, 'appPid': 3820}
+{"ok": true, "file": "/home/kanmi/staticforge/docs/testing/evidence/rack-lane/fold-m1-after-reset.png", "display": "inner"}
+--- down
+{"ok": true, "id": "aemu-fold-m1", "state": "stopped"}
+real	0m5.174s
+{"ok": true, "id": "aemu-fold-m1", "running": false, "emulatorProcess": false, "adbState": "error: device 'emulator-5576' not found"}
+--- up (cold boot of the kept data)
+{"ok": true, "id": "aemu-fold-m1", "state": "booted", "bootSecs": 61, "noAudio": true}
+real	1m12.028s
+0
+--- down then up --golden
+{"ok": true, "id": "aemu-fold-m1", "state": "stopped"}
+{"ok": true, "id": "aemu-fold-m1", "state": "booted", "bootSecs": 13, "noAudio": true}
+real	0m16.132s
+{"ok": true, "file": "/home/kanmi/staticforge/docs/testing/evidence/rack-lane/fold-m1-up-golden.png"

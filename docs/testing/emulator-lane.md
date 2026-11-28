@@ -106,6 +106,56 @@ disagree: `list` shows `created: true` for `created` and `golden`, `golden: true
   `avd\`, `home\`, `logs\`, `last\`). The shared SDK in `E:\Users\kazari\android\sdk` is not changed.
   Its adb server on :5037 also holds Yukimi's phones: that is why every call is pinned.
 
+## The Fat Misaka pool (second backend)
+
+Fat Misaka (the DL580 G7 in the rack: 80 threads, ~500 GB RAM, no GPU, no AVX) runs lane instances beside Ruiko's. Yukimi chose to run both:
+Ruiko's instances stay, these join the same pool. Same `lane.sh <id> ...` commands, same coord leases (`coord_device_request <id>`).
+Code: `scripts/aemu-lane/lib/misaka.sh` (sourced by `lane.sh`, `misaka_activate` swaps the Ruiko-side functions for the host's for a misaka id),
+`scripts/aemu-lane/lib/rack.py` (one line-JSON request to Rack Manager over Dreamscape's Fleet socket), `scripts/aemu-lane/misaka/start.sh` (the host's `start.cmd`).
+
+| id | shape | host console / adb port | tunnel port (adb server) | console forward | CDP port | Android |
+| --- | --- | --- | --- | --- | --- | --- |
+| `aemu-fold-m1` | fold | 5576 / 5577 | 15201 | 15576 | 9601 | 17 (API 37, google_apis x86_64, userdebug) |
+| `aemu-fold-m2` | fold | 5578 / 5579 | 15202 | 15578 | 9602 | 17 |
+| `aemu-a53-m1` | a53 | 5580 / 5581 | 15211 | 15580 | 9611 | 16 (API 36) |
+| `aemu-a53-m2` | a53 | 5582 / 5583 | 15212 | 15582 | 9612 | 16 |
+
+`lane.sh create fold|a53 m1|m2`. The ports are on the host (its own adb server, rack's, 127.0.0.1:5037; the emulator's console and the app's DevTools
+port); Dreamscape reaches them through ONE `ssh -L` per instance (tunnel port = the host's adb server, console forward = port + 10000, CDP the same number
+on both sides; 9601... are free on the host, 9401+ are the replicas' HTTPS ports). Console ports 5576-5582 are the top of adb's scan range and away from
+the android role's own AVDs (which start at 5554).
+
+- **How the host is driven:** `ssh fat-misaka` (login hvadmin, everything as user `rack` through `sudo`), the host's `/opt/android-sdk`, the lane's own AVD home,
+  logs and last-use files in `/var/lib/rack/lane/` (`avd/`, `logs/`, `last/`, `home/` = the emulator's HOME with the console token). The lane does not use rackd's
+  `android` role for the lifecycle (its `start` picks the console port itself and has no snapshot control); rackd is used for power and leases only.
+- **Power on demand:** `up`, `create`, `reset`, `reboot` power the host on when it is off (`{"op":"power","server":"misaka","action":"on","wait":true}`, 3-5 minutes);
+  every other command on a host that is off says so and does nothing (`status` answers `running:false, host:off`; `list` shows `host: misaka (off)`; `reap` never wakes it).
+  Every lane command takes or renews a rack lease (`lane <id> (<agent>)`, 120 minutes, the id in `~/.config/aemu-lane/<id>.racklease`); `down`, `delete` and the reaper
+  release it. The host idle-shuts-down 3 hours after the last lease and the last busy item.
+- **GPU, per shape (measured):** fold (API 37) `swiftshader_indirect`, a53 (API 36) **`guest`**. The host has no GPU (`-gpu host` does not exist there).
+  `swiftshader_indirect` renders the lock screen, launcher and the app's page on API 37 for hours of tests, but on the API 36 image qemu died with
+  SIGSEGV (rc 139, logged by `start.sh` as `emulator exited rc=139`) the moment the app's desktop drew (three times, also with `-feature -Vulkan`);
+  `-gpu guest` (software GLES in the guest) renders the same page on API 36 without a crash. `LANE_MISAKA_GPU` / `LANE_MISAKA_ARGS` change them (the AVD's
+  `hw.gpu.mode` is set to the same value).
+- **The API 37 screenshot blocker (`screencap` asserting `!rcEnc->featureInfo()->hasReadColorBufferDma`) did not reproduce** with the lane's AVD config
+  (`hw.gpu.enabled=yes`, `hw.gpu.mode=swiftshader_indirect`, emulator 37.3.10, Fold template) and the lane's way of shooting (`screencap -d <display id> -p`
+  to a file, then `adb pull`): both Fold displays, the lock screen, the launcher and the app page come out as real PNGs (1968x2184 inner, 1080x2520 cover),
+  repeatedly, and after `reset`. No `-feature` override and no older emulator build were needed. The earlier failure was on `avdmanager`-made AVDs
+  (their config differs) and one-shot `exec-out screencap` pipes; the lane does not use either. (If it comes back: `-feature -GLDMA`, then `emulator-build`.)
+- **No audio, hidden, no Fold:** every start is `-no-window -no-audio` (qemu command line checked by `up` / `reset` / `create` as on Ruiko, `status` says `noAudio: true`),
+  streams silenced on boot (`setup_device`), headless on a rack host with nobody at it. The Fold and the A53 phone are not reachable from these ids.
+- **Guards:** the host's own numbers: free memory (`MemAvailable`, refuse under 3 GB left after one more instance, exit 4) and a core cap for the lane (4 cores per
+  instance, `LANE_MISAKA_MAX_CORES`, default 24 = 6 instances, exit 5). The host's CPU % is NOT a gate by default: a Chromium build keeps all 80 threads at 99 % for hours
+  (niced; the emulators win against it). `LANE_MISAKA_MAX_CPU=<percent>` turns the util guard on. Boots wait three times as long as Ruiko's (`LANE_MISAKA_BOOT_FACTOR`).
+- **Idle clock:** the last-use file is `/var/lib/rack/lane/last/<id>.txt`; `reap` stops a misaka instance idle for 30 minutes, or 5 minutes without a coord lease; a missing
+  file is never read as "idle". Long steps (wait for a boot, provision) refresh it every 2 minutes through `progress`.
+- **Seen by Rack Manager:** the rackd `android` role lists these instances too (`backend: lane`, `lane: {id, holder, leaseEndsAt}`; the coord lease lives on
+  Dreamscape, so rackManager fills `holder`), counts the running ones as AVDs (metrics, idle check) and refuses `stop` / `wipe` / `delete` on them unless
+  rackManager passes `leaseChecked` or the caller sends `confirm:true` + `force:true`. Needs a rackd redeploy (not done while the Chromium build runs).
+- **Unclean stops break the AVD's data:** an emulator killed in the middle of a boot left userdata on which system_server crash-looped
+  (`Invalid feature flag: android.security.aapm_feature_disable_insecure_wifi_autojoin` in `AdvancedProtectionService`, 29 restarts, a boot that never finished).
+  A fresh AVD boots in about a minute; a clean `down` and cold `up` of kept data also boots (61 s on fold-m1, no crash). After such a boot: `lane.sh <id> delete --yes`, `create` again, and keep the lease / idle clock alive during the create.
+
 ## Check out an instance
 
 ```

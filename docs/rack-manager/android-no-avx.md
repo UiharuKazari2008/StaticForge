@@ -12,6 +12,8 @@ No SIGILL and no startup CPU check: `emulator-check accel` = KVM usable, `emulat
 | `lane-a53` (device `pixel_6`, 3 GB RAM, 8 GB data) | `system-images;android-36;google_apis;x86_64` | `-no-window -gpu swiftshader_indirect -no-audio -no-boot-anim` | **1** (about 1 minute from start), `ro.build.version.sdk=36`, abi x86_64 | **works** (`android/screenshot`: real 1080x2400 PNG of the lock/home screen, served at `/v1/files/shots/...`) |
 | `lane-fold` (device `7.6in Foldable`, 4 GB RAM, 8 GB data) | `system-images;android-37.0;google_apis;x86_64` | same | **1**, `ro.build.version.sdk=37` | **not yet**: `adb exec-out screencap` aborts in the guest with `Assertion failed: !rcEnc->featureInfo()->hasReadColorBufferDma` (also with `-gpu guest`, `-feature -GLDMA`, and `-gpu swangle_indirect`, which hung); the console's `screenrecord screenshot <dir>` answers OK but writes no file with `-no-window` |
 
+**Update (Nov 28 2026): solved for the lane.** With the lane's AVD config (`hw.gpu.mode=swiftshader_indirect`) the API 37 Fold screenshots work (`screencap -d <id> -p` to a file, then pull); details, the API 36 `-gpu guest` finding and the lane's four Misaka instances: docs/testing/emulator-lane.md "The Fat Misaka pool".
+
 The API 37 screenshot needs one more attempt (a different `-gpu` mode, `-feature` names, or an older emulator build with `emulator-build {build}`; the role already installs archived builds under `/opt/android-emulators/<build>` and `create/start` take `emulator: <build>`). The AVDs were deleted after the test; recreate with `android/create`.
 The foldable device name for avdmanager is `7.6in Foldable` (there is no `pixel_fold` in this cmdline-tools).
 

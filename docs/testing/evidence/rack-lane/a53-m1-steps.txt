@@ -1,0 +1,22 @@
+--- status
+{'booted': True, 'noAudio': True, 'shizukuRunning': True, 'appPid': 1893, 'appVersionCode': 3633156, 'androidSdk': '36', 'deviceId': '6a302a21a60accf054baa2f8d63266f1', 'displays': [0]}
+--- shot
+{"ok": true, "file": "/home/kanmi/staticforge/docs/testing/evidence/rack-lane/a53-m1.png", "display": "0"}
+--- notice
+{"success":true,"mode":"push","deviceId":"6a302a21a60accf054baa2f8d63266f1","notice":{"id":"lane:misaka-a53","app":"test
+--- notifs
+[{"key": "0|jp.net.seventhreeseven.dreamscape|1|null|10217", "importance": 2, "id": 1, "channel": "dreamscape_persistent", "title": "DreamScape", "text": "Default \u00b7 92 \u00b7 6633 + 22825 anlas", "channelSound": "null", "when": 1795833490645}]
+--- sound
+{'count': 0, 'alarmLikeStarted': 0}
+--- shade
+{"ok": true, "file": "/home/kanmi/staticforge/docs/testing/evidence/rack-lane/a53-m1-shade.png"}
+--- reset
+{"ok": true, "id": "aemu-a53-m1", "state": "golden", "bootSecs": 9, "noAudio": true, "appPort5555Restored": true}
+--- shot after reset
+{"ok": true, "file": "/home/kanmi/staticforge/docs/testing/evidence/rack-lane/a53-m1-after-reset.png", "display": "0"}
+--- down
+{"ok": true, "id": "aemu-a53-m1", "state": "stopped"}
+{"ok": true, "id": "aemu-a53-m1", "running": false, "emulatorProcess": false, "adbState": "error: device 'emulator-5580'
+--- up --golden
+{"ok": true, "id": "aemu-a53-m1", "state": "booted", "bootSecs": 8, "noAudio": true}
+{"ok": true, "file": "/home/kanmi/staticforge/docs/testing/evidence/rack-lane/a53-m1-up-golden.png", "display": "0"}

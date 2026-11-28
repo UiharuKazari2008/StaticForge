@@ -17,6 +17,12 @@ const packages = ['openjdk-21-jdk-headless', 'unzip', 'libpulse0', 'libnss3', 'l
 const SDK = '/opt/android-sdk';
 const AVD_HOME = path.join(DATA, 'avd');
 const META = path.join(DATA, 'android.json');
+// The emulator lane's instances (scripts/aemu-lane, StaticForge #1309): AVDs under LANE_HOME/avd, started by LANE_HOME/start.sh (not by rackd),
+// driven from Dreamscape by lane.sh. They are listed here too (backend 'lane'), matched to their qemu process by `-avd <name> -port <n>`.
+const LANE_HOME = '/var/lib/rack/lane';
+const LANE_AVD = path.join(LANE_HOME, 'avd');
+const LANE_PORTS = { 'aemu-fold-m1': 5576, 'aemu-fold-m2': 5578, 'aemu-a53-m1': 5580, 'aemu-a53-m2': 5582 };   // console ports (lib/misaka.sh pool_row)
+const isLane = n => /^aemu-(fold|a53)-m[12]$/.test(n);
 const CMDLINE_URL = 'https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip';
 const SUGGESTED = ['system-images;android-37.0;google_apis;x86_64', 'system-images;android-36;google_apis;x86_64', 'system-images;android-34;google_apis;x86_64', 'system-images;android-30;google_apis;x86_64'];
 const JAVA = { JAVA_HOME: '/usr/lib/jvm/java-21-openjdk-amd64' };
@@ -32,8 +38,26 @@ const saveMeta = () => writeJson(META, meta);
 const emuDir = name => meta[name]?.emulator || bin('emulator');
 
 function ini(file) { const o = {}; try { for (const l of fs.readFileSync(file, 'utf8').split('\n')) { const i = l.indexOf('='); if (i > 0) o[l.slice(0, i).trim()] = l.slice(i + 1).trim(); } } catch { /* none */ } return o; }
-function avdDir(name) { const i = ini(path.join(AVD_HOME, `${name}.ini`)); return i.path || path.join(AVD_HOME, `${name}.avd`); }
-function avdNames() { try { return fs.readdirSync(AVD_HOME).filter(f => f.endsWith('.ini')).map(f => f.slice(0, -4)); } catch { return []; } }
+const homeOf = name => (isLane(name) ? LANE_AVD : AVD_HOME);
+function avdDir(name) { const i = ini(path.join(homeOf(name), `${name}.ini`)); return i.path || path.join(homeOf(name), `${name}.avd`); }
+function avdNames() {
+  const out = [];
+  for (const d of [AVD_HOME, LANE_AVD]) { try { for (const f of fs.readdirSync(d)) if (f.endsWith('.ini')) out.push(f.slice(0, -4)); } catch { /* none */ } }
+  return [...new Set(out)];
+}
+// running lane emulators from /proc (sync, no child process): { name -> {pid, consolePort} }
+function laneProcs() {
+  const out = {};
+  let pids = []; try { pids = fs.readdirSync('/proc').filter(x => /^\d+$/.test(x)); } catch { return out; }
+  for (const pid of pids) {
+    let c; try { c = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8'); } catch { continue; }
+    if (!c.includes('qemu-system')) continue;
+    const a = c.split('\0'); const i = a.indexOf('-avd'); const j = a.indexOf('-port');
+    if (i < 0 || j < 0 || !isLane(a[i + 1] || '')) continue;
+    out[a[i + 1]] = { pid: Number(pid), consolePort: Number(a[j + 1]), noAudio: a.includes('-no-audio'), gpu: a[a.indexOf('-gpu') + 1] || null };
+  }
+  return out;
+}
 const avdExists = n => avdNames().includes(n);
 function must(n) { const name = str(n, 'name', RE.name); if (!avdExists(name)) throw bad('no such AVD', 'NOT_FOUND'); return name; }
 function sizeOf(f) { try { return fs.statSync(f).blocks * 512; } catch { return 0; } }
@@ -56,13 +80,14 @@ async function kvmUsable() {
 }
 const serialOf = l => `emulator-${l.consolePort}`;
 
-function describe(name, l) {
+function describe(name, l, lp) {
+  if (!l && lp) l = { consolePort: lp.consolePort, boot: lp.boot || 'booting', child: { pid: lp.pid } };
   const c = ini(path.join(avdDir(name), 'config.ini'));
   const sys = c['image.sysdir.1'] || ''; const apiM = sys.match(/android-(\d+(?:\.\d+)?)/);
   return {
     name, api: apiM ? Number(apiM[1]) : null, abi: c['abi.type'] || null, device: c['hw.device.name'] || null,
     ramMB: Number(c['hw.ramSize']) || null, diskB: sizeOf(path.join(avdDir(name), 'userdata-qemu.img')) + sizeOf(path.join(avdDir(name), 'sdcard.img')),
-    backend: meta[name]?.backend || 'sdk-emulator', emulator: meta[name]?.emulator ? path.basename(meta[name].emulator) : 'sdk',
+    backend: isLane(name) ? 'lane' : meta[name]?.backend || 'sdk-emulator', ...(isLane(name) ? { lane: { id: name, holder: null, leaseEndsAt: null, noAudio: lp ? lp.noAudio : null, gpu: lp ? lp.gpu : null, leaseNote: 'the coord lease lives on Dreamscape: rackManager fills holder / leaseEndsAt' } } : {}), emulator: meta[name]?.emulator ? path.basename(meta[name].emulator) : 'sdk',
     running: !!l, serial: l ? serialOf(l) : null, consolePort: l ? l.consolePort : null, adbPort: l ? l.consolePort + 1 : null,
     boot: l ? l.boot : 'off', pid: l ? l.child.pid : null,
   };
@@ -77,7 +102,19 @@ async function devices() {
   const r = await asRack([adbBin(), 'devices', '-l'], { timeoutMs: 15000 });
   return r.stdout.split('\n').slice(1).filter(l => l.trim()).map(l => { const f = l.trim().split(/\s+/); const m = l.match(/model:(\S+)/); return { serial: f[0], state: f[1], model: m ? m[1] : null }; });
 }
-function liveOf(name) { const l = live.get(name); if (!l) throw bad('the AVD is not running', 'NOT_RUNNING'); return l; }
+function liveOf(name) {
+  const l = live.get(name); if (l) return l;
+  const lp = isLane(name) ? laneProcs()[name] : null;
+  if (!lp) throw bad('the AVD is not running', 'NOT_RUNNING');
+  return { consolePort: lp.consolePort, boot: 'ready', child: { pid: lp.pid } };
+}
+// the lane's instances belong to the agent that holds their coord lease (on Dreamscape, not readable here): stop / wipe / delete need
+// either rackManager's `leaseChecked:true` (it looked the holder up and it is the caller or nobody) or `confirm:true` + `force:true`
+function laneGuard(name, p, what) {
+  if (!isLane(name)) return;
+  if (bool(p.leaseChecked, false) || (bool(p.confirm, false) && bool(p.force, false))) return;
+  throw bad(`${name} is a lane instance: ${what} needs the lease holder's say (rackManager passes leaseChecked) or confirm:true and force:true`, 'LANE_LEASE');
+}
 const adb = (serial, args, o) => asRack([adbBin(), '-s', serial, ...args], { timeoutMs: 60000, ...o });
 
 async function waitBoot(name, timeoutS) {
@@ -90,7 +127,16 @@ async function waitBoot(name, timeoutS) {
   return false;
 }
 async function stopAvd(name) {
-  const l = live.get(name); if (!l) return;
+  const l = live.get(name);
+  if (!l && isLane(name)) {   // a lane instance: console kill, then by pid; its locks go
+    const lp = laneProcs()[name]; if (!lp) return;
+    await adb(`emulator-${lp.consolePort}`, ['emu', 'kill'], { timeoutMs: 10000 });
+    for (let i = 0; i < 40 && laneProcs()[name]; i++) await sleep(250);
+    if (laneProcs()[name]) { await run(['pkill', '-f', `qemu-system.* -avd ${name} `]); for (let i = 0; i < 20 && laneProcs()[name]; i++) await sleep(250); }
+    await run(['rm', '-f', ...['hardware-qemu.ini.lock', 'multiinstance.lock'].map(f => path.join(avdDir(name), f))]);
+    events.emit('android', 'state', name, { name, boot: 'off' }); return;
+  }
+  if (!l) return;
   await adb(serialOf(l), ['emu', 'kill'], { timeoutMs: 10000 });
   for (let i = 0; i < 40 && live.has(name); i++) await sleep(250);
   if (live.has(name)) { try { process.kill(-l.child.pid, 'SIGKILL'); } catch { /* gone */ } for (let i = 0; i < 20 && live.has(name); i++) await sleep(250); }
@@ -122,18 +168,23 @@ module.exports = {
     return { installed: !missing.length, ready: !missing.length && kvm, summary: `${avdNames().length} AVD(s), ${live.size} running, kvm ${kvm ? 'ok' : 'unavailable'}`, missing };
   },
   async get() {
+    const lanes = laneProcs();
+    for (const [n, lp] of Object.entries(lanes)) {   // boot state of a lane emulator: adb answers and sys.boot_completed is 1
+      const r = await adb(`emulator-${lp.consolePort}`, ['shell', 'getprop', 'sys.boot_completed'], { timeoutMs: 8000 });
+      lp.boot = r.stdout.trim() === '1' ? 'ready' : 'booting';
+    }
     const inst = await installedImages(); const all = [...new Set([...inst, ...SUGGESTED])];
     return {
       sdk: { path: SDK, emulator: exists(bin('emulator', 'emulator')), platformTools: exists(adbBin()), emulatorBuilds: (() => { try { return fs.readdirSync('/opt/android-emulators'); } catch { return []; } })() },
       kvm: await kvmUsable(),
-      avds: avdNames().map(n => describe(n, live.get(n))),
+      avds: avdNames().map(n => describe(n, live.get(n), lanes[n])),
       images: all.map(p => ({ package: p, installed: inst.includes(p) })),
       devices: await devices(),
     };
   },
-  count: () => live.size,
-  async busy() { return [...live.keys()].map(n => ({ kind: 'avd', id: n, why: 'running' })); },
-  async stopAll(log, dryRun) { for (const n of [...live.keys()]) { log(`${dryRun ? 'would stop' : 'stopping'} AVD ${n}`); if (!dryRun) await stopAvd(n); } },
+  count: () => live.size + Object.keys(laneProcs()).length,   // lane emulators count as running AVDs (metrics history `avds`, the idle check)
+  async busy() { return [...new Set([...live.keys(), ...Object.keys(laneProcs())])].map(n => ({ kind: 'avd', id: n, why: isLane(n) ? 'running (lane)' : 'running' })); },
+  async stopAll(log, dryRun) { for (const n of [...new Set([...live.keys(), ...Object.keys(laneProcs())])]) { log(`${dryRun ? 'would stop' : 'stopping'} AVD ${n}`); if (!dryRun) await stopAvd(n); } },
   async init() { try { fs.mkdirSync(AVD_HOME, { recursive: true }); } catch { /* ignore */ } },
   async shutdown() { for (const l of live.values()) { try { process.kill(-l.child.pid, 'SIGTERM'); } catch { /* gone */ } } },
   actions: {
@@ -164,6 +215,17 @@ module.exports = {
     },
     async start(p) {
       const name = must(p.name); if (live.has(name)) throw bad('already running', 'RUNNING');
+      if (isLane(name)) {   // the lane's way: LANE_HOME/start.sh with the instance's own console port (lane.sh does the rest: lease, tunnel, setup)
+        if (laneProcs()[name]) throw bad('already running', 'RUNNING');
+        if (!(await kvmUsable())) throw bad('/dev/kvm is not usable by user rack', 'NO_KVM');
+        const port = LANE_PORTS[name]; const gpu = p.gpu ? str(p.gpu, 'gpu', /^[a-z_]{2,30}$/) : (/a53/.test(name) ? 'guest' : 'swiftshader_indirect');
+        const extra = bool(p.golden, false) ? ['-snapshot', 'golden', '-force-snapshot-load'] : ['-no-snapshot-load'];
+        if (!exists(path.join(LANE_HOME, 'start.sh'))) throw bad('the lane has no start.sh on this host (lane.sh create ... makes it)', 'NOT_INSTALLED');
+        const child = spawn('runuser', ['-u', 'rack', '--', path.join(LANE_HOME, 'start.sh'), name, String(port), gpu, ...extra], { detached: true, stdio: 'ignore' });
+        child.on('error', () => {}); child.unref();
+        events.emit('android', 'state', name, { name, boot: 'booting' });
+        return { name, lane: true, started: true, consolePort: port, serial: `emulator-${port}`, gpu };
+      }
       if (!(await kvmUsable())) throw bad('/dev/kvm is not usable by user rack', 'NO_KVM');
       const backend = meta[name]?.backend || 'sdk-emulator';
       if (backend !== 'sdk-emulator') throw bad(`backend ${backend} is not implemented here yet`, 'BACKEND');
@@ -203,11 +265,11 @@ module.exports = {
       } else waitBoot(name, 600).catch(() => {});
       return { ...describe(name, live.get(name)), booted: live.get(name)?.boot === 'ready' };
     },
-    async stop(p) { const name = must(p.name); await stopAvd(name); return { ok: true }; },
-    async wipe(p) { const name = must(p.name); if (live.has(name)) throw bad('stop it first', 'RUNNING'); for (const f of ['userdata-qemu.img', 'userdata-qemu.img.qcow2', 'cache.img', 'snapshots']) await run(['rm', '-rf', path.join(avdDir(name), f)]); events.emit('android', 'state', name, { name }); return { ok: true }; },
+    async stop(p) { const name = must(p.name); laneGuard(name, p, 'stop'); await stopAvd(name); return { ok: true }; },
+    async wipe(p) { const name = must(p.name); laneGuard(name, p, 'wipe'); if (live.has(name) || laneProcs()[name]) throw bad('stop it first', 'RUNNING'); for (const f of ['userdata-qemu.img', 'userdata-qemu.img.qcow2', 'cache.img', 'snapshots']) await run(['rm', '-rf', path.join(avdDir(name), f)]); events.emit('android', 'state', name, { name }); return { ok: true }; },
     async delete(p) {
-      const name = must(p.name); await stopAvd(name);
-      await run(['rm', '-rf', avdDir(name), path.join(AVD_HOME, `${name}.ini`)]); delete meta[name]; saveMeta();
+      const name = must(p.name); laneGuard(name, p, 'delete'); await stopAvd(name);
+      await run(['rm', '-rf', avdDir(name), path.join(homeOf(name), `${name}.ini`), ...(isLane(name) ? [path.join(LANE_HOME, 'last', `${name}.txt`), path.join(LANE_HOME, 'logs', `${name}.txt`)] : [])]); delete meta[name]; saveMeta();
       events.emit('android', 'removed', name, { name }); return { ok: true };
     },
     async screenshot(p) {

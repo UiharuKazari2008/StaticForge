@@ -74,7 +74,7 @@ chmod +x "$T/bin/"*
 # ---- helpers
 export FAKE_CTL=$CTL
 LANEENV=(env "PATH=$T/bin:$PATH" LANE_NO_LEASE=1 "AEMU_LANE_STATE=$T/state" "AEMU_LANE_CONFIG=$T/cfg" "AGENT_COORD_DB=$T/no-such-coord.db"
-  LANE_RUIKO_HOST=fake-ruiko LANE_RPS_RETRY_SLEEP=0 LANE_START_WAIT=0 LANE_STARTING_WAIT=1)
+  LANE_NO_MISAKA=1 LANE_RUIKO_HOST=fake-ruiko LANE_RPS_RETRY_SLEEP=0 LANE_START_WAIT=0 LANE_STARTING_WAIT=1)
 FAILS=0
 ok() { echo "ok   $*"; }
 bad() { echo "FAIL $*"; FAILS=$((FAILS + 1)); }

@@ -2,7 +2,7 @@
 """Emulator console client: con.py <port> <command words...>  (auth token from ~/.secrets/aemu-console.token)."""
 import os, socket, sys, time
 port = int(sys.argv[1]); cmd = ' '.join(sys.argv[2:])
-tok = open(os.path.expanduser('~/.secrets/aemu-console.token')).read().strip()
+tok = open(os.path.expanduser(os.environ.get('AEMU_CONSOLE_TOKEN') or '~/.secrets/aemu-console.token')).read().strip()
 s = socket.create_connection(("127.0.0.1", port), timeout=int(os.environ.get("CON_TIMEOUT", "10")))
 def until_ok():
     buf = b''

@@ -1,6 +1,6 @@
 #!/bin/bash
 # lane.sh - the Android emulator lane on Ruiko (StaticForge #1309 / #1312). One command per action, JSON answers.
-# Docs: docs/testing/emulator-lane.md. Pool: aemu-fold-1..4, aemu-a53-1..4.
+# Docs: docs/testing/emulator-lane.md. Pool: aemu-fold-1..4, aemu-a53-1..4 (Ruiko), aemu-fold-m1..m2, aemu-a53-m1..m2 (Fat Misaka, lib/misaka.sh).
 #
 #   lane.sh list                                   every pool id: state (absent|partial|created|golden), running, lease holder (JSON)
 #   lane.sh create <fold|a53> <n>                  make the AVD (finishes a half-made one), boot, provision (app, Shizuku, sign-in, partner), save `golden`
@@ -64,6 +64,11 @@ pool_row() {
     aemu-a53-3)  r="a53 3 5566 15113 9393";;
     aemu-a53-4)  r="a53 4 5568 15114 9394";;
     aemu-fold-4) r="fold 4 5572 15104 9384";;
+    # Fat Misaka instances (6th field = backend; lib/misaka.sh): host console port, adb-server tunnel, DevTools port
+    aemu-fold-m1) r="fold m1 5576 15201 9601 misaka";;
+    aemu-fold-m2) r="fold m2 5578 15202 9602 misaka";;
+    aemu-a53-m1)  r="a53 m1 5580 15211 9611 misaka";;
+    aemu-a53-m2)  r="a53 m2 5582 15212 9612 misaka";;
     *) return 1;;
   esac
   # an instance still running on its old ports keeps them until it is restarted: $CFG/<id>.ports = "<console> <tunnel> <cdp>"
@@ -74,6 +79,8 @@ pool_row() {
   echo "$r"
 }
 POOL_IDS="aemu-fold-1 aemu-fold-2 aemu-fold-3 aemu-fold-4 aemu-a53-1 aemu-a53-2 aemu-a53-3 aemu-a53-4"
+BACKEND=ruiko
+. "$HERE/lib/misaka.sh"   # the Fat Misaka backend: misaka_activate (called for a misaka id) swaps the Ruiko-side functions for the host's
 
 # ------------------------------------------------------------------ output
 # J k=v ...  -> one JSON object (v is a string; n:<num>, b:<bool>, j:<json> are typed)
@@ -139,7 +146,7 @@ ID=''; cmd=${1:-help}
 case "$cmd" in
   create)
     shift; [ "${1:-}" = fold ] || [ "${1:-}" = a53 ] || die "usage: lane.sh create <fold|a53> <n>" 2
-    case "${2:-}" in [1-4]) ;; *) die "usage: lane.sh create <fold|a53> <1|2|3|4>" 2;; esac
+    case "${2:-}" in [1-4]|m[12]) ;; *) die "usage: lane.sh create <fold|a53> <1|2|3|4|m1|m2>" 2;; esac
     exec "$0" ${AGENT:+--agent "$AGENT"} "aemu-$1-$2" create;;
   list|reap|help|-h|--help) shift || true;;
   aemu-*) ID=$cmd; shift; cmd=${1:-status}; shift || true;;
@@ -148,7 +155,7 @@ esac
 
 if [ -n "$ID" ]; then
   row=$(pool_row "$ID") || die "not a lane id: $ID (aemu-fold-1..4, aemu-a53-1..4)" 2
-  read -r SHAPE N PORT TPORT CDP <<<"$row"
+  read -r SHAPE N PORT TPORT CDP BK <<<"$row"; BACKEND=${BK:-ruiko}
   SERIAL=emulator-$PORT
   export ADB_SERVER_SOCKET=tcp:127.0.0.1:$TPORT
   TLOG=$STATE/tunnel-$ID.log
@@ -463,8 +470,8 @@ print(' '.join(out))")
 # ------------------------------------------------------------------ dispatch
 case "$cmd" in
   help|-h|--help) sed -n '2,/^set -uo/{/^set -uo/!p}' "$0"; exit 0;;
-  list) cmd_list; exit 0;;
-  reap) cmd_reap; exit 0;;
+  list) lane_list_all; exit $?;;
+  reap) mk_reap; cmd_reap; exit 0;;
 esac
 
 # ------------------------------------------------------------------ instance helpers
@@ -720,6 +727,15 @@ make_avd() { # the AVD of this instance on Ruiko (its own userdata, so its own A
 # ------------------------------------------------------------------ commands: one instance
 [ -n "$ID" ] || die "$cmd needs an instance id" 2
 case "$cmd" in status|wait-boot) ;; *) need_lease;; esac
+if [ "$BACKEND" = misaka ]; then   # Fat Misaka: the host must be on (up / create / reset / reboot power it on), a rack lease is taken or renewed
+  misaka_activate
+  case "$cmd" in
+    up|create|reset|reboot) mk_ensure_on;;
+    status|wait-boot) [ "$(mk_power_state)" = up ] || { J ok=b:true id="$ID" running=b:false host=off note="Fat Misaka is off: lane.sh $ID up powers it on"; exit 0; };;
+    *) mk_need_on;;
+  esac
+  case "$cmd" in status|wait-boot) ;; *) mk_lease;; esac
+fi
 tunnel
 touch_last
 # stop idle instances (nobody used for $IDLE_MIN min) from here too, at most every 5 minutes (also a Ruiko scheduled task): no polling loop
@@ -793,8 +809,9 @@ case "$cmd" in
   wait-boot)
     secs=$(wait_boot "${1:-240}") || die "not booted"
     J ok=b:true id="$ID" state=booted "waitedSecs=n:$secs";;
-  down) stop_instance; J ok=b:true id="$ID" state=stopped;;
+  down) stop_instance; [ "$BACKEND" = misaka ] && mk_lease_release; J ok=b:true id="$ID" state=stopped;;
   delete)
+    [ "$BACKEND" = misaka ] && { misaka_delete "$@"; exit 0; }
     [ "${1:-}" = --yes ] || die "this removes the instance's disk and snapshots on Ruiko; say: lane.sh $ID delete --yes" 2
     provision_lock
     [ -n "$TOUCH_PID" ] && wait "$TOUCH_PID"   # touch_last's background write of last\<id>.txt must not land after the removal below (never a bare `wait`: the tunnel is a background job too)
@@ -967,7 +984,8 @@ $(lane_probe_ps "$ID" 0)") || die_unreachable
     LANE_ADB_PORT=${1:-$LANE_ADB_PORT}; restore_app_port 30 && J ok=b:true "appPort=n:$LANE_ADB_PORT" || die "the app's port preference was not set (is the page up?)";;
   keep)
     m=${1:-60}; t=$(( $(date +%s) + m * 60 )); echo "$t" > "$STATE/$ID.keep"
-    rps "New-Item -ItemType Directory -Force '$RBASE\\last' | Out-Null; Set-Content -Path '$RBASE\\last\\$ID.txt' -Value $t" >/dev/null || die_unreachable
+    if [ "$BACKEND" = misaka ]; then misaka_keep "$t"; else
+    rps "New-Item -ItemType Directory -Force '$RBASE\\last' | Out-Null; Set-Content -Path '$RBASE\\last\\$ID.txt' -Value $t" >/dev/null || die_unreachable; fi
     J ok=b:true id="$ID" "keepMinutes=n:$m" "keepUntil=n:$t";;
   display)
     case "${1:-}" in
