@@ -4585,7 +4585,7 @@ function onSockConnection(sock) {
         if (req && req.op === 'ping') { try { sock.end(`${JSON.stringify({ ok: true, pid: process.pid })}\n`); } catch (_) { /* gone */ } return; }
         let out;
         try {
-            if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user', 'device-consent'].concat(FLEET_OPS, TASK_OPS).includes(req.op)) throw new Error('op must be check, enqueue, pause, resume, ask_user, device-consent, a task_* or a fleet_* op');
+            if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user', 'device-consent', 'session_host'].concat(FLEET_OPS, TASK_OPS).includes(req.op)) throw new Error('op must be check, enqueue, pause, resume, ask_user, device-consent, a task_* or a fleet_* op');
             if (req.op === 'device-consent') {
                 // a shared phone's queue changed in an MCP process: notices and ask timeouts follow (modules/deviceConsent.js)
                 require('./deviceConsent').changed(String(req.device || '').slice(0, 40));
@@ -4604,6 +4604,11 @@ function onSockConnection(sock) {
                     ? await pauseSession(String(req.sessionId || ''), { mode: 'hold', reason: String(req.reason || '').slice(0, 300), by: String(req.by || 'an agent').slice(0, 80), kind: 'agent' })
                     : await resumeSession(String(req.sessionId || ''), { note: `by ${String(req.by || 'an agent').slice(0, 80)}` });
                 out = { ok: true, result: r };
+            } else if (req.op === 'session_host') {
+                // Fleet's default host for new sessions (config fleet.sessionHost: dreamscape | misaka); no host = read it
+                const fs2 = require('./claudeFleetSettings');
+                if (req.host !== undefined) await fs2.setSessionHost(gResources, String(req.host));
+                out = { ok: true, sessionHost: fs2.sessionHost(gResources) };
             } else if (req.op === 'enqueue') {
                 const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, engine: req.engine, host: req.host, gitIdentity: req.gitIdentity, topology: req.topology, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
                 out = { ok: true, work: w };
