@@ -77,6 +77,9 @@ cancelled (a new item is made).
 - Several issues named, several carded: the item of the first named issue that has one is adopted; every other waiting
   hook item on a named issue ends as `cancelled` with `joinedInto` the adopted item (written straight to the row, as
   `mergeWork` does: no cancel comment, no close).
+- Several issues named, one carded and waiting, another whose hook item already runs: the waiting item is adopted and
+  carries every named issue EXCEPT the running one, which stays with its own item (one issue, one item). The result adds
+  `running: [{ ref, work }]` and a `note` naming them.
 - **Already started** (starting, running, waiting, input, or queued with its start in flight) and no waiting item to adopt:
   nothing is made or changed. The result is the running item with `existing: true` and a `note` ("Work item N already runs
   <repo>#<n>: no second item was made. Steer its session instead.").

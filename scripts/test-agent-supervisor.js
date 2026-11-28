@@ -1539,6 +1539,11 @@ sup._test.setFetch(async (url, opts) => {
             const other = await hookIn(2771);
             const mix = sup.enqueue({ prompt: 'dispatch brief e2', source: 'director', issues: [R(2770), R(2771)] }, { gr });
             assert.deepStrictEqual([mix.id, mix.adopted], [other.id, true]);
+            // the issue whose hook item already runs stays with that item: the adopted one does not carry it (one issue, one item)
+            assert.deepStrictEqual(sup.getWork(other.id).issues.map((i) => `${i.repo}#${i.number}`), [R(2771)], 'only the waiting issue is carried');
+            assert.deepStrictEqual(mix.running, [{ ref: R(2770), work: hook.id }]);
+            assert.match(mix.note, new RegExp(`already run: .*#2770 \\(work item ${hook.id}\\)`));
+            assert.strictEqual(RAW().prepare("SELECT COUNT(*) AS n FROM supervisor_work WHERE state != 'cancelled' AND ((issue_repo = ? AND issue_number = 2770) OR issue_refs LIKE '%2770%')").get(FQ).n, 1, 'one item for the running issue');
             RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id IN (?, ?)").run(hook.id, other.id);
         });
     });

@@ -1784,7 +1784,10 @@ function adoptHookItem(item, f, refs, opts) {
     const keep = waiting[0].row;
     const id = keep.id;
     // the primary's Yozora id stays when the caller named the same issue without one
-    const named = refs.map((x, n) => (n === 0 && !x.id && keep.issue_repo === x.repo && keep.issue_number === x.number ? Object.assign({}, x, { id: keep.issue_id || null }) : x));
+    // a named issue whose hook item already runs stays with that item: the adopted one does not carry it too (one issue, one item)
+    const ran = hits.filter((h) => !waiting.includes(h)).map((h) => ({ ref: issueKey({ repo: h.row.issue_repo, number: h.row.issue_number }), work: h.row.id }));
+    const ranKeys = new Set(ran.map((x) => x.ref));
+    const named = refs.filter((x) => !ranKeys.has(issueKey(x))).map((x) => (!x.id && keep.issue_repo === x.repo && keep.issue_number === x.number ? Object.assign({}, x, { id: keep.issue_id || null }) : x));
     setWork(id, {
         title: f.titleGiven ? f.title : keep.title, prompt: f.prompt, cwd: f.cwd, account: f.account, model: f.model, effort: f.effort, engine: f.engine, source: f.src,
         source_ref: f.sourceRef, topology: f.topology, stages: f.stages, remote_control: f.remoteControl, host: f.host, git_identity: f.gitIdentity,
@@ -1801,13 +1804,13 @@ function adoptHookItem(item, f, refs, opts) {
     joined.forEach((j) => emit({ work: getWork(j) }));
     emit({ work: getWork(id) });
     pumpWork(opts.gr).catch((e) => console.warn(`[supervisor] queue: ${e.message}`));
-    return Object.assign(getWork(id), { adopted: true, joined });
+    return Object.assign(getWork(id), { adopted: true, joined }, ran.length ? { running: ran, note: `Work item ${id} (the issue's waiting item) took this brief. Not carried by it, because they already run: ${ran.map((x) => `${x.ref} (work item ${x.work})`).join(', ')}. Steer those sessions instead.` } : {});
 }
 
 /**
  * Adds a work item and moves the queue. item: { title, prompt, cwd?, account?, model?, effort?, startNow?, source?, sourceRef?, remoteControl? (default false: a new session starts without Remote Control), issue? / issues? (one or several: the first is the primary), separate? }
  * #1276: naming an issue the hook already carded (source yozora, not a part) makes no second item: the hook's waiting item is adopted
- * (returned with adopted: true, joined: [ids folded in]) or, when it already runs, returned untouched (existing: true, note);
+ * (returned with adopted: true, joined: [ids folded in]; a named issue whose hook item already runs is left to that item: running: [{ ref, work }], note) or, when it already runs, returned untouched (existing: true, note);
  * separate: true (or a part, or source yozora) always makes its own item.
  */
 function enqueue(item, opts = {}) {

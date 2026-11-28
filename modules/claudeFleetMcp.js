@@ -414,7 +414,7 @@ async function dispatch(gr, name, input) {
         return {
             work: w.id, state: w.state, session: w.sessionId || null, account: w.account || acc.name, model, effort: w.effort || null,
             link: w.link || '', message: w.message, remoteControl: !!w.remoteControl, issues: w.issues && w.issues.length ? w.issues.map((i) => `${i.repo}#${i.number}`) : undefined,
-            adopted: first.adopted === true ? true : undefined, existing: first.existing === true ? true : undefined, note: first.existing ? first.note : (first.adopted ? `The issue's waiting work item ${first.id} was taken over with this brief: no second item was made` : undefined),
+            adopted: first.adopted === true ? true : undefined, existing: first.existing === true ? true : undefined, running: first.running || undefined, note: first.note ? first.note : (first.adopted ? `The issue's waiting work item ${first.id} was taken over with this brief: no second item was made` : undefined),
             issue: issueRef(w), issueUrl: w.issue ? w.issue.url : null,
             report: `Work item #${w.id} (${stateText(w)})${w.issue && w.issue.url ? `, issue ${w.issue.url}` : ''}`,
             modelReason: input.modelReason ? String(input.modelReason).slice(0, 300) : undefined,

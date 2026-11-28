@@ -463,6 +463,63 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
         assert.strictEqual(fs8.get({ getConfig: () => ({ fleet: { accounts: { a: { renewalDay: 40 } } } }) }, 'a').renewalDay, null);
     });
 
+    await test('#1276 end to end: a new fleet issue is carded by the hook and claude_dispatch for it in the same breath leaves exactly one work item, holding the dispatch\'s brief; a plain new issue gets its one Waiting item', async () => {
+        const REPO = 'DreamScape/StaticForge';
+        const open = new Map(); // number -> { title, body }
+        const sent = [];
+        require('../modules/fleetYozora')._setFetch(async (url, opts) => {
+            const method = (opts && opts.method) || 'GET';
+            const u = String(url).replace(/^https?:\/\/[^/]+\/api\/v1/, '');
+            sent.push({ method, url: u, body: opts && opts.body ? JSON.parse(opts.body) : null });
+            const ok = (o) => ({ ok: true, status: 200, text: async () => JSON.stringify(o) });
+            let m;
+            if (method === 'GET' && /\/labels\?/.test(u)) return ok([{ id: 1, name: 'fleet' }]);
+            if (method === 'GET' && u.startsWith(`/repos/${REPO}/issues?state=open`) && /labels=fleet/.test(u)) return ok(/page=1$/.test(u) ? [...open.entries()].map(([n, v]) => ({ number: n, id: 7000 + n, title: v.title, body: v.body, labels: [{ name: 'fleet' }] })) : []);
+            if (method === 'GET' && /\/issues\?state=open/.test(u)) return ok([]);
+            if (method === 'GET' && (m = /^\/repos\/[^/]+\/[^/]+\/issues\/(\d+)$/.exec(u))) { const v = open.get(Number(m[1])) || {}; return ok({ number: Number(m[1]), id: 7000 + Number(m[1]), state: 'open', title: v.title || '', body: v.body || '', labels: [{ name: 'fleet' }] }); }
+            return ok({});
+        });
+        const sup = require('../modules/agentSupervisor');
+        const mcp = require('../modules/claudeFleetMcp')._test;
+        const raw = store.open();
+        // one account with room (the pick is not what this test is about): the fleet status and the usage read are stood in for
+        const rf = require('../modules/claudeRemoteFleet');
+        const us = require('../modules/claudeUsage');
+        const kept = [rf.status, us.read];
+        rf.status = async () => ({ accounts: [{ index: 0, id: ID_A, name: 'Main', active: true, moved: true, onHost: false, state: 'connected', hasLogin: true, settings: {}, availability: null, sessions: [] }] });
+        us.read = async () => ({ accounts: [] });
+        try {
+        const rowsFor = (n) => raw.prepare("SELECT * FROM supervisor_work WHERE state != 'cancelled' AND ((issue_repo = ? AND issue_number = ?) OR issue_refs LIKE ?)").all(REPO, n, `%"number":${n}%`);
+        // the issue is filed, the hook cards it ...
+        open.set(4276, { title: 'Filed and dispatched', body: 'the write-up' });
+        const pulled = await sup.pullIssues(null, { force: true });
+        assert.ok(pulled.added >= 1, JSON.stringify(pulled));
+        const carded = rowsFor(4276);
+        assert.deepStrictEqual(carded.map((r) => [r.source, r.state]), [['yozora', 'held']]);
+        // ... and the Director's claude_dispatch for it lands right after (the real tool path: account pick, enqueue, pump)
+        const out = await mcp.dispatch(null, 'claude_dispatch', { title: 'Dispatched title', prompt: 'THE DISPATCH BRIEF for #4276', issues: [`${REPO}#4276`] });
+        assert.deepStrictEqual([out.work, out.adopted, out.existing, out.state], [carded[0].id, true, undefined, 'held'], JSON.stringify(out));
+        assert.match(out.note, /taken over with this brief: no second item was made/);
+        const after = rowsFor(4276);
+        assert.strictEqual(after.length, 1, 'exactly one work item for the issue');
+        assert.deepStrictEqual([after[0].id, after[0].prompt, after[0].title, after[0].source], [carded[0].id, 'THE DISPATCH BRIEF for #4276', 'Dispatched title', 'director']);
+        // the hook does not card it again, and the other order (dispatch first, the hook after) makes one item too
+        assert.strictEqual((await sup.pullIssues(null, { force: true })).added, 0);
+        const first = await mcp.dispatch(null, 'claude_dispatch', { prompt: 'dispatched before the hook saw it', issues: [`${REPO}#4277`] });
+        open.set(4277, { title: 'Dispatch first', body: 'b' });
+        assert.strictEqual((await sup.pullIssues(null, { force: true })).added, 0);
+        assert.deepStrictEqual(rowsFor(4277).map((r) => [r.id, r.prompt]), [[first.work, 'dispatched before the hook saw it']]);
+        assert.strictEqual(first.adopted, undefined);
+        // a plain new issue still gets its one Waiting item with the hook's brief
+        open.set(4278, { title: 'Plain new issue', body: 'plain body' });
+        assert.strictEqual((await sup.pullIssues(null, { force: true })).added, 1);
+        const plain = rowsFor(4278);
+        assert.deepStrictEqual(plain.map((r) => [r.source, r.state]), [['yozora', 'held']]);
+        assert.match(plain[0].prompt, /^Yozora issue DreamScape\/StaticForge#4278: Plain new issue\n/);
+        raw.prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE issue_number IN (4276, 4277, 4278)").run();
+        } finally { [rf.status, us.read] = kept; }
+    });
+
     store.close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');
