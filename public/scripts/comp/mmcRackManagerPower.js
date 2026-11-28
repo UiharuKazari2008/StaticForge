@@ -103,18 +103,20 @@
 
     const HP = { draft: null }; // the Automatic power sheet's unsaved values
     const left = (ms) => (ms > 0 ? R.dur(ms / 1000) : 'now');
-    function stateBlock(c, n) {
+    function stateBlock(c, n, after) {
         const ps = R.powerState(n.server);
         const p = n.ss.power || {};
         const po = R.postOf(n.server);
-        const since = p.since ? ` since ${esc(R.when(p.since))}` : '';
-        let info;
-        if (ps === 'powering-on') info = `<p><b>Powering on</b></p>${R.postBar(po)}`;
-        else if (ps === 'booting') info = `<p><b>Booting</b> (the operating system is starting)</p>${R.bar(0, 'is-marquee')}`;
-        else if (ps === 'shutting-down') info = '<p><b>Shutting down</b></p>';
-        else info = `<p><b>${ps === 'up' ? 'Running' : 'Off'}</b>${since}</p>`;
+        const info = n.ss.info;
+        const boot = ps === 'up' && info && info.uptimeS ? Date.now() - info.uptimeS * 1000 : p.since;
+        const since = boot ? ` since ${esc(R.when(boot))}` : '';
+        let line;
+        if (ps === 'powering-on') line = `<p><b>Powering on</b></p>${R.postBar(po)}`;
+        else if (ps === 'booting') line = `<p><b>Booting</b> (the operating system is starting)</p>${R.bar(0, 'is-marquee')}`;
+        else if (ps === 'shutting-down') line = '<p><b>Shutting down</b></p>';
+        else line = `<p><b>${ps === 'up' ? 'Running' : 'Off'}</b>${since}</p>`;
         const btn = ps === 'off' ? R.btnHtml('host-on', 'Power On') : R.btnHtml('host-off', 'Shut Down...', null, ps === 'up' ? '' : ' disabled');
-        return `<div class="rm-powerstate"><img src="${PAGES}/power-plugged-32.png" alt=""><div>${info}</div></div><div class="mmc-buttons">${btn}</div>`;
+        return `<div class="rm-powerstate"><img src="${PAGES}/power-plugged-32.png" alt=""><div>${line}</div></div>${after || ''}<div class="mmc-buttons">${btn}</div>`;
     }
     function leasesBlock(c, n) {
         const p = n.ss.power || {};
@@ -157,7 +159,7 @@
         const w = (v) => (v == null ? '-' : `${v} W`);
         return c.props([['Present', w(p.present)], ['Average', w(p.average)], ['Minimum', w(p.min)], ['Maximum', w(p.max)], ['Power cap', p.cap ? `${p.cap} W` : 'None']]);
     }
-    R.hostBrief = (c, n) => ({ id: 'rm-hostpower', title: 'Host Power', body: stateBlock(c, n) + briefReadings(c, n) });
+    R.hostBrief = (c, n) => ({ id: 'rm-hostpower', title: 'Host Power', body: stateBlock(c, n, briefReadings(c, n)) });
     R.hooks.ensure.push((c, n) => { if (n.kind !== 'server') return; void loadPower(c, n.server); });
     const touch = (c) => { const b = c.el('[data-act="ap-apply"]'); if (b) b.disabled = false; };
     R.inputs['ap-auto'] = (v, el, c) => { if (HP.draft) HP.draft.auto = !!v; const r = c.el('input[data-rm-input="ap-hours"]'); if (r) r.disabled = !v; touch(c); };

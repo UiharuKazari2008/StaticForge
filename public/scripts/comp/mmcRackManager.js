@@ -587,7 +587,8 @@
     function rolesSummaryText(st) {
         const roles = st.info && st.info.roles;
         if (!roles) return '';
-        return ROLES.filter((r) => roles[r.id] && roles[r.id].installed && roles[r.id].summary).map((r) => `${r.name.replace('Virtual ', '')}: ${roles[r.id].summary}`).join('; ');
+        const n = ROLES.filter((r) => roles[r.id] && roles[r.id].installed).length;
+        return `${n} of ${ROLES.length} installed`;
     }
 
     function rootPage(c) {
@@ -989,10 +990,13 @@
                 resultEl.addEventListener('change', fire);
                 R.hooks.open.forEach((fn) => fn(c));
                 // the window keeps its opened size: a page with little in it (Reading data...) must not shrink it
-                if (!c.modal.style.width) {
+                // the window manager may have settled a content-measured size (601x423 seen live) before this runs: set ours once per open
+                const sizeIt = () => {
                     c.modal.style.width = `${Math.min(900, Math.max(480, root.innerWidth - 80))}px`;
                     c.modal.style.height = `${Math.min(640, Math.max(320, root.innerHeight - 90))}px`;
-                }
+                };
+                sizeIt();
+                root.requestAnimationFrame(() => { if (parseInt(c.modal.style.width, 10) < 700 && root.innerWidth > 800) sizeIt(); });
                 wireFeed(c);
                 void loadList(c);
             },

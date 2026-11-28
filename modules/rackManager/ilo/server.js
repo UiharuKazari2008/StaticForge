@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const net = require('net');
 const zlib = require('zlib');
 const { Ilo3Console, login: ilo3Login, logout: ilo3Logout, api: ilo3Api } = require('./lib/ilo3');
 const { HID } = require('./lib/hid');
@@ -540,8 +541,13 @@ server.on('upgrade', (req, socket) => {
   s.join(v);
 });
 // ---- listeners ------------------------------------------------------------------------------
-try { fs.mkdirSync(path.dirname(SOCK), { recursive: true, mode: 0o700 }); fs.unlinkSync(SOCK); } catch (_) { /* none */ }
-server.listen(SOCK, () => { try { fs.chmodSync(SOCK, 0o600); } catch (_) { /* kept */ } log(`listening on ${SOCK}`); }).on('error', e => { log(`socket ${SOCK}: ${e.message}`); process.exit(1); });
+try { fs.mkdirSync(path.dirname(SOCK), { recursive: true, mode: 0o700 }); } catch (_) { /* there */ }
+// Never take over a live socket: a second copy (a test run, a stray start) once unlinked the running service's
+// socket and left a dead file behind (Nov 27 2026). Connect first; only a refused or missing socket is removed.
+const probe = net.createConnection(SOCK);
+probe.on('connect', () => { probe.destroy(); log(`another iLO service already answers on ${SOCK}; exiting`); process.exit(3); });
+probe.on('error', () => { try { fs.unlinkSync(SOCK); } catch (_) { /* none */ } listenSock(); });
+function listenSock() { server.listen(SOCK, () => { try { fs.chmodSync(SOCK, 0o600); } catch (_) { /* kept */ } log(`listening on ${SOCK}`); }).on('error', e => { log(`socket ${SOCK}: ${e.message}`); process.exit(1); }); }
 
 // The LAN listener answers ONLY: GET|HEAD /iso/<name> (virtual media; any LAN source) and GET /api/<server>/health,
 // /history, /power from the rack hosts 192.168.100.40-43 (their login-status timers). Everything else: 404.

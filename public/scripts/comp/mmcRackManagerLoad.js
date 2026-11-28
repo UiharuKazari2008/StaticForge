@@ -107,8 +107,8 @@
             strips.push({ id: 'cpu', title: 'CPU', unit: '%', max: 100, fmt: (v) => `${Math.round(v)}%`, series: [{ name: 'CPU', color: C.cpu, pts: col('cpu') }] });
             strips.push({ id: 'mem', title: 'Memory used', unit: '%', max: 100, fmt: (v) => `${Math.round(v)}%`, series: [{ name: 'Memory', color: C.mem, pts: S.filter((x) => x.memTotalB).map((x) => [x.t, (x.memUsedB / x.memTotalB) * 100]) }] });
             const bps = (v) => `${R.bytes(v)}/s`;
-            strips.push({ id: 'disk', title: 'Disk', fmt: bps, series: [{ name: 'Read', color: C.r, pts: col('diskRBps') }, { name: 'Write', color: C.w, pts: col('diskWBps') }] });
-            strips.push({ id: 'net', title: 'Network', fmt: bps, series: [{ name: 'Receive', color: C.rx, pts: col('netRxBps') }, { name: 'Send', color: C.tx, pts: col('netTxBps') }] });
+            strips.push({ id: 'disk', title: 'Disk (per second)', fmt: bps, series: [{ name: 'Read', color: C.r, pts: col('diskRBps') }, { name: 'Write', color: C.w, pts: col('diskWBps') }] });
+            strips.push({ id: 'net', title: 'Network (per second)', fmt: bps, series: [{ name: 'Receive', color: C.rx, pts: col('netRxBps') }, { name: 'Send', color: C.tx, pts: col('netTxBps') }] });
         }
         if (h) {
             const tl = Object.keys(h.temp || {});
