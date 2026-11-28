@@ -41,6 +41,23 @@ const DIRECTOR_KEY_TARGETS = Object.freeze([
     { persona: 'xi', label: 'Xi' }
 ]);
 
+/**
+ * Fleet's own MCP keys (#1199, modules/fleetMcpIdentity.js): "Fleet" for sessions started in Fleet,
+ * "Fleet work items" for sessions working a Supervisor work item. They exist so the Remote Access
+ * notice can say Fleet instead of Claude Code. Minted by ensureFleetKey, never by the startup widen
+ * migrations below (they are not listed there on purpose).
+ */
+const FLEET_KEY_TARGETS = Object.freeze([
+    { persona: 'fleet', label: 'Fleet' },
+    { persona: 'fleet-items', label: 'Fleet work items' }
+]);
+
+/**
+ * A Fleet session's tool scopes: the director list without Dovecote mail. Never 'universal', and no
+ * Plaud, Claude fleet, mail exchange, Messaging Bridge or Alchemy browser scope.
+ */
+const FLEET_MCP_SCOPES = Object.freeze(DIRECTOR_MCP_SCOPES.filter((scope) => scope !== 'sfapp_dovecote'));
+
 /** Bot MCP keys that need Dovecote mail tools after the module shipped. */
 const DOVECOTE_BOT_KEY_TARGETS = Object.freeze([
     { persona: 'menma', label: 'Menma' },
@@ -375,6 +392,8 @@ module.exports = {
     DIRECTOR_SCOPE_ADDITIONS,
     DIRECTOR_MCP_SCOPES,
     DIRECTOR_KEY_TARGETS,
+    FLEET_KEY_TARGETS,
+    FLEET_MCP_SCOPES,
     DOVECOTE_BOT_KEY_TARGETS,
     DOVECOTE_SCOPE,
     EXCHANGE_SCOPE,

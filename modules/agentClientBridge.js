@@ -46,9 +46,17 @@ let preferredTestingClientId = null;
 // of falling back to the tab Yukimi is typing in. Director's own tab binds are exempt.
 const PRIORITY_CLIENT_GRACE_MS = 10 * 60 * 1000;
 const priorityClient = { clientId: null, since: 0, lastSeen: 0 };
-// Director's own keys (cursorDirector PROJECT_NAME, xiDirector 'Xi', Wren on the Director key)
+// Director's own keys (cursorDirector PROJECT_NAME, xiDirector 'Xi', Wren on the Director key). Compared with the name a bind
+// carries (resolveActorLabel): for these keys the label IS the raw app name, and a Fleet label ('Fleet access ...') is never in
+// the set, exactly as the old shared "Claude Code" key never was: Fleet sessions are not exempt from the priority client.
 const PRIORITY_EXEMPT_ACTORS = new Set(['Dreamscape Director', 'Xi', 'Wren']);
 let clientSettleTimer = null;
+// modules/fleetMcpIdentity.js (#1199): loaded on first use, it only needs fs / path / os / crypto
+let fleetIdentityModule = null;
+function fleetIdentity() {
+    if (!fleetIdentityModule) fleetIdentityModule = require('./fleetMcpIdentity');
+    return fleetIdentityModule;
+}
 const mcpStudioCheckpoints = new Map(); // bindKey -> { id, focusedFilename, qualitySettings }
 let lastBindResources = null;
 
@@ -779,7 +787,13 @@ function resolveGenerateWorkspaceId(globalResources, req, input) {
 
 function resolveBindKey(req) {
     const auth = req && req.applicationAuth;
-    if (auth && auth.applicationKeyId) return `appkey:${auth.applicationKeyId}`;
+    if (auth && auth.applicationKeyId) {
+        // A Fleet session (key "Fleet" / "Fleet work items" + X-Fleet-Session, #1199) binds on its own: two Fleet
+        // agents share one key and must not share one bound tab. modules/fleetMcpIdentity.js
+        const fleet = fleetIdentity().fleetSessionOf(req);
+        if (fleet) return `appkey:${auth.applicationKeyId}:fleet:${fleet.sessionId}`;
+        return `appkey:${auth.applicationKeyId}`;
+    }
     if (req && req.authMethod === 'dev_login_key') return 'dev_login_key';
     if (auth && auth.sessionId) return String(auth.sessionId);
     if (req && req.sessionId) return `session:${req.sessionId}`;
@@ -791,6 +805,19 @@ function resolveActorName(req) {
     const raw = auth && (auth.appName != null ? auth.appName : auth.applicationAppName);
     const name = String(raw || '').trim();
     return name || null;
+}
+
+/**
+ * The name the Remote Access notice, the bind packet and the MCP activity row show (#1199): a Fleet key reads
+ * 'Fleet access "<title>"', every other key its raw app name. DISPLAY only: identity and ownership decisions
+ * (Dovecote owner, Plaud, Claude fleet, tool gating, PRIORITY_EXEMPT_ACTORS) stay on resolveActorName.
+ */
+function resolveActorLabel(req) {
+    try {
+        return fleetIdentity().actorLabel(req);
+    } catch (_) {
+        return resolveActorName(req);
+    }
 }
 
 function boundActorName(bindKey) {
@@ -2170,7 +2197,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                 clientId: body.clientId || body.client_id,
                 code: body.code,
                 bindKey: resolveBindKey(req),
-                actorName: resolveActorName(req)
+                actorName: resolveActorLabel(req)
             }));
         } catch (error) {
             return handleRouteError(res, error, 'Failed to bind client');
@@ -2196,7 +2223,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             if (!filename) {
                 return res.status(400).json({ success: false, error: 'filename is required' });
             }
-            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorName(req), requestClientIP(req));
+            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorLabel(req), requestClientIP(req));
             if (!bind.bound) {
                 const err = new Error('No Studio client is bound');
                 err.status = 404;
@@ -2246,7 +2273,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
 
     app.post('/agent/session/prepare-update', devAuthMiddleware, async (req, res) => {
         try {
-            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorName(req), requestClientIP(req));
+            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorLabel(req), requestClientIP(req));
             if (!bind.bound) {
                 const err = new Error('No Studio client is bound');
                 err.status = 404;
@@ -2261,7 +2288,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
 
     app.post('/agent/session/restart', devAuthMiddleware, async (req, res) => {
         try {
-            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorName(req), requestClientIP(req));
+            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorLabel(req), requestClientIP(req));
             if (!bind.bound) {
                 const err = new Error('No Studio client is bound');
                 err.status = 404;
@@ -2280,7 +2307,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             if (typeof script !== 'string') {
                 return res.status(400).json({ success: false, error: 'script must be a string' });
             }
-            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorName(req), requestClientIP(req));
+            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorLabel(req), requestClientIP(req));
             if (!bind.bound) {
                 const err = new Error('No Studio client is bound');
                 err.status = 404;
@@ -2300,7 +2327,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             if (!Array.isArray(body.selectors)) {
                 return res.status(400).json({ success: false, error: 'selectors must be a string array' });
             }
-            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorName(req), requestClientIP(req));
+            const bind = autoBindNearest(globalResources, resolveBindKey(req), resolveActorLabel(req), requestClientIP(req));
             if (!bind.bound) {
                 const err = new Error('No Studio client is bound');
                 err.status = 404;
@@ -2420,6 +2447,7 @@ module.exports = {
     getBoundClientId,
     resolveBindKey,
     resolveActorName,
+    resolveActorLabel,
     getClientPhysics,
     requestClientIP,
     enrichDynamicGenerationForMcp,
@@ -2547,6 +2575,7 @@ module.exports = {
         sweepIdleBinds,
         resolveBindKey,
         resolveActorName,
+        resolveActorLabel,
         boundActorName,
         requireBindKey,
         expireIdleBind,

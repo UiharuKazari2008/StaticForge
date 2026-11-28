@@ -371,7 +371,10 @@ function studioActivityFields(entry) {
 }
 
 function studioActivityDescription(entry) {
-    const who = entry.actor ? `"${entry.actor}"` : 'An agent';
+    // A Fleet session's label is already worded and quoted by the server (modules/fleetMcpIdentity.js, #1199):
+    // `Fleet access "<session>"`; every other actor is a key name and goes in quotes.
+    const actorText = (actor) => (/^Fleet access(?:$| "|, work item)/.test(actor) ? actor : `"${actor}"`);
+    const who = entry.actor ? actorText(entry.actor) : 'An agent';
     if (entry.type === 'mcp') {
         let head = `${who} called ${entry.tool}.`;
         if (entry.running) head = `${who} called ${entry.tool}. The generation is still running.`;
@@ -379,7 +382,7 @@ function studioActivityDescription(entry) {
         return [head, ...entry.lines];
     }
     const source = STUDIO_ACTIVITY_SOURCES[entry.source] || 'Agent';
-    const by = entry.actor ? ` by "${entry.actor}"` : '';
+    const by = entry.actor ? ` by ${actorText(entry.actor)}` : '';
     const head = `${source}${by} loaded ${entry.lines.length || 'no'} change${entry.lines.length === 1 ? '' : 's'} into the Studio${entry.action && !/ loaded$/.test(entry.action) ? ` (${entry.action})` : ''}.`;
     const tail = entry.unapplied.length ? [`The Studio could not take: ${entry.unapplied.join(', ')}`] : [];
     return [head, ...entry.lines, ...tail];

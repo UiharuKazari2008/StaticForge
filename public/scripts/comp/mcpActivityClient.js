@@ -37,6 +37,10 @@ function rememberRemoteActor(name) {
 function quotedRemoteActor(name) {
     const actor = String(name || mcpLastActorName || '').trim();
     if (!actor) return null;
+    // A Fleet session's label comes from the server already worded and quoted (modules/fleetMcpIdentity.js actorLabel,
+    // #1199): `Fleet access "<session>"` or `Fleet access, work item #<id> "<item>"`. It is shown as it is; every other
+    // actor is the key's name and goes in quotes.
+    if (/^Fleet access(?:$| "|, work item)/.test(actor)) return actor.replace(/[\u0000-\u001f]/g, '');
     return `"${actor.replace(/"/g, '')}"`;
 }
 
@@ -190,7 +194,10 @@ function showAgentSessionTrayNotice(action, messageOrData) {
     // Remote Access's own image for every notice, the physics reads too (vista-icons-not-fa)
     const icon = '<img src="/static_images/vista-icons/remote-access-32.png" alt="" width="32" height="32">';
     // showPopover: public/scripts/comp/popoverManager.js
-    showPopover(anchor, 'info', 'Remote Access', message, false, 8000, icon, null, {
+    // the popover writes its body as HTML: actor names and Fleet titles (a work item's title can come from a Yozora
+    // issue) go in as text
+    const safeMessage = String(message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    showPopover(anchor, 'info', 'Remote Access', safeMessage, false, 8000, icon, null, {
         position: 'top',
         arrowPosition: 'bottom-right',
         popupId: 'remote-access',

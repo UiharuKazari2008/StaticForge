@@ -106,3 +106,5 @@ Optional `vSlider` is an array of intensity widgets on `change` (and echoed top-
 | Server → client | `agent_session_bound` / `agent_session_unbound` | Bind flag for the tab |
 | Server → client | `agent_session_notice` | Remote Access popup / physics icon (`action`: `physics`, optional `actorName`) |
 | Client → server | `agent_session_unbind` | Tray Unbind — release every key bound to this tab |
+
+`actorName` (on `agent_session_bound`, `agent_session_notice`, `agent_session_command` and the `mcp_activity` broadcast) is the application key's name, except for a Fleet session: its keys "Fleet" and "Fleet work items" plus the `X-Fleet-Session` header give `Fleet access "<title>"` or `Fleet access, work item #<id> "<title>"`, and such a session binds its own tab (`appkey:<id>:fleet:<session id>`). See [docs/fleet/fleet-mcp-identity.md](../fleet/fleet-mcp-identity.md).

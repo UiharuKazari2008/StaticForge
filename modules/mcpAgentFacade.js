@@ -42,6 +42,7 @@ const {
     rememberStudioCheckpointFromState,
     studioGetStatePayload,
     resolveActorName,
+    resolveActorLabel,
     getClientPhysics,
     requestClientIP,
     enrichDynamicGenerationForMcp,
@@ -5142,7 +5143,7 @@ function autoBindIfNeeded(globalResources, req) {
     return autoBindNearest(
         globalResources,
         resolveBindKey(req),
-        resolveActorName(req),
+        resolveActorLabel(req),
         requestClientIP(req)
     );
 }
@@ -9703,7 +9704,7 @@ async function callTool(globalResources, req, name, args) {
             clientId: input.clientId || input.client_id,
             code: input.code,
             bindKey: resolveBindKey(req),
-            actorName: resolveActorName(req)
+            actorName: resolveActorLabel(req)
         }));
     }
 
@@ -11032,7 +11033,8 @@ async function handleJsonRpc(globalResources, req, message) {
         const args = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
         const generating = isGenerateTool(name, args);
         const argsSummary = summarizeArgs(args);
-        const actorName = resolveActorName(req);
+        // display name for the activity ring and the Remote Access notice: a Fleet key reads 'Fleet access "<title>"' (#1199)
+        const actorName = resolveActorLabel(req);
         const bindKey = resolveBindKey(req);
         const inflightId = beginCall({
             tool: name,

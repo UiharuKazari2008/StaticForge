@@ -126,6 +126,15 @@ async function ensureServer() {
 
 // ---------------------------------------------------------------- MCP config + coordination
 
+function coordServerEntry() {
+    return {
+        type: 'stdio',
+        command: process.execPath,
+        args: [path.join(__dirname, 'agentCoord', 'mcpServer.js')],
+        env: process.env.AGENT_COORD_DB ? { AGENT_COORD_DB: process.env.AGENT_COORD_DB } : {}
+    };
+}
+
 /** The --mcp-config file every launched session gets: agent-coord (and nothing else of ours). */
 async function mcpConfigFile() {
     const dir = stateDir();
@@ -133,12 +142,7 @@ async function mcpConfigFile() {
     const file = path.join(dir, 'launch-mcp.json');
     const cfg = {
         mcpServers: {
-            'agent-coord': {
-                type: 'stdio',
-                command: process.execPath,
-                args: [path.join(__dirname, 'agentCoord', 'mcpServer.js')],
-                env: process.env.AGENT_COORD_DB ? { AGENT_COORD_DB: process.env.AGENT_COORD_DB } : {}
-            }
+            'agent-coord': coordServerEntry()
         }
     };
     const body = JSON.stringify(cfg, null, 2);
@@ -146,6 +150,44 @@ async function mcpConfigFile() {
     try { cur = await fs.promises.readFile(file, 'utf8'); } catch (_) { cur = ''; }
     if (cur !== body) await fs.promises.writeFile(file, body, { mode: 0o600 });
     return file;
+}
+
+// Fleet's own Dreamscape MCP identity (modules/fleetMcpIdentity.js, #1199); a test injects a stub
+let fleetIdentityOverride = null;
+function _setFleetIdentity(mod) { fleetIdentityOverride = mod || null; }
+const fleetIdentity = () => fleetIdentityOverride || require('./fleetMcpIdentity');
+const fleetMcpDir = () => path.join(stateDir(), 'fleet-mcp-sessions');
+const fleetMcpFile = (id) => path.join(fleetMcpDir(), `${id}.json`);
+
+/**
+ * The per-session --mcp-config of a Fleet session on the Dreamscape host (#1199): the `dreamscape` server with this
+ * session's own key (a headersHelper command reads the 0600 key file at connection time, so no secret is in this
+ * file, the arguments or the environment), plus the agent-coord fallback when it is not registered at user scope.
+ * Answers the file path. Throws when the key or the URL is not available (the caller launches the old way).
+ */
+async function fleetMcpConfigFile(gr, o, coordOk) {
+    const ident = fleetIdentity();
+    const kind = ident.sessionKind(o.id, o.workId);
+    const info = await ident.ensureFleetKey(gr, kind);
+    const url = ident.mcpUrl(gr);
+    if (!url) throw new Error('the Dreamscape MCP address is not known yet');
+    const helper = [process.execPath, path.join(__dirname, '..', 'scripts', 'fleet-mcp-headers.js'), info.keyFile, o.id].map(shq).join(' ');
+    const servers = { dreamscape: { type: 'http', url, headersHelper: helper } };
+    if (!coordOk) servers['agent-coord'] = coordServerEntry();
+    const dir = fleetMcpDir();
+    await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
+    const file = fleetMcpFile(o.id);
+    const body = JSON.stringify({ mcpServers: servers }, null, 2);
+    let cur = '';
+    try { cur = await fs.promises.readFile(file, 'utf8'); } catch (_) { cur = ''; }
+    if (cur !== body) await fs.promises.writeFile(file, body, { mode: 0o600 });
+    return file;
+}
+
+/** Did Fleet start this session with its own MCP identity (resume keeps it)? */
+function fleetStarted(id) {
+    try { if (fs.existsSync(fleetMcpFile(id))) return true; } catch (_) { /* below */ }
+    try { return fleetIdentity().sessionKind(id) === 'item'; } catch (_) { return false; }
 }
 
 function coordNote(fields) {
@@ -317,7 +359,13 @@ async function launch(gr, o) {
         other = await engineEnv(gr, engine, o.model, o.effort, o.id);
         o = Object.assign({}, o, { model: other.model, effort: undefined }); // the bridge carries the effort
     }
-    const args = buildArgs(o, { title, mcpConfig: coordOk ? null : await mcpConfigFile() });
+    let mcpConfig = null;
+    if (o.fleetMcp === true) {
+        // Fleet sessions get their own Dreamscape key (Remote Access says "Fleet access", #1199); never a launch failure
+        try { mcpConfig = await fleetMcpConfigFile(gr, o, coordOk); } catch (e) { console.warn(`[claudeLauncher] Fleet MCP identity not used for ${o.id.slice(0, 8)}: ${e.message}`); }
+    }
+    if (!mcpConfig && !coordOk) mcpConfig = await mcpConfigFile();
+    const args = buildArgs(o, { title, mcpConfig });
     const name = tmuxName(o.id);
     await ensureServer();
     if ((await tmux(['has-session', '-t', `=${name}`])).code === 0) {
@@ -337,7 +385,7 @@ async function start(gr, opts = {}) {
     let chosen = { host: 'dreamscape' };
     try { chosen = await require('./misakaSessions').resolveHost(gr, opts); } catch (e) { if (opts.host === 'misaka') throw e; console.warn(`[claudeLauncher] host choice: ${e.message}`); }
     const title = opts.title || (opts.prompt ? String(opts.prompt).split('\n')[0] : '') || path.basename(String(opts.cwd || '')) || 'Claude session';
-    return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, engine: opts.engine, remoteControl: opts.remoteControl === true, dispatchedBy: opts.dispatchedBy, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs, host: chosen.host, workId: opts.workId, gitIdentity: opts.gitIdentity });
+    return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, engine: opts.engine, remoteControl: opts.remoteControl === true, dispatchedBy: opts.dispatchedBy, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs, host: chosen.host, workId: opts.workId, gitIdentity: opts.gitIdentity, fleetMcp: true });
 }
 
 /** A session's transcript file; a conversation handed on to another session id (`continued-in`) is followed (claudeSessions). */
@@ -368,7 +416,7 @@ async function resume(gr, id, opts = {}) {
     if (live && live.remoteControl) return { id, state: 'live', link: live.link, tmuxSession: live.tmuxSession, message: 'Already in Remote Control' };
     if (live) throw new Error(`It is running already (${live.origin === 'server' ? 'Remote Control' : live.tmuxSession || 'a terminal'}) without Remote Control: type /remote-control there, or send it /remote-control from here`);
     const cwd = await cwdOf(file);
-    return launch(gr, { id, resume: true, cwd, title: opts.title || id.slice(0, 8), task: opts.title, account: opts.account, mode: opts.mode, remoteControl: true, model: opts.model, effort: opts.effort, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
+    return launch(gr, { id, resume: true, cwd, title: opts.title || id.slice(0, 8), task: opts.title, account: opts.account, mode: opts.mode, remoteControl: true, model: opts.model, effort: opts.effort, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs, fleetMcp: fleetStarted(id) });
 }
 
 /**
@@ -399,7 +447,7 @@ async function takeover(gr, id) {
     }
     if (claudeSessions.pidAlive(live.pid)) throw new Error('Its Remote Control process did not end');
     const cwd = live.cwd || (await cwdOf(await findFile(id)));
-    return launch(gr, { id, resume: true, cwd, title, task: title, account, remoteControl: true });
+    return launch(gr, { id, resume: true, cwd, title, task: title, account, remoteControl: true, fleetMcp: false }); // a Remote Control session Yukimi started keeps "Claude Code"
 }
 
 // ---------------------------------------------------------------- steering
@@ -745,7 +793,7 @@ async function answerPermission(id, choice, signature) {
     return { answered: true, key: opt.n, option: opt.text, gone };
 }
 
-module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, attachCommand, readPermissionPrompt, permissionPrompt, answerPermission, mcpConfigFile, findFile, _setRunner, watch, buildArgs, _tmuxName: tmuxName, _coordNote: coordNote, _commandLine: commandLine, DEFAULT_MODE, EFFORTS, _test: { buildArgs, READY_RE, readDialog } };
+module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, attachCommand, readPermissionPrompt, permissionPrompt, answerPermission, mcpConfigFile, findFile, _setRunner, _setFleetIdentity, watch, buildArgs, _tmuxName: tmuxName, _coordNote: coordNote, _commandLine: commandLine, DEFAULT_MODE, EFFORTS, _test: { buildArgs, READY_RE, readDialog } };
 
 // hot reload (#1292): the carry-server promise and a test runner survive; the default runner is rebuilt from the new code
 require('./hotReload').mark(module, {
