@@ -1,0 +1,2 @@
+Before the update was taken (aemu-a53-2, page of app versionCode 3632021, cached wmShell.js 372563 bytes, sha 0ca83ba9...):
+wmShell.menuSample('right',[A,B]) first .wm-popup-item classes: "wm-popup-item is-hot" (OLD client)
