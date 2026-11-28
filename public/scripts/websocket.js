@@ -2170,7 +2170,8 @@ class WebSocketClient {
     }
 
     isGenerationQuipsMessage(message) {
-        if (!message || !message.type) return false;
+        // a caller that passed a non-string type (fault_8ba6d530bd22, #1244) is not a quips message: sendMessage rejects it
+        if (!message || typeof message.type !== 'string' || !message.type) return false;
         return WebSocketClient.GENERATION_QUIPS_MESSAGE_TYPES.has(message.type)
             || message.type.includes('generation_quips');
     }
@@ -10355,6 +10356,13 @@ class WebSocketClient {
     }
 
     sendMessage(type, data = {}, showBanner = undefined) {
+        // a non-string type (an object, undefined) is a caller bug: reject it here, where the stack names the caller,
+        // instead of throwing later inside the deferred send and leaving the request to time out (#1244)
+        if (typeof type !== 'string' || !type) {
+            const err = new TypeError(`sendMessage: message type must be a non-empty string (got ${type === null ? 'null' : typeof type})`);
+            err.code = 'BAD_MESSAGE_TYPE';
+            return Promise.reject(err);
+        }
         if (type !== 'ping') {
             this.recordUserActivity();
         }

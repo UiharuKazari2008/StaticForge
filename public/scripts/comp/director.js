@@ -3512,7 +3512,7 @@ class Director {
         this.requestDirectorModels();
         this.updateTrayChrome();
         // The wide layout shows the session list without the hamburger, so it has to be filled
-        this.loadDirectorSessions();
+        this.loadDirectorSessions().catch(() => { /* list refresh is best effort */ });
         await this.openCurrentSession();
         this.initializeScrollbars();
         this.scrollToBottom();
@@ -5056,7 +5056,7 @@ class Director {
         if (this.directorContainer) this.directorContainer.classList.toggle('director-sessions-from-rail', st === 'folded' && this.directorContainer.classList.contains('director-sessions-rail'));
         this.applySessionPanelFold(st);
         if (st !== 'folded') {
-            this.loadDirectorSessions();
+            this.loadDirectorSessions().catch(() => { /* list refresh is best effort */ });
             this.initializeScrollbars();
         }
     }
@@ -5089,7 +5089,7 @@ class Director {
 
         // Always load fresh sessions from server when opening overlay
         // This ensures the session list is fully up-to-date
-        this.loadDirectorSessions();
+        this.loadDirectorSessions().catch(() => { /* list refresh is best effort */ });
 
         // A static left panel is never dismissed by a click elsewhere
         if (this.staticSessionPanel()) return;
@@ -9749,7 +9749,7 @@ class Director {
                 director._openPreferredId = newSession.id;
                 await director.openDirectorWindow();
                 await director.showSessionChat(newSession);
-                director.loadDirectorSessions();
+                director.loadDirectorSessions().catch(() => { /* list refresh is best effort */ });
                 return;
             }
             if (!studioAlreadyOpen && !director.directorWindowIsOpen()) {
@@ -9761,7 +9761,7 @@ class Director {
             }
             await director.showDirector({ skipSession: true });
             await director.showSessionChat(newSession);
-            director.loadDirectorSessions();
+            director.loadDirectorSessions().catch(() => { /* list refresh is best effort */ });
         });
 
         // Handle Director send message response

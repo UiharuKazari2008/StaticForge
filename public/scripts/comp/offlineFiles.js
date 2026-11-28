@@ -39,7 +39,7 @@
 
     const doc = typeof document !== 'undefined' ? document : null;
     const ART = '/static_images/vista-offline';
-    const appScopeSignal = root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' ? root.melatonSegments.callerSignal() : undefined;
+    const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // callerSignal() is null outside a segment and { signal: null } throws (fault_76f79816ede4)
     const host = () => root.AndroidOfflineFiles || null;
     const listeners = new Set();
     let sum = null;
